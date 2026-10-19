@@ -12,6 +12,8 @@ pub const AI_DIFF_LIMIT: usize = 12_000;
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
     pub status: String,
     pub staged: bool,
 }
@@ -109,9 +111,18 @@ fn parse_status_line(line: &str) -> Option<FileChange> {
         return None;
     }
     let xy = &line[..2];
-    let mut path = unquote(line[3..].trim());
-    if let Some((_, new_path)) = path.split_once(" -> ") {
-        path = unquote(new_path.trim());
+    let remainder = line[3..].trim();
+    let renamed = xy.contains('R') || xy.contains('C');
+    let (mut previous_path, path) = if renamed {
+        match split_rename_pair(remainder) {
+            Some((previous, next)) => (Some(unquote(previous)), unquote(next)),
+            None => (None, unquote(remainder)),
+        }
+    } else {
+        (None, unquote(remainder))
+    };
+    if previous_path.as_deref().is_some_and(str::is_empty) {
+        previous_path = None;
     }
     if path.is_empty() {
         return None;
@@ -120,9 +131,37 @@ fn parse_status_line(line: &str) -> Option<FileChange> {
     let staged = !xy.starts_with(' ') && !xy.starts_with('?');
     Some(FileChange {
         path,
+        previous_path,
         status: change_kind(xy).to_string(),
         staged,
     })
+}
+
+fn split_rename_pair(remainder: &str) -> Option<(&str, &str)> {
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, ch) in remainder.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if !quoted && remainder[index..].starts_with(" -> ") {
+            let previous = remainder[..index].trim();
+            let next = remainder[index + 4..].trim();
+            if !previous.is_empty() && !next.is_empty() {
+                return Some((previous, next));
+            }
+        }
+    }
+    None
 }
 
 fn change_kind(xy: &str) -> &'static str {
@@ -166,5 +205,72 @@ pub fn ensure_repo(path: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err("Not a git repository".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_porcelain;
+
+    #[test]
+    fn porcelain_keeps_rename_source() {
+        let files = parse_porcelain(
+            " M src/lib/tree.ts\n?? new.ts\nR  docs/old.ts -> docs/new.ts\nRM \"docs/my old.ts\" -> \"docs/my new.ts\"\n",
+        );
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0].path, "src/lib/tree.ts");
+        assert_eq!(files[0].status, "modified");
+        assert!(files[0].previous_path.is_none());
+        assert!(!files[0].staged);
+
+        assert_eq!(files[1].path, "new.ts");
+        assert_eq!(files[1].status, "untracked");
+        assert!(files[1].previous_path.is_none());
+
+        assert_eq!(files[2].path, "docs/new.ts");
+        assert_eq!(files[2].previous_path.as_deref(), Some("docs/old.ts"));
+        assert_eq!(files[2].status, "renamed");
+        assert!(files[2].staged);
+
+        assert_eq!(files[3].path, "docs/my new.ts");
+        assert_eq!(files[3].previous_path.as_deref(), Some("docs/my old.ts"));
+        assert_eq!(files[3].status, "renamed");
+    }
+
+    #[test]
+    fn porcelain_does_not_split_arrows_in_ordinary_paths() {
+        let files = parse_porcelain(" M \"notes/a -> b.md\"\n");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "notes/a -> b.md");
+        assert!(files[0].previous_path.is_none());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_porcelain;
+
+    #[test]
+    fn porcelain_keeps_rename_source() {
+        let files = parse_porcelain(
+            " M src/lib/tree.ts\n?? new.ts\nR  docs/old.ts -> docs/new.ts\nRM \"docs/my old.ts\" -> \"docs/my new.ts\"\n",
+        );
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0].path, "src/lib/tree.ts");
+        assert!(files[0].previous_path.is_none());
+        assert_eq!(files[0].status, "modified");
+        assert!(!files[0].staged);
+
+        assert_eq!(files[1].path, "new.ts");
+        assert_eq!(files[1].status, "untracked");
+
+        assert_eq!(files[2].path, "docs/new.ts");
+        assert_eq!(files[2].previous_path.as_deref(), Some("docs/old.ts"));
+        assert_eq!(files[2].status, "renamed");
+        assert!(files[2].staged);
+
+        assert_eq!(files[3].path, "docs/my new.ts");
+        assert_eq!(files[3].previous_path.as_deref(), Some("docs/my old.ts"));
+        assert_eq!(files[3].status, "renamed");
     }
 }

@@ -1,3 +1,4 @@
+mod changes;
 mod command;
 mod commit;
 mod diff;
@@ -6,6 +7,7 @@ mod settings;
 mod status;
 mod sync;
 
+pub use changes::{contained_path, discard_change, ignore_change};
 pub use command::git_available;
 
 pub fn init_repo(path: &std::path::Path) -> Result<(), String> {
@@ -36,8 +38,8 @@ mod tests {
 
     use super::command::git;
     use super::discover::{NodeKind, discover};
-    use super::status::status_of;
-    use super::sync::{Outcome, pull_default};
+    use super::status::{is_github_url, status_of};
+    use super::sync::{Outcome, pull_default, push_repo};
     use super::{TreeNode, commit_repo};
 
     fn scratch(name: &str) -> PathBuf {
@@ -131,6 +133,7 @@ mod tests {
         assert!(before.dirty);
         assert_eq!(before.branch, "main");
         assert_eq!(before.untracked, 1);
+        assert_eq!(before.github, None);
 
         commit_repo(&beta, "chore: add note").unwrap();
 
@@ -231,6 +234,38 @@ mod tests {
         let local_main = git(&alpha, &["rev-parse", "HEAD"]).unwrap();
         let seed_main = git(&seed, &["rev-parse", "HEAD"]).unwrap();
         assert_eq!(local_main.trim(), seed_main.trim());
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn unpublished_repos_push_only_to_github() {
+        assert!(is_github_url("https://github.com/acme/widget.git"));
+        assert!(is_github_url("git@github.com:acme/widget.git"));
+        assert!(!is_github_url("https://gitlab.com/acme/widget.git"));
+
+        let tmp = scratch("unpublished");
+        let local = tmp.join("local");
+        init_repo(&local);
+        fs::write(local.join("README.md"), "one\n").unwrap();
+        run_git(&local, &["add", "."]);
+        run_git(&local, &["commit", "-m", "initial"]);
+        let status = status_of(&local);
+        assert_eq!(status.github, None);
+
+        let bare = tmp.join("origin.git");
+        run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
+        run_git(
+            &local,
+            &["remote", "add", "origin", bare.to_str().unwrap()],
+        );
+        let skipped = push_repo(&local);
+        assert!(
+            matches!(skipped, Outcome::Skipped(ref message) if message.contains("not GitHub")),
+            "{skipped:?}"
+        );
+        let after = status_of(&local);
+        assert_eq!(after.github, Some(false));
 
         let _ = fs::remove_dir_all(tmp);
     }

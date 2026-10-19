@@ -42,7 +42,7 @@ fn child_directory(root: &Path, target: &Path) -> Result<PathBuf, String> {
     Ok(target)
 }
 
-fn display_path(path: &Path) -> PathBuf {
+pub(crate) fn display_path(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         return PathBuf::from(format!(r"\\{rest}"));
@@ -67,6 +67,138 @@ fn is_same_path(left: &Path, right: &Path) -> bool {
                 if component_eq(left_component, right_component) => {}
             _ => return false,
         }
+    }
+}
+
+pub fn reveal_path(path: &Path) -> Result<(), String> {
+    let select_file = path.is_file();
+    let target = if path.exists() {
+        display_path(path)
+    } else {
+        let parent = path
+            .parent()
+            .filter(|parent| parent.exists())
+            .ok_or_else(|| format!("Path does not exist: {}", path.display()))?;
+        display_path(parent)
+    };
+    reveal_existing(&target, select_file && path.exists())
+}
+
+pub fn open_with_default(path: &Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Err(format!("File does not exist: {}", path.display()));
+    }
+    start_default(&display_path(path))
+}
+
+fn reveal_existing(path: &Path, select_file: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        return windows_shell::reveal(path, select_file);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = select_file;
+        return spawn_command("open", &["-R", &path.to_string_lossy()]);
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = select_file;
+        let directory = if path.is_dir() {
+            path.to_path_buf()
+        } else {
+            path.parent().unwrap_or(path).to_path_buf()
+        };
+        return spawn_command("xdg-open", &[&directory.to_string_lossy()]);
+    }
+}
+
+fn start_default(path: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        return windows_shell::open_path(path);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return spawn_command("open", &[&path.to_string_lossy()]);
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        return spawn_command("xdg-open", &[&path.to_string_lossy()]);
+    }
+}
+
+#[cfg(unix)]
+fn spawn_command(program: &str, args: &[&str]) -> Result<(), String> {
+    std::process::Command::new(program)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Could not open {}: {error}", args.last().unwrap_or(&program)))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+mod windows_shell {
+    use std::ffi::c_void;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+    use std::process::{Command, Stdio};
+
+    #[link(name = "shell32")]
+    unsafe extern "system" {
+        fn ShellExecuteW(
+            hwnd: *mut c_void,
+            operation: *const u16,
+            file: *const u16,
+            parameters: *const u16,
+            directory: *const u16,
+            show_cmd: i32,
+        ) -> isize;
+    }
+
+    pub fn reveal(path: &Path, select_file: bool) -> Result<(), String> {
+        let mut command = Command::new("explorer.exe");
+        if select_file {
+            command.arg("/select,").arg(path);
+        } else {
+            command.arg(path);
+        }
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("Could not show {} in Explorer: {error}", path.display()))?;
+        Ok(())
+    }
+
+    pub fn open_path(path: &Path) -> Result<(), String> {
+        let file = wide(path.as_os_str());
+        let operation = wide(std::ffi::OsStr::new("open"));
+        let code = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                file.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1,
+            )
+        };
+        if code > 32 {
+            return Ok(());
+        }
+        Err(format!(
+            "Could not open {} (error {code}).",
+            path.display()
+        ))
+    }
+
+    fn wide(value: &std::ffi::OsStr) -> Vec<u16> {
+        value.encode_wide().chain(std::iter::once(0)).collect()
     }
 }
 

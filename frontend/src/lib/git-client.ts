@@ -131,3 +131,22 @@ export function initRepo(path: string) {
 export function deleteFolder(root: string, path: string) {
   return invoke<void>("delete_path", { root, path });
 }
+
+export type IgnoreKind = "file" | "folder" | "extension";
+export type ChangeOpenMode = "editor" | "default";
+
+export function discardChange(repo: string, path: string) {
+  return invoke<void>("discard_change", { repo, path });
+}
+
+export function ignoreChange(repo: string, kind: IgnoreKind, path: string) {
+  return invoke<void>("ignore_change", { repo, kind, path });
+}
+
+export function revealChange(repo: string, path: string) {
+  return invoke<void>("reveal_change", { repo, path });
+}
+
+export function openChange(repo: string, path: string, mode: ChangeOpenMode) {
+  return invoke<void>("open_change", { repo, path, mode });
+}

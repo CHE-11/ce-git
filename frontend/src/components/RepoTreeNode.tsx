@@ -144,6 +144,11 @@ export function RepoTreeNode({
                     ↓{status.behind}
                   </span>
                 ) : null}
+                {status.github === null && !status.error ? (
+                  <span id={domId("tree-unpublished", node.path)} className="text-violet-300" title="No remote">
+                    unpublished
+                  </span>
+                ) : null}
                 {status.dirty ? (
                   <span
                     id={domId("tree-dirty", node.path)}

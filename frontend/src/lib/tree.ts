@@ -1,6 +1,6 @@
 import type { RepoStatus, TreeNode } from "../../../types/git";
 
-export type RepoTreeFilter = "dirty" | "ahead" | "behind" | "selected";
+export type RepoTreeFilter = "dirty" | "ahead" | "behind" | "unpublished" | "selected";
 
 export function collectRepos(node: TreeNode): TreeNode[] {
   const own = node.kind === "repo" ? [node] : [];
@@ -96,6 +96,9 @@ export function repoMatchesFilter(
   }
   if (filter === "ahead") {
     return status.ahead > 0;
+  }
+  if (filter === "unpublished") {
+    return status.github === null && !status.error;
   }
   return status.behind > 0;
 }

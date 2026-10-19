@@ -1,7 +1,10 @@
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use super::command::{dir_name, git};
-use super::status::{ahead_behind, current_branch, is_dirty, resolve_default_branch};
+use super::status::{
+    ahead_behind, current_branch, is_dirty, is_github_url, origin_url, resolve_default_branch,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -82,6 +85,14 @@ pub fn push_repo(path: &Path) -> Outcome {
     .map(|value| value.trim().to_string())
     .filter(|value| !value.is_empty());
 
+    match origin_url(path) {
+        Some(url) if !is_github_url(&url) => {
+            return Outcome::Skipped("Remote is not GitHub".into());
+        }
+        Some(_) => {}
+        None => return publish_to_github(path, &head.name),
+    }
+
     match upstream {
         Some(upstream) => {
             let (ahead, _) = ahead_behind(path);
@@ -97,6 +108,59 @@ pub fn push_repo(path: &Path) -> Outcome {
             Ok(_) => Outcome::Ok(format!("Pushed {} and set upstream", head.name)),
             Err(error) => Outcome::Failed(error),
         },
+    }
+}
+
+fn publish_to_github(path: &Path, branch: &str) -> Outcome {
+    let name = dir_name(path);
+    let source = path.to_string_lossy();
+    let mut command = Command::new("gh");
+    command
+        .args([
+            "repo",
+            "create",
+            &name,
+            "--source",
+            source.as_ref(),
+            "--remote",
+            "origin",
+            "--push",
+            "--private",
+        ])
+        .current_dir(path)
+        .env("GH_PROMPT_DISABLED", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+
+    match command.output() {
+        Ok(output) if output.status.success() => {
+            Outcome::Ok(format!("Created private GitHub repo and pushed {branch}"))
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let detail = if stderr.trim().is_empty() {
+                stdout.trim()
+            } else {
+                stderr.trim()
+            };
+            let detail = if detail.is_empty() {
+                "GitHub CLI could not create the repository".to_string()
+            } else {
+                detail.lines().next().unwrap_or(detail).to_string()
+            };
+            Outcome::Failed(detail)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Outcome::Failed("GitHub CLI (gh) is not installed or not signed in".into())
+        }
+        Err(error) => Outcome::Failed(format!("Failed to start GitHub CLI: {error}")),
     }
 }
 

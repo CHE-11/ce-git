@@ -12,6 +12,8 @@ pub struct RepoStatus {
     pub branch: String,
     pub detached: bool,
     pub upstream: Option<String>,
+    /// True when origin is GitHub, false for another host, none when origin is missing.
+    pub github: Option<bool>,
     pub ahead: u32,
     pub behind: u32,
     pub dirty: bool,
@@ -39,6 +41,7 @@ pub fn status_of(path: &Path) -> RepoStatus {
             branch: "unknown".into(),
             detached: false,
             upstream: None,
+            github: None,
             ahead: 0,
             behind: 0,
             dirty: false,
@@ -79,6 +82,7 @@ fn read_status(path: &Path) -> Result<RepoStatus, String> {
         Some(_) => ahead_behind(path),
         None => (0, 0),
     };
+    let github = origin_url(path).map(|url| is_github_url(&url));
 
     Ok(RepoStatus {
         path: path.to_string_lossy().into_owned(),
@@ -90,6 +94,7 @@ fn read_status(path: &Path) -> Result<RepoStatus, String> {
         },
         detached: current.detached,
         upstream,
+        github,
         ahead,
         behind,
         dirty: staged + unstaged + untracked > 0,
@@ -157,6 +162,21 @@ pub fn resolve_default_branch(path: &Path) -> Result<String, String> {
     }
     first_existing_branch(path, &["main", "master"])
         .ok_or_else(|| "Could not find a main or master branch".to_string())
+}
+
+pub fn origin_url(path: &Path) -> Option<String> {
+    git(path, &["remote", "get-url", "origin"])
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn is_github_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("://github.com/")
+        || lower.contains("@github.com:")
+        || lower.contains("@github.com/")
+        || lower.starts_with("github.com/")
 }
 
 fn origin_head(path: &Path) -> Option<String> {

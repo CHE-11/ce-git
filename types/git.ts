@@ -13,6 +13,8 @@ export interface RepoStatus {
   branch: string;
   detached: boolean;
   upstream: string | null;
+  /** True when origin is GitHub, false for another host, null when origin is missing. */
+  github: boolean | null;
   ahead: number;
   behind: number;
   dirty: boolean;
@@ -25,6 +27,7 @@ export interface RepoStatus {
 
 export interface FileChange {
   path: string;
+  previousPath?: string | null;
   status: string;
   staged: boolean;
 }

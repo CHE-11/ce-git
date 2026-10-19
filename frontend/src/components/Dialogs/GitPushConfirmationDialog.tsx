@@ -16,8 +16,9 @@ export function GitPushConfirmationDialog({ pushPaths, onClose, onConfirm }: Git
       onClose={onClose}
     >
       <p id="push-confirm-copy" className="text-sm text-zinc-300">
-        Push {pushPaths?.length ?? 0} repositories. Repos with nothing to push are skipped. This publishes commits
-        that are ahead of their upstream.
+        Push {pushPaths?.length ?? 0} repositories to GitHub. Repos with nothing to push are skipped. A repository
+        with no remote is created as a private GitHub repo when the GitHub CLI is signed in. Remotes that are not
+        GitHub are skipped.
       </p>
       <div id="push-confirm-actions" className="mt-4 flex justify-end gap-2">
         <Button id="push-confirm-cancel" variant="ghost" onClick={onClose}>

@@ -7,7 +7,18 @@ import {
 } from "react";
 import type { FileChange } from "../../../types/git";
 import { cn } from "../lib/cn";
-import { domId } from "../lib/tree";
+import type { ChangeOpenMode, IgnoreKind } from "../lib/git-client";
+import { domId, messageOf } from "../lib/tree";
+import { ActionConfirmDialog } from "./Dialogs/ActionConfirmDialog";
+import { ChangedFileMenu } from "./ChangedFileMenu";
+
+export type ChangeFileHandlers = {
+  discard: (file: FileChange) => void;
+  ignore: (kind: IgnoreKind, target: string) => void;
+  reveal: (relativePath: string) => void;
+  open: (relativePath: string, mode: ChangeOpenMode) => void;
+  reportError: (message: string) => void;
+};
 
 const DEFAULT_WIDTH = 256;
 const MIN_WIDTH = 160;

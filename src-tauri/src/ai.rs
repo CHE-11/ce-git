@@ -566,7 +566,7 @@ fn env_key() -> Option<String> {
 
 #[cfg(test)]
 const DESCRIPTIVE_PROMPT: &str = "You write git commit messages. Reply with one conventional commit and nothing else. The first line is `type: summary` or `type(scope): summary`, at most 72 characters. After a blank line, write a description of two to six sentences that says what changed and why. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
-const QUICK_PROMPT: &str = "You write git commit messages. Reply with one conventional commit subject and nothing else. The line is `type: summary` or `type(scope): summary`, at most 72 characters. Do not add a body. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
+const QUICK_PROMPT: &str = "You write git commit messages. Reply with one conventional commit and nothing else. The first line is `type: summary` or `type(scope): summary`, at most 72 characters. After a blank line, write one short sentence that says what changed and why. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
 
 fn system_prompt(custom: &str) -> String {
     let custom = custom.trim();
@@ -693,6 +693,7 @@ mod tests {
         assert_eq!(prompt, "Write like a release note.");
         assert_eq!(super::system_prompt("  "), super::QUICK_PROMPT);
         assert!(super::DESCRIPTIVE_PROMPT.contains("two to six sentences"));
+        assert!(super::QUICK_PROMPT.contains("one short sentence"));
     }
 
     #[test]

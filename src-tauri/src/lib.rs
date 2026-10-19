@@ -186,6 +186,46 @@ async fn delete_path(root: String, path: String) -> Result<(), String> {
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn discard_change(repo: String, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || git::discard_change(Path::new(&repo), &path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn ignore_change(repo: String, kind: String, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        git::ignore_change(Path::new(&repo), &kind, &path)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn reveal_change(repo: String, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let full = git::contained_path(Path::new(&repo), &path)?;
+        files::reveal_path(&full)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn open_change(repo: String, path: String, mode: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let full = git::contained_path(Path::new(&repo), &path)?;
+        match mode.as_str() {
+            "editor" => crate::editor::open_file_in_editor(&full),
+            "default" => files::open_with_default(&full),
+            _ => Err("Unknown open mode.".into()),
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -221,7 +261,11 @@ pub fn run() {
             batch_commit,
             open_in_editor,
             init_repo,
-            delete_path
+            delete_path,
+            discard_change,
+            ignore_change,
+            reveal_change,
+            open_change
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

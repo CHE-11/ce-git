@@ -6,6 +6,17 @@ pub fn open_in_editor(path: &Path, editor: &str) -> Result<(), String> {
     if !path.is_dir() {
         return Err(format!("Folder does not exist: {}", path.display()));
     }
+    launch_editor(path, editor)
+}
+
+pub fn open_file_in_editor(path: &Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Err(format!("File does not exist: {}", path.display()));
+    }
+    launch_editor(path, "default")
+}
+
+fn launch_editor(path: &Path, editor: &str) -> Result<(), String> {
     let executable = match editor {
         "cursor" => require_cursor()?,
         "code" => require_code()?,

@@ -1,4 +1,5 @@
-import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp, X } from "lucide-react";
+import Fuse from "fuse.js";
+import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp, Search, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -86,17 +87,11 @@ type RepoTreeProps = {
   onFilter: (filter: RepoTreeFilter | null) => void;
 };
 
-const filterLabels: Record<RepoTreeFilter, string> = {
-  dirty: "Dirty",
-  ahead: "Ahead",
-  behind: "Behind",
-  selected: "Selected",
-};
-
 const filterEmpty: Record<RepoTreeFilter, string> = {
   dirty: "No repositories have uncommitted changes.",
   ahead: "No repositories are ahead of their upstream.",
   behind: "No repositories are behind their upstream.",
+  unpublished: "Every repository already has a remote.",
   selected: "No repositories are selected.",
 };
 
@@ -104,18 +99,49 @@ function treeHasRepos(tree: TreeNode) {
   return tree.kind === "repo" || tree.children.length > 0;
 }
 
+function collectRepos(node: TreeNode, repos: TreeNode[]) {
+  if (node.kind === "repo") {
+    repos.push(node);
+  }
+  for (const child of node.children) {
+    collectRepos(child, repos);
+  }
+}
+
+function pruneToSearch(node: TreeNode, matched: ReadonlySet<string>): TreeNode | null {
+  const children: TreeNode[] = [];
+  for (const child of node.children) {
+    const next = pruneToSearch(child, matched);
+    if (next) {
+      children.push(next);
+    }
+  }
+  const matches = node.kind === "repo" && matched.has(node.path);
+  if (!matches && children.length === 0) {
+    return null;
+  }
+  if (children.length === node.children.length && children.every((child, index) => child === node.children[index])) {
+    return node;
+  }
+  return { name: node.name, path: node.path, kind: node.kind, children };
+}
+
 function summarize(statuses: Record<string, RepoStatus>) {
   let dirty = 0;
   let ahead = 0;
   let behind = 0;
+  let unpublished = 0;
   for (const status of Object.values(statuses)) {
     if (status.dirty) {
       dirty += 1;
     }
     ahead += status.ahead;
     behind += status.behind;
+    if (status.github === null && !status.error) {
+      unpublished += 1;
+    }
   }
-  return { dirty, ahead, behind };
+  return { dirty, ahead, behind, unpublished };
 }
 
 type TreeMenu = {
@@ -156,6 +182,7 @@ export function RepoTree({
   const [pending, setPending] = useState<TreeAction | null>(null);
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
+  const [query, setQuery] = useState("");
   const dragStart = useRef<{ x: number; width: number } | null>(null);
   const widthRef = useRef(width);
   const moved = useRef(false);
@@ -163,7 +190,31 @@ export function RepoTree({
     () => trees.map((node) => (filter ? filterRepoTree(node, statuses, selectedPaths, filter) : node)),
     [trees, statuses, selectedPaths, filter],
   );
-  const shownTrees = filter ? visibleTrees.filter(treeHasRepos) : trees;
+  const statusTrees = useMemo(
+    () => (filter ? visibleTrees.filter(treeHasRepos) : trees),
+    [filter, visibleTrees, trees],
+  );
+  const searchQuery = query.trim();
+  const searchedTrees = useMemo(() => {
+    if (!searchQuery) {
+      return statusTrees;
+    }
+    const repos: TreeNode[] = [];
+    for (const tree of statusTrees) {
+      collectRepos(tree, repos);
+    }
+    const fuse = new Fuse(repos, {
+      keys: ["name", "path"],
+      threshold: 0.35,
+      ignoreLocation: true,
+    });
+    const matched = new Set(fuse.search(searchQuery).map((result) => result.item.path));
+    return statusTrees.flatMap((tree) => {
+      const next = pruneToSearch(tree, matched);
+      return next ? [next] : [];
+    });
+  }, [statusTrees, searchQuery]);
+  const shownTrees = searchedTrees;
   const hasRepos = trees.some(treeHasRepos);
   const folderPaths = (filter ? visibleTrees : trees).flatMap(pathsBelowRoot);
   const allCollapsed = folderPaths.length > 0 && folderPaths.every((path) => collapsed[path]);
@@ -181,11 +232,11 @@ export function RepoTree({
   }, [trees, rootPaths, filter]);
 
   useEffect(() => {
-    if (!filter) {
+    if (!filter && !searchQuery) {
       return;
     }
     setCollapsed({});
-  }, [filter, rootPaths]);
+  }, [filter, searchQuery, rootPaths]);
 
   useEffect(() => {
     function onResize() {
@@ -346,14 +397,15 @@ export function RepoTree({
             onClick={() => toggleFilter("behind")}
           />
           <RepoTreeFilterStat
-            id="repo-filter-selected"
-            label="Selected"
-            value={String(selectedCount)}
-            valueClassName={selectedCount > 0 ? "text-zinc-100" : undefined}
-            pressed={filter === "selected"}
-            title="Show selected repositories"
-            onClick={() => toggleFilter("selected")}
+            id="repo-filter-unpublished"
+            label="Unpub."
+            value={String(summary.unpublished)}
+            valueClassName={summary.unpublished > 0 ? "text-violet-300" : undefined}
+            pressed={filter === "unpublished"}
+            title="Show repositories with no remote. Push creates a private GitHub repo when the GitHub CLI is available."
+            onClick={() => toggleFilter("unpublished")}
           />
+
         </div>
 
         {filter ? (
@@ -396,6 +448,10 @@ export function RepoTree({
               </div>
             ))}
           </div>
+        ) : searchQuery && hasRepos ? (
+          <p id="repo-tree-search-empty" className="px-3 py-6 text-sm text-zinc-500">
+            No repositories match “{searchQuery}”.
+          </p>
         ) : filter && hasRepos ? (
           <p id="repo-tree-filter-empty" className="px-3 py-6 text-sm text-zinc-500">
             {filterEmpty[filter]}
@@ -419,6 +475,35 @@ export function RepoTree({
           </div>
         )}
       </div>
+      <form
+        id="repo-tree-search"
+        className="flex items-center gap-1.5 border-t border-zinc-800 px-2 py-1.5"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <Search id="repo-tree-search-icon" className="size-3.5 shrink-0 text-zinc-500" />
+        <input
+          id="repo-tree-search-input"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search repositories"
+          aria-label="Search repositories"
+          className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
+        />
+        {query ? (
+          <Button
+            id="repo-tree-search-clear"
+            variant="ghost"
+            size="xs"
+            className="h-6 px-1"
+            title="Clear search"
+            aria-label="Clear search"
+            onClick={() => setQuery("")}
+          >
+            <X id="repo-tree-search-clear-icon" className="size-3.5" />
+          </Button>
+        ) : null}
+      </form>
       <div
         id="repo-tree-resizer"
         role="separator"

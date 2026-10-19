@@ -197,7 +197,7 @@ export function Toolbar({...props}: ToolbarProps) {
           id="pull-all-button"
           variant="primary"
           onClick={props.onPullAll}
-          disabled={props.busy || props.repoCount === 0 || props.hasSelection}
+          disabled={props.busy || props.repoCount === 0}
           title={props.hasSelection ? "Clear the selection to pull every repository" : syncTitle("pull", props.pullCount)}
         >
           <ArrowDownToLine id="pull-all-icon" className="size-4" />
@@ -207,7 +207,7 @@ export function Toolbar({...props}: ToolbarProps) {
         <Button
           id="push-all-button"
           onClick={props.onPushAll}
-          disabled={props.busy || props.repoCount === 0 || props.hasSelection}
+          disabled={props.busy || props.repoCount === 0}
           title={props.hasSelection ? "Clear the selection to push every repository" : syncTitle("push", props.pushCount)}
         >
           <ArrowUpToLine id="push-all-icon" className="size-4" />

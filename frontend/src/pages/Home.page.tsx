@@ -4,7 +4,7 @@ import { AdvancedSearchDialog } from "../components/Dialogs/AdvancedSearchDialog
 import { AiReviewDialog } from "../components/Dialogs/AiReviewDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
-import { BatchLog } from "../components/BatchLog";
+import { ActivityLog } from "../components/ActivityLog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RepoDetail } from "../components/RepoDetail";
 import { RepoTree } from "../components/RepoTree";
@@ -26,6 +26,19 @@ export function HomePage() {
   }, []);
 
   const busy = workspace.busyAction !== null;
+  let pullCount = 0;
+  let pushCount = 0;
+  for (const status of Object.values(workspace.statuses)) {
+    if (status.error) {
+      continue;
+    }
+    if (status.behind > 0) {
+      pullCount += 1;
+    }
+    if (status.ahead > 0) {
+      pushCount += 1;
+    }
+  }
 
   return (
     <div id="app-shell" className="flex h-full flex-col bg-zinc-950 text-zinc-100">
@@ -37,6 +50,8 @@ export function HomePage() {
         generating={workspace.generating}
         discovering={workspace.discovering}
         hasSelection={workspace.selectedPaths.length > 0}
+        pullCount={pullCount}
+        pushCount={pushCount}
         onOpenAppSettings={() => setSettingsTab("app")}
         onChooseFolder={() => void workspace.chooseFolder()}
         onRefresh={() => void workspace.refresh()}
@@ -125,7 +140,7 @@ export function HomePage() {
           }}
         />
       </div>
-      <BatchLog logs={workspace.logs} onClear={workspace.clearLogs} />
+      <ActivityLog logs={workspace.logs} onClear={workspace.clearLogs} />
       <StatusBar
         rootPaths={workspace.rootPaths}
         branch={workspace.activeStatus?.branch ?? null}

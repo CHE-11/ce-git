@@ -11,6 +11,8 @@ type ToolbarProps = {
   generating: boolean;
   discovering: boolean;
   hasSelection: boolean;
+  pullCount: number;
+  pushCount: number;
   onOpenAppSettings: () => void;
   onChooseFolder: () => void;
   onRefresh: () => void;
@@ -24,6 +26,30 @@ type ToolbarProps = {
 };
 
 const PROMPT_SLOTS = [1, 2, 3] as const;
+
+function syncTitle(action: "pull" | "push", count: number) {
+  if (count === 0) {
+    return action === "pull" ? "No repositories are behind their upstream" : "No repositories are ahead of their upstream";
+  }
+  const repos = count === 1 ? "repository is" : "repositories are";
+  return action === "pull" ? `${count} ${repos} behind their upstream` : `${count} ${repos} ahead of their upstream`;
+}
+
+function SyncBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" }) {
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <span
+      id={id}
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ${
+        tone === "pull" ? "bg-sky-950 text-sky-100" : "bg-emerald-950 text-emerald-300"
+      }`}
+    >
+      {count}
+    </span>
+  );
+}
 
 export function Toolbar({...props}: ToolbarProps) {
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
@@ -172,19 +198,21 @@ export function Toolbar({...props}: ToolbarProps) {
           variant="primary"
           onClick={props.onPullAll}
           disabled={props.busy || props.repoCount === 0 || props.hasSelection}
-          title={props.hasSelection ? "Clear the selection to pull every repository" : undefined}
+          title={props.hasSelection ? "Clear the selection to pull every repository" : syncTitle("pull", props.pullCount)}
         >
           <ArrowDownToLine id="pull-all-icon" className="size-4" />
           <span id="pull-all-label">Pull all</span>
+          <SyncBadge id="pull-all-count" count={props.pullCount} tone="pull" />
         </Button>
         <Button
           id="push-all-button"
           onClick={props.onPushAll}
           disabled={props.busy || props.repoCount === 0 || props.hasSelection}
-          title={props.hasSelection ? "Clear the selection to push every repository" : undefined}
+          title={props.hasSelection ? "Clear the selection to push every repository" : syncTitle("push", props.pushCount)}
         >
           <ArrowUpToLine id="push-all-icon" className="size-4" />
           <span id="push-all-label">Push all</span>
+          <SyncBadge id="push-all-count" count={props.pushCount} tone="push" />
         </Button>
       </div>
 

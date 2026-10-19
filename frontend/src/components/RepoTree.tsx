@@ -319,6 +319,35 @@ export function RepoTree({
       style={{ width }}
       className="relative z-10 flex shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
     >
+      <form
+        id="repo-tree-search"
+        className="flex items-center gap-1.5 border-b border-zinc-800 px-2 py-1.5"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <Search id="repo-tree-search-icon" className="size-3.5 shrink-0 text-zinc-500" />
+        <input
+          id="repo-tree-search-input"
+          type="input"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search repositories"
+          aria-label="Search repositories"
+          className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
+        />
+        {query ? (
+          <Button
+            id="repo-tree-search-clear"
+            variant="ghost"
+            size="xs"
+            className="h-6 px-1"
+            title="Clear search"
+            aria-label="Clear search"
+            onClick={() => setQuery("")}
+          >
+            <X id="repo-tree-search-clear-icon" className="size-3.5" />
+          </Button>
+        ) : null}
+      </form>
       <div id="repo-tree-header" className="flex items-center justify-between px-3 py-2 h-10">
         {selectedCount > 0 ? (
           <>
@@ -475,35 +504,6 @@ export function RepoTree({
           </div>
         )}
       </div>
-      <form
-        id="repo-tree-search"
-        className="flex items-center gap-1.5 border-t border-zinc-800 px-2 py-1.5"
-        onSubmit={(event) => event.preventDefault()}
-      >
-        <Search id="repo-tree-search-icon" className="size-3.5 shrink-0 text-zinc-500" />
-        <input
-          id="repo-tree-search-input"
-          type="input"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search repositories"
-          aria-label="Search repositories"
-          className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
-        />
-        {query ? (
-          <Button
-            id="repo-tree-search-clear"
-            variant="ghost"
-            size="xs"
-            className="h-6 px-1"
-            title="Clear search"
-            aria-label="Clear search"
-            onClick={() => setQuery("")}
-          >
-            <X id="repo-tree-search-clear-icon" className="size-3.5" />
-          </Button>
-        ) : null}
-      </form>
       <div
         id="repo-tree-resizer"
         role="separator"

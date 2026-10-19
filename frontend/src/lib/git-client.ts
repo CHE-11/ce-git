@@ -10,6 +10,7 @@ import type {
   GitSettings,
   OpenAiModel,
   RepoDiff,
+  RepoSearchResult,
   RepoStatus,
   ThinkingMode,
   TreeNode,
@@ -51,10 +52,16 @@ export function appSettings() {
 export function saveAppSettings(settings: {
   settingsFolder: string;
   fontZoom: number;
+  theme: string;
+  colorMode: "dark" | "light" | "system";
   selectedPrompt: number | null;
   prompts: AiPrompts;
 }) {
   return invoke<AppSettings>("save_app_settings", settings);
+}
+
+export function themeCss() {
+  return invoke<string>("theme_css");
 }
 
 export function patchAppSettings(patch: {
@@ -102,6 +109,17 @@ export function repoDiff(path: string) {
   return invoke<RepoDiff>("repo_diff", { path });
 }
 
+export function searchRepos(request: {
+  paths: string[];
+  query: string;
+  matchCase: boolean;
+  regex: boolean;
+  wholeWord: boolean;
+  glob: string;
+}) {
+  return invoke<RepoSearchResult[]>("search_repos", request);
+}
+
 export function generateCommitMessage(path: string, prompt: string) {
   return invoke<GeneratedCommit>("generate_commit_message", { path, prompt });
 }
@@ -133,7 +151,7 @@ export function deleteFolder(root: string, path: string) {
 }
 
 export type IgnoreKind = "file" | "folder" | "extension";
-export type ChangeOpenMode = "editor" | "default";
+export type ChangeOpenMode = "editor" | "cursor" | "default";
 
 export function discardChange(repo: string, path: string) {
   return invoke<void>("discard_change", { repo, path });

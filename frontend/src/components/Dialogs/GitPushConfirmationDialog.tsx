@@ -1,5 +1,5 @@
 import { Button } from "../Button";
-import { Dialog } from "../Dialog";
+import { Dialog } from "./Dialog";
 
 type GitPushConfirmationDialogProps = {
   pushPaths: string[] | null;

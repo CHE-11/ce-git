@@ -15,7 +15,7 @@ import { cn } from "../lib/cn";
 import type { FolderEditor } from "../lib/git-client";
 import { countRemovedUnder, domId, filterRepoTree, hasNestedRepo, pathEquals, type RepoTreeFilter } from "../lib/tree";
 import { Button } from "./Button";
-import { Dialog } from "./Dialog";
+import { Dialog } from "./Dialogs/Dialog";
 import { RepoTreeFilterStat } from "./RepoTreeFilterStat";
 import { RepoTreeNode } from "./RepoTreeNode";
 import { TreeContextMenu } from "./TreeContextMenu";
@@ -205,7 +205,7 @@ export function RepoTree({
     }
     const fuse = new Fuse(repos, {
       keys: ["name", "path"],
-      threshold: 0.35,
+      threshold: 0.15,
       ignoreLocation: true,
     });
     const matched = new Set(fuse.search(searchQuery).map((result) => result.item.path));
@@ -367,7 +367,7 @@ export function RepoTree({
           )}
         </Button>
       </div>
-      <div id="repo-tree-filters" className="flex flex-wrap items-center justify-between gap-0.5 border-b border-zinc-800 px-1.5 select-none h-[27px]">
+      <div id="repo-tree-filters" className="flex flex-wrap items-center justify-between gap-0.5 border-b border-zinc-800 px-1.5 select-none h-6.75">
         <div className="flex flex-wrap items-center justify-center gap-0.5 select-none">
           <RepoTreeFilterStat
             id="repo-filter-dirty"
@@ -483,7 +483,7 @@ export function RepoTree({
         <Search id="repo-tree-search-icon" className="size-3.5 shrink-0 text-zinc-500" />
         <input
           id="repo-tree-search-input"
-          type="search"
+          type="input"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search repositories"

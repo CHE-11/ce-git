@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { cn } from "../../lib/cn";
 
 type DialogProps = {
   id: string;
@@ -6,9 +7,11 @@ type DialogProps = {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  panelClassName?: string;
+  bodyClassName?: string;
 };
 
-export function Dialog({ id, title, open, onClose, children }: DialogProps) {
+export function Dialog({ id, title, open, onClose, children, panelClassName, bodyClassName }: DialogProps) {
   useEffect(() => {
     if (!open) {
       return;
@@ -37,7 +40,10 @@ export function Dialog({ id, title, open, onClose, children }: DialogProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${id}-title`}
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl"
+        className={cn(
+          "flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl",
+          panelClassName,
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         <div id={`${id}-header`} className="border-b border-zinc-800 px-4 py-3">
@@ -45,7 +51,7 @@ export function Dialog({ id, title, open, onClose, children }: DialogProps) {
             {title}
           </h2>
         </div>
-        <div id={`${id}-body`} className="min-h-0 flex-1 overflow-auto px-4 py-3">
+        <div id={`${id}-body`} className={cn("min-h-0 flex-1 overflow-auto px-4 py-3", bodyClassName)}>
           {children}
         </div>
       </div>

@@ -82,6 +82,13 @@ pub(crate) fn stop_process(pid: u32) {
     }
 }
 
+pub(crate) fn git_output(dir: &Path, args: &[&str]) -> Result<GitOutput, String> {
+    let output = prepare(dir, args, false)
+        .output()
+        .map_err(|error| map_start_error(error, dir))?;
+    Ok(GitOutput::from_output(output))
+}
+
 pub fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     let output = prepare(dir, args, false)
         .output()

@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { GitSettings } from "../../../../types/git";
-import { gitCancelSignIn, gitSettings, gitSignIn, gitSignOut, saveGitSettings } from "../../lib/git-client";
-import { domId, messageOf } from "../../lib/tree";
-import { Button } from "../Button";
-import { Dialog } from "../Dialog";
+import { useMemo } from "react";
+import { domId } from "../../../lib/tree";
+import { Button } from "../../Button";
 
 const LINE_ENDINGS: { id: string; label: string }[] = [
   { id: "", label: "Keep Git's current default" },
@@ -15,81 +12,57 @@ const LINE_ENDINGS: { id: string; label: string }[] = [
 const fieldClass =
   "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50";
 
-type GitSettingsDialogProps = {
-  onClose: () => void;
+type GitSettingsTabProps = {
+  gitAvailable: boolean;
+  busy: boolean;
+  credentialManager: boolean;
+  helperConfigured: boolean;
+  accounts: string[];
+  accountsError: string | null;
+  signingIn: boolean;
+  cancelling: boolean;
+  signingOut: string | null;
+  name: string;
+  email: string;
+  defaultBranch: string;
+  autocrlf: string;
+  error: string | null;
+  notice: string | null;
+  onNameChange: (name: string) => void;
+  onEmailChange: (email: string) => void;
+  onDefaultBranchChange: (branch: string) => void;
+  onAutocrlfChange: (autocrlf: string) => void;
+  onSignIn: () => void;
+  onCancelSignIn: () => void;
+  onSignOut: (account: string) => void;
+  onSubmit: () => void;
 };
 
-export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const [signingOut, setSigningOut] = useState<string | null>(null);
-  const [gitAvailable, setGitAvailable] = useState(true);
-  const [credentialManager, setCredentialManager] = useState(false);
-  const [helperConfigured, setHelperConfigured] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [defaultBranch, setDefaultBranch] = useState("");
-  const [autocrlf, setAutocrlf] = useState("");
-  const [accounts, setAccounts] = useState<string[]>([]);
-  const [accountsError, setAccountsError] = useState<string | null>(null);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const signingInRef = useRef(false);
-  const actionRef = useRef(false);
-  const mountedRef = useRef(true);
-
-  const applyAccount = (settings: GitSettings) => {
-    setGitAvailable(settings.gitAvailable);
-    setCredentialManager(settings.credentialManager);
-    setHelperConfigured(settings.helperConfigured);
-    setAccounts(settings.accounts);
-    setAccountsError(settings.accountsError);
-  };
-
-  const applyAll = (settings: GitSettings) => {
-    applyAccount(settings);
-    setName(settings.name);
-    setEmail(settings.email);
-    setDefaultBranch(settings.defaultBranch);
-    setAutocrlf(settings.autocrlf);
-  };
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (signingInRef.current) {
-        void gitCancelSignIn();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const settings = await gitSettings();
-        if (cancelled) {
-          return;
-        }
-        applyAll(settings);
-      } catch (caught) {
-        if (!cancelled) {
-          setLocalError(messageOf(caught));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+export function GitSettingsTab({
+  gitAvailable,
+  busy,
+  credentialManager,
+  helperConfigured,
+  accounts,
+  accountsError,
+  signingIn,
+  cancelling,
+  signingOut,
+  name,
+  email,
+  defaultBranch,
+  autocrlf,
+  error,
+  notice,
+  onNameChange,
+  onEmailChange,
+  onDefaultBranchChange,
+  onAutocrlfChange,
+  onSignIn,
+  onCancelSignIn,
+  onSignOut,
+  onSubmit,
+}: GitSettingsTabProps) {
   const lineEndings = useMemo(() => {
     if (autocrlf && !LINE_ENDINGS.some((item) => item.id === autocrlf)) {
       return [...LINE_ENDINGS, { id: autocrlf, label: autocrlf }];
@@ -97,142 +70,23 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
     return LINE_ENDINGS;
   }, [autocrlf]);
 
-  const busy = saving || signingIn || signingOut !== null;
-
-  const requestClose = () => {
-    if (saving || signingOut) {
-      return;
-    }
-    if (signingInRef.current) {
-      void gitCancelSignIn();
-    }
-    onClose();
-  };
-
-  const signIn = async () => {
-    if (actionRef.current) {
-      return;
-    }
-    actionRef.current = true;
-    signingInRef.current = true;
-    setSigningIn(true);
-    setCancelling(false);
-    setLocalError(null);
-    setNotice(null);
-    try {
-      const next = await gitSignIn();
-      if (!mountedRef.current) {
-        return;
-      }
-      applyAccount(next);
-      setNotice(next.accounts.length > 0 ? "Signed in." : "Git Credential Manager closed without a GitHub account.");
-    } catch (caught) {
-      if (!mountedRef.current) {
-        return;
-      }
-      const message = messageOf(caught);
-      if (message.toLowerCase().includes("cancelled")) {
-        setNotice("Sign-in was cancelled.");
-      } else {
-        setLocalError(message);
-      }
-    } finally {
-      signingInRef.current = false;
-      actionRef.current = false;
-      if (mountedRef.current) {
-        setSigningIn(false);
-        setCancelling(false);
-      }
-    }
-  };
-
-  const cancelSignIn = () => {
-    setCancelling(true);
-    void gitCancelSignIn();
-  };
-
-  const signOut = async (account: string) => {
-    if (actionRef.current) {
-      return;
-    }
-    actionRef.current = true;
-    setSigningOut(account);
-    setLocalError(null);
-    setNotice(null);
-    try {
-      const next = await gitSignOut(account);
-      if (!mountedRef.current) {
-        return;
-      }
-      applyAccount(next);
-      setNotice("Signed out.");
-    } catch (caught) {
-      if (mountedRef.current) {
-        setLocalError(messageOf(caught));
-      }
-    } finally {
-      actionRef.current = false;
-      if (mountedRef.current) {
-        setSigningOut(null);
-      }
-    }
-  };
-
-  const save = async () => {
-    if (actionRef.current) {
-      return;
-    }
-    if (!name.trim() || !email.trim()) {
-      setLocalError("Enter the name and email that should appear on commits.");
-      return;
-    }
-    actionRef.current = true;
-    setSaving(true);
-    setLocalError(null);
-    setNotice(null);
-    try {
-      await saveGitSettings({
-        name: name.trim(),
-        email: email.trim(),
-        defaultBranch: defaultBranch.trim(),
-        autocrlf,
-      });
-      if (mountedRef.current) {
-        onClose();
-      }
-    } catch (caught) {
-      if (mountedRef.current) {
-        setLocalError(messageOf(caught));
-      }
-    } finally {
-      actionRef.current = false;
-      if (mountedRef.current) {
-        setSaving(false);
-      }
-    }
-  };
-
   return (
-    <Dialog id="git-settings-dialog" title="Git settings" open onClose={requestClose}>
-      {loading ? (
-        <p id="git-settings-loading" className="text-sm text-zinc-400">
-          Loading Git settings…
-        </p>
-      ) : null}
-      {!loading && !gitAvailable ? (
-        <p id="git-settings-missing" className="text-sm text-amber-200">
+    <>
+      {!gitAvailable ? (
+        <p id="settings-panel-git" role="tabpanel" aria-labelledby="settings-tab-git" className="mt-4 text-sm text-amber-200">
           Install Git and make sure git is on your PATH, then restart ce-git.
         </p>
-      ) : null}
-      {!loading && gitAvailable ? (
+      ) : (
         <form
-          id="git-settings-form"
+          id="settings-panel-git"
+          role="tabpanel"
+          aria-labelledby="settings-tab-git"
           onSubmit={(event) => {
             event.preventDefault();
-            void save();
+            onSubmit();
           }}
         >
-          <p id="git-settings-intro" className="text-sm text-zinc-300">
+          <p id="git-settings-intro" className="mt-4 text-sm text-zinc-300">
             Sign in to GitHub for pull and push, and set the name and email Git writes on new commits.
           </p>
 
@@ -254,12 +108,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
                     <span id={domId("git-account-name", account)} className="truncate text-sm text-zinc-100">
                       {account}
                     </span>
-                    <Button
-                      id={domId("git-account-sign-out", account)}
-                      variant="ghost"
-                      onClick={() => void signOut(account)}
-                      disabled={busy}
-                    >
+                    <Button id={domId("git-account-sign-out", account)} variant="ghost" onClick={() => onSignOut(account)} disabled={busy}>
                       <span id={domId("git-account-sign-out-label", account)}>
                         {signingOut === account ? "Signing out…" : "Sign out"}
                       </span>
@@ -284,7 +133,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
                   <p id="git-sign-in-status" className="text-sm text-zinc-300">
                     Waiting for Git Credential Manager. Finish in the browser when it opens.
                   </p>
-                  <Button id="git-sign-in-cancel" variant="ghost" onClick={cancelSignIn} disabled={cancelling}>
+                  <Button id="git-sign-in-cancel" variant="ghost" onClick={onCancelSignIn} disabled={cancelling}>
                     <span id="git-sign-in-cancel-label">{cancelling ? "Cancelling…" : "Cancel sign-in"}</span>
                   </Button>
                 </>
@@ -292,7 +141,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
                 <Button
                   id="git-sign-in"
                   variant={accounts.length === 0 ? "primary" : "secondary"}
-                  onClick={() => void signIn()}
+                  onClick={onSignIn}
                   disabled={!credentialManager || busy}
                 >
                   <span id="git-sign-in-label">Sign in with GitHub</span>
@@ -311,7 +160,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
             <input
               id="git-name-input"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => onNameChange(event.target.value)}
               autoComplete="off"
               disabled={busy}
               placeholder="Your name"
@@ -323,7 +172,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
             <input
               id="git-email-input"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => onEmailChange(event.target.value)}
               autoComplete="off"
               disabled={busy}
               placeholder="you@example.com"
@@ -344,7 +193,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
             <input
               id="git-branch-input"
               value={defaultBranch}
-              onChange={(event) => setDefaultBranch(event.target.value)}
+              onChange={(event) => onDefaultBranchChange(event.target.value)}
               autoComplete="off"
               spellCheck={false}
               disabled={busy}
@@ -365,7 +214,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
             <select
               id="git-line-ending-select"
               value={autocrlf}
-              onChange={(event) => setAutocrlf(event.target.value)}
+              onChange={(event) => onAutocrlfChange(event.target.value)}
               disabled={busy}
               className={fieldClass}
             >
@@ -380,11 +229,10 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
             </p>
           </section>
         </form>
-      ) : null}
-
-      {localError ? (
+      )}
+      {error ? (
         <p id="git-settings-error" className="mt-3 text-sm text-red-400" role="alert">
-          {localError}
+          {error}
         </p>
       ) : null}
       {notice ? (
@@ -392,18 +240,7 @@ export function GitSettingsDialog({ onClose }: GitSettingsDialogProps) {
           {notice}
         </p>
       ) : null}
-
-      <div id="git-settings-actions" className="mt-4 flex justify-end gap-2">
-        <Button id="git-settings-cancel" variant="ghost" onClick={requestClose} disabled={saving || signingOut !== null}>
-          <span id="git-settings-cancel-label">Cancel</span>
-        </Button>
-        {!loading && gitAvailable ? (
-          <Button id="git-settings-save" type="submit" form="git-settings-form" variant="primary" disabled={busy}>
-            <span id="git-settings-save-label">{saving ? "Saving…" : "Save"}</span>
-          </Button>
-        ) : null}
-      </div>
-    </Dialog>
+    </>
   );
 }
 

@@ -2,7 +2,7 @@ import { open as openFolder } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
 import { messageOf } from "../../lib/tree";
 import { Button } from "../Button";
-import { Dialog } from "../Dialog";
+import { Dialog } from "./Dialog";
 
 const fieldClass =
   "min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50";

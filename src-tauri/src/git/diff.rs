@@ -245,32 +245,3 @@ mod tests {
         assert!(files[0].previous_path.is_none());
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::parse_porcelain;
-
-    #[test]
-    fn porcelain_keeps_rename_source() {
-        let files = parse_porcelain(
-            " M src/lib/tree.ts\n?? new.ts\nR  docs/old.ts -> docs/new.ts\nRM \"docs/my old.ts\" -> \"docs/my new.ts\"\n",
-        );
-        assert_eq!(files.len(), 4);
-        assert_eq!(files[0].path, "src/lib/tree.ts");
-        assert!(files[0].previous_path.is_none());
-        assert_eq!(files[0].status, "modified");
-        assert!(!files[0].staged);
-
-        assert_eq!(files[1].path, "new.ts");
-        assert_eq!(files[1].status, "untracked");
-
-        assert_eq!(files[2].path, "docs/new.ts");
-        assert_eq!(files[2].previous_path.as_deref(), Some("docs/old.ts"));
-        assert_eq!(files[2].status, "renamed");
-        assert!(files[2].staged);
-
-        assert_eq!(files[3].path, "docs/my new.ts");
-        assert_eq!(files[3].previous_path.as_deref(), Some("docs/my old.ts"));
-        assert_eq!(files[3].status, "renamed");
-    }
-}

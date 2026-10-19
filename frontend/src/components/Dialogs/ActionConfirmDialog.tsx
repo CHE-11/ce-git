@@ -1,5 +1,5 @@
 import { Button } from "../Button";
-import { Dialog } from "../Dialog";
+import { Dialog } from "./Dialog";
 
 type ActionConfirmDialogProps = {
   id: string;
@@ -24,7 +24,7 @@ export function ActionConfirmDialog({
 }: ActionConfirmDialogProps) {
   return (
     <Dialog id={id} title={title} open={open} onClose={onClose}>
-      <p id={`${id}-copy`} className="text-sm break-words text-zinc-300">
+      <p id={`${id}-copy`} className="text-sm wrap-break-word text-zinc-300">
         {copy}
       </p>
       <div id={`${id}-actions`} className="mt-4 flex justify-end gap-2">

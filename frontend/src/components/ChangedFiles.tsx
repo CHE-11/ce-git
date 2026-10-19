@@ -54,14 +54,32 @@ function storeWidth(width: number) {
 }
 
 type ChangedFilesProps = {
+  repoPath: string;
   files: FileChange[];
   selectedPath: string | null;
+  busy: boolean;
+  handlers: ChangeFileHandlers;
   onSelect: (path: string) => void;
 };
 
-export function ChangedFiles({ files, selectedPath, onSelect }: ChangedFilesProps) {
+type FileMenu = {
+  file: FileChange;
+  x: number;
+  y: number;
+};
+
+function discardCopy(file: FileChange) {
+  if (file.status === "untracked" || file.status === "added") {
+    return `Discard ${file.path}? The file will be deleted from disk.`;
+  }
+  return `Discard ${file.path}? Your changes will be replaced with the last committed version.`;
+}
+
+export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, onSelect }: ChangedFilesProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
+  const [menu, setMenu] = useState<FileMenu | null>(null);
+  const [discarding, setDiscarding] = useState<FileChange | null>(null);
   const widthRef = useRef(width);
   const dragStart = useRef<{ x: number; width: number } | null>(null);
   const moved = useRef(false);
@@ -74,6 +92,15 @@ export function ChangedFiles({ files, selectedPath, onSelect }: ChangedFilesProp
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!menu) {
+      return;
+    }
+    if (!files.some((file) => file.path === menu.file.path && file.status === menu.file.status)) {
+      setMenu(null);
+    }
+  }, [files, menu]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -141,6 +168,7 @@ export function ChangedFiles({ files, selectedPath, onSelect }: ChangedFilesProp
       id="changed-files-panel"
       style={{ width }}
       className="relative flex shrink-0 flex-col border-r border-zinc-800"
+      onContextMenu={(event) => event.preventDefault()}
     >
       <h3 id="changed-files-title" className="px-3 py-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
         Changes
@@ -161,6 +189,12 @@ export function ChangedFiles({ files, selectedPath, onSelect }: ChangedFilesProp
                   type="button"
                   aria-current={selected ? "true" : undefined}
                   onClick={() => onSelect(file.path)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onSelect(file.path);
+                    setMenu({ file, x: event.clientX, y: event.clientY });
+                  }}
                   className={cn(
                     "flex w-full items-center gap-2 px-3 py-1 text-left text-sm hover:bg-zinc-800/80",
                     selected && "bg-sky-950/70",
@@ -211,6 +245,45 @@ export function ChangedFiles({ files, selectedPath, onSelect }: ChangedFilesProp
           )}
         />
       </div>
+      {menu ? (
+        <ChangedFileMenu
+          key={`${menu.file.status}-${menu.file.path}-${menu.x}-${menu.y}`}
+          file={menu.file}
+          repoPath={repoPath}
+          x={menu.x}
+          y={menu.y}
+          busy={busy}
+          onDiscard={() => setDiscarding(menu.file)}
+          onIgnore={handlers.ignore}
+          onReveal={() => handlers.reveal(menu.file.path)}
+          onOpenEditor={() => handlers.open(menu.file.path, "editor")}
+          onOpenCursor={() => handlers.open(menu.file.path, "cursor")}
+          onOpenDefault={() => handlers.open(menu.file.path, "default")}
+          onCopy={(text) => {
+            void navigator.clipboard.writeText(text).catch((caught) => {
+              handlers.reportError(messageOf(caught));
+            });
+          }}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
+      <ActionConfirmDialog
+        id="discard-change-dialog"
+        title="Discard changes"
+        copy={discarding ? discardCopy(discarding) : ""}
+        confirmLabel="Discard"
+        confirmTone="destructive"
+        open={discarding !== null}
+        onClose={() => setDiscarding(null)}
+        onConfirm={() => {
+          if (!discarding) {
+            return;
+          }
+          const file = discarding;
+          setDiscarding(null);
+          handlers.discard(file);
+        }}
+      />
     </section>
   );
 }

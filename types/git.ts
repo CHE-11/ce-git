@@ -32,6 +32,20 @@ export interface FileChange {
   staged: boolean;
 }
 
+export interface SearchMatch {
+  path: string;
+  line: number;
+  text: string;
+}
+
+export interface RepoSearchResult {
+  path: string;
+  name: string;
+  matches: SearchMatch[];
+  truncated: boolean;
+  error: string | null;
+}
+
 export interface RepoDiff {
   files: FileChange[];
   patch: string;
@@ -108,6 +122,8 @@ export interface AppSettings {
   commitVerbosity: CommitVerbosity;
   selectedPrompt: number | null;
   fontZoom: number;
+  theme: string;
+  colorMode: "dark" | "light" | "system";
   model: string;
   thinking: ThinkingMode;
   prompts: AiPrompts;

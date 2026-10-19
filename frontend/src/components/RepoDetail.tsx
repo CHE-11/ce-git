@@ -3,7 +3,7 @@ import type { AiPrompts, RepoDiff, RepoStatus } from "../../../types/git";
 import { patchForPath } from "../lib/diff";
 import { baseName } from "../lib/tree";
 import { Badge } from "./Badge";
-import { ChangedFiles } from "./ChangedFiles";
+import { ChangedFiles, type ChangeFileHandlers } from "./ChangedFiles";
 import { CommitBox } from "./CommitBox";
 import { DiffView } from "./DiffView";
 
@@ -24,6 +24,7 @@ type RepoDetailProps = {
   onSelectedPrompt: (slot: number) => void;
   onGenerate: () => void;
   onCommit: () => void;
+  fileHandlers: ChangeFileHandlers;
 };
 
 export function RepoDetail({
@@ -43,6 +44,7 @@ export function RepoDetail({
   onSelectedPrompt,
   onGenerate,
   onCommit,
+  fileHandlers,
 }: RepoDetailProps) {
   const files = diff?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -116,7 +118,14 @@ export function RepoDetail({
           </p>
         ) : (
           <>
-            <ChangedFiles files={files} selectedPath={selectedFile?.path ?? null} onSelect={setSelectedPath} />
+            <ChangedFiles
+              repoPath={path}
+              files={files}
+              selectedPath={selectedFile?.path ?? null}
+              busy={busy}
+              handlers={fileHandlers}
+              onSelect={setSelectedPath}
+            />
             <DiffView patch={selectedPatch.text} truncated={selectedPatch.truncated} filePath={selectedFile?.path ?? null} />
           </>
         )}

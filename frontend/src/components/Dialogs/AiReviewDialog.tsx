@@ -1,7 +1,7 @@
 import type { AiCommitDraft } from "../../../../types/git";
 import { domId } from "../../lib/tree";
 import { Button } from "../Button";
-import { Dialog } from "../Dialog";
+import { Dialog } from "./Dialog";
 
 type AiReviewDialogProps = {
   open: boolean;

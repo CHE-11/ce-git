@@ -136,7 +136,12 @@ fn spawn_command(program: &str, args: &[&str]) -> Result<(), String> {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|error| format!("Could not open {}: {error}", args.last().unwrap_or(&program)))?;
+        .map_err(|error| {
+            format!(
+                "Could not open {}: {error}",
+                args.last().unwrap_or(&program)
+            )
+        })?;
     Ok(())
 }
 
@@ -191,10 +196,7 @@ mod windows_shell {
         if code > 32 {
             return Ok(());
         }
-        Err(format!(
-            "Could not open {} (error {code}).",
-            path.display()
-        ))
+        Err(format!("Could not open {} (error {code}).", path.display()))
     }
 
     fn wide(value: &std::ffi::OsStr) -> Vec<u16> {

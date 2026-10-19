@@ -59,10 +59,25 @@ fn save_app_settings(
     app: tauri::AppHandle,
     settings_folder: String,
     font_zoom: u32,
+    theme: String,
+    color_mode: String,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
 ) -> Result<app_settings::AppSettings, String> {
-    app_settings::save_app_settings(&app, settings_folder, font_zoom, selected_prompt, prompts)
+    app_settings::save_app_settings(
+        &app,
+        settings_folder,
+        font_zoom,
+        theme,
+        color_mode,
+        selected_prompt,
+        prompts,
+    )
+}
+
+#[tauri::command]
+fn theme_css(app: tauri::AppHandle) -> Result<String, String> {
+    app_settings::theme_css(&app)
 }
 
 #[tauri::command]
@@ -137,6 +152,22 @@ fn repo_diff(path: String) -> Result<RepoDiff, String> {
 }
 
 #[tauri::command]
+async fn search_repos(
+    paths: Vec<String>,
+    query: String,
+    match_case: bool,
+    regex: bool,
+    whole_word: bool,
+    glob: String,
+) -> Result<Vec<git::RepoSearchResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        git::search_repos(paths, query, match_case, regex, whole_word, glob)
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn generate_commit_message(
     app: tauri::AppHandle,
     path: String,
@@ -195,11 +226,9 @@ async fn discard_change(repo: String, path: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn ignore_change(repo: String, kind: String, path: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        git::ignore_change(Path::new(&repo), &kind, &path)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || git::ignore_change(Path::new(&repo), &kind, &path))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -217,7 +246,8 @@ async fn open_change(repo: String, path: String, mode: String) -> Result<(), Str
     tauri::async_runtime::spawn_blocking(move || {
         let full = git::contained_path(Path::new(&repo), &path)?;
         match mode.as_str() {
-            "editor" => crate::editor::open_file_in_editor(&full),
+            "editor" => crate::editor::open_file_in_editor(&full, "default"),
+            "cursor" => crate::editor::open_file_in_editor(&full, "cursor"),
             "default" => files::open_with_default(&full),
             _ => Err("Unknown open mode.".into()),
         }
@@ -247,6 +277,7 @@ pub fn run() {
             git_cancel_sign_in,
             app_settings,
             save_app_settings,
+            theme_css,
             patch_app_settings,
             openai_configured,
             ai_settings,
@@ -255,6 +286,7 @@ pub fn run() {
             discover_repos,
             repo_statuses,
             repo_diff,
+            search_repos,
             generate_commit_message,
             batch_pull,
             batch_push,

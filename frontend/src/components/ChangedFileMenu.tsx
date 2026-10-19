@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { AppWindow, ChevronRight, Copy, ExternalLink, FileX, Files, Folder, FolderSearch, FolderX, Link2, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { FileChange } from "../../../types/git";
@@ -17,13 +17,14 @@ type ChangedFileMenuProps = {
   onIgnore: (kind: IgnoreKind, target: string) => void;
   onReveal: () => void;
   onOpenEditor: () => void;
+  onOpenCursor: () => void;
   onOpenDefault: () => void;
   onCopy: (text: string) => void;
   onClose: () => void;
 };
 
 const itemClass =
-  "flex w-full items-center gap-6 whitespace-nowrap px-3 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800 focus-visible:bg-zinc-800 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent";
+  "flex w-full items-center justify-between gap-3 whitespace-nowrap px-3 py-1.5 text-left text-sm text-zinc-100 hover:bg-zinc-800 focus-visible:bg-zinc-800 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent";
 
 const menuClass = "min-w-56 rounded-md border border-zinc-700 bg-zinc-900 py-1 shadow-2xl";
 
@@ -73,6 +74,7 @@ export function ChangedFileMenu({
   onIgnore,
   onReveal,
   onOpenEditor,
+  onOpenCursor,
   onOpenDefault,
   onCopy,
   onClose,
@@ -206,10 +208,17 @@ export function ChangedFileMenu({
         moveFocus(event, [...document.querySelectorAll<HTMLButtonElement>(selector)]);
       }}
     >
-      <MenuItem id="changed-file-menu-discard" label="Discard changes" disabled={busy} onClick={() => run(onDiscard)} />
+      <MenuItem
+        id="changed-file-menu-discard"
+        icon={<Undo2 id="changed-file-menu-discard-glyph" className="size-4" aria-hidden="true" />}
+        label="Discard changes"
+        disabled={busy}
+        onClick={() => run(onDiscard)}
+      />
       <MenuSeparator id="changed-file-menu-separator-ignore" />
       <MenuItem
         id="changed-file-menu-ignore-file"
+        icon={<FileX id="changed-file-menu-ignore-file-glyph" className="size-4" aria-hidden="true" />}
         label="Ignore file (add to .gitignore)"
         disabled={ignoreDisabled}
         onClick={() => run(() => onIgnore("file", file.path))}
@@ -231,15 +240,17 @@ export function ChangedFileMenu({
         >
           <MenuItem
             id="changed-file-menu-ignore-folder"
+            icon={<FolderX id="changed-file-menu-ignore-folder-glyph" className="size-4" aria-hidden="true" />}
             label="Ignore folder (add to .gitignore)"
             disabled={ignoreDisabled}
             hasPopup
             expanded={folderOpen}
             onClick={() => {
-              if (!ignoreDisabled) {
-                setFocusFolders(true);
-                setFolderOpen((open) => !open);
+              if (ignoreDisabled) {
+                return;
               }
+              setFocusFolders(true);
+              setFolderOpen(true);
             }}
             trailing={
               <ChevronRight
@@ -269,8 +280,11 @@ export function ChangedFileMenu({
                       title={directory}
                       onClick={() => run(() => onIgnore("folder", directory))}
                     >
-                      <span id={`${id}-label`} className="max-w-80 truncate">
-                        {directory}
+                      <span id={`${id}-content`} className="flex min-w-0 items-center gap-2">
+                        <Folder id={`${id}-glyph`} className="size-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                        <span id={`${id}-label`} className="max-w-80 truncate">
+                          {directory}
+                        </span>
                       </span>
                     </button>
                   );
@@ -283,6 +297,7 @@ export function ChangedFileMenu({
       {extension ? (
         <MenuItem
           id="changed-file-menu-ignore-extension"
+          icon={<Files id="changed-file-menu-ignore-extension-glyph" className="size-4" aria-hidden="true" />}
           label={`Ignore all ${extension} files (add to .gitignore)`}
           disabled={ignoreDisabled}
           onClick={() => run(() => onIgnore("extension", extension))}
@@ -291,14 +306,44 @@ export function ChangedFileMenu({
       <MenuSeparator id="changed-file-menu-separator-copy" />
       <MenuItem
         id="changed-file-menu-copy-absolute"
+        icon={<Copy id="changed-file-menu-copy-absolute-glyph" className="size-4" aria-hidden="true" />}
         label="Copy file path"
         onClick={() => run(() => onCopy(absolutePath(repoPath, file.path)))}
       />
-      <MenuItem id="changed-file-menu-copy-relative" label="Copy relative file path" onClick={() => run(() => onCopy(file.path))} />
+      <MenuItem
+        id="changed-file-menu-copy-relative"
+        icon={<Link2 id="changed-file-menu-copy-relative-glyph" className="size-4" aria-hidden="true" />}
+        label="Copy relative file path"
+        onClick={() => run(() => onCopy(file.path))}
+      />
       <MenuSeparator id="changed-file-menu-separator-open" />
-      <MenuItem id="changed-file-menu-reveal" label={revealLabel} onClick={() => run(onReveal)} />
-      <MenuItem id="changed-file-menu-open-editor" label="Open in external editor" disabled={openDisabled} onClick={() => run(onOpenEditor)} />
-      <MenuItem id="changed-file-menu-open-default" label="Open with default program" disabled={openDisabled} onClick={() => run(onOpenDefault)} />
+      <MenuItem
+        id="changed-file-menu-reveal"
+        icon={<FolderSearch id="changed-file-menu-reveal-glyph" className="size-4" aria-hidden="true" />}
+        label={revealLabel}
+        onClick={() => run(onReveal)}
+      />
+      <MenuItem
+        id="changed-file-menu-open-editor"
+        icon={<ExternalLink id="changed-file-menu-open-editor-glyph" className="size-4" aria-hidden="true" />}
+        label="Open in external editor"
+        disabled={openDisabled}
+        onClick={() => run(onOpenEditor)}
+      />
+      <MenuItem
+        id="changed-file-menu-open-cursor"
+        icon={<CursorIcon id="changed-file-menu-open-cursor-glyph" />}
+        label="Open in Cursor"
+        disabled={openDisabled}
+        onClick={() => run(onOpenCursor)}
+      />
+      <MenuItem
+        id="changed-file-menu-open-default"
+        icon={<AppWindow id="changed-file-menu-open-default-glyph" className="size-4" aria-hidden="true" />}
+        label="Open with default program"
+        disabled={openDisabled}
+        onClick={() => run(onOpenDefault)}
+      />
     </div>,
     document.body,
   );
@@ -310,6 +355,7 @@ function MenuSeparator({ id }: { id: string }) {
 
 function MenuItem({
   id,
+  icon,
   label,
   disabled,
   hasPopup,
@@ -318,6 +364,7 @@ function MenuItem({
   trailing,
 }: {
   id: string;
+  icon: ReactNode;
   label: string;
   disabled?: boolean;
   hasPopup?: boolean;
@@ -333,12 +380,25 @@ function MenuItem({
       data-scope="main"
       aria-haspopup={hasPopup ? "menu" : undefined}
       aria-expanded={hasPopup ? Boolean(expanded) : undefined}
-      className={cn(itemClass, trailing ? "justify-between" : undefined)}
+      className={itemClass}
       disabled={disabled}
       onClick={onClick}
     >
-      <span id={`${id}-label`}>{label}</span>
+      <span id={`${id}-content`} className="flex min-w-0 items-center gap-2">
+        <span id={`${id}-icon`} className="inline-flex size-4 shrink-0 text-zinc-400">
+          {icon}
+        </span>
+        <span id={`${id}-label`}>{label}</span>
+      </span>
       {trailing ?? null}
     </button>
+  );
+}
+
+function CursorIcon({ id }: { id: string }) {
+  return (
+    <svg id={id} viewBox="0 0 24 24" className="size-4 shrink-0" aria-hidden="true">
+      <path id={`${id}-mark`} fill="currentColor" d="M5.2 3.2 19.4 12.1 11.8 13.4 9.3 20.8 5.2 3.2Z" />
+    </svg>
   );
 }

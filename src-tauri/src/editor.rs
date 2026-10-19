@@ -9,11 +9,11 @@ pub fn open_in_editor(path: &Path, editor: &str) -> Result<(), String> {
     launch_editor(path, editor)
 }
 
-pub fn open_file_in_editor(path: &Path) -> Result<(), String> {
+pub fn open_file_in_editor(path: &Path, editor: &str) -> Result<(), String> {
     if !path.is_file() {
         return Err(format!("File does not exist: {}", path.display()));
     }
-    launch_editor(path, "default")
+    launch_editor(path, editor)
 }
 
 fn launch_editor(path: &Path, editor: &str) -> Result<(), String> {

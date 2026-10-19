@@ -37,9 +37,8 @@ pub fn discard_change(repo: &Path, relative: &str) -> Result<(), String> {
             &["rm", "--cached", "--ignore-unmatch", "--", &current.git],
         )?;
         if full.is_file() {
-            fs::remove_file(&full).map_err(|error| {
-                format!("Could not delete {}: {error}", full.display())
-            })?;
+            fs::remove_file(&full)
+                .map_err(|error| format!("Could not delete {}: {error}", full.display()))?;
         }
         return Ok(());
     }
@@ -91,7 +90,8 @@ pub fn ignore_change(repo: &Path, kind: &str, target: &str) -> Result<(), String
 }
 
 fn rename_source(repo: &Path, relative: &str) -> Result<Option<String>, String> {
-    let porcelain = git(repo, &["status", "--porcelain=v1", "--", relative])?;
+    // A path-limited status turns `R old -> new` into `A new`, which hides the source.
+    let porcelain = git(repo, &["status", "--porcelain=v1", "-uall"])?;
     for change in parse_porcelain(&porcelain) {
         if change.path == relative {
             if change.previous_path.is_some() {
@@ -124,7 +124,11 @@ fn exists_in_head(repo: &Path, relative: &str) -> Result<bool, String> {
 }
 
 fn append_pattern(repo: &Path, pattern: &str) -> Result<(), String> {
-    if pattern.is_empty() || pattern.contains(['\n', '\r', '\0']) {
+    if pattern.is_empty()
+        || pattern
+            .chars()
+            .any(|ch| ch == '\n' || ch == '\r' || ch == '\0')
+    {
         return Err("Invalid gitignore pattern.".into());
     }
     let ignore_path = repo.join(".gitignore");
@@ -185,8 +189,10 @@ fn safe_relative(value: &str) -> Result<RelativePath, String> {
     if git.is_empty()
         || git.starts_with('/')
         || git.starts_with('~')
-        || git.contains(['\0', ':'])
-        || git.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+        || git.chars().any(|ch| ch == '\0' || ch == ':')
+        || git
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
     {
         return Err("That path is outside the repository.".into());
     }

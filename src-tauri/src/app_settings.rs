@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -17,6 +18,80 @@ const DEFAULT_ZOOM: u32 = 100;
 const MIN_ZOOM: u32 = 80;
 const MAX_ZOOM: u32 = 160;
 const ZOOM_STEP: u32 = 10;
+const DEFAULT_THEME: &str = "zinc";
+const DEFAULT_COLOR_MODE: &str = "dark";
+const THEMES: &[&str] = &[
+    "zinc",
+    "nord",
+    "catppuccin",
+    "solarized",
+    "dracula",
+    "gruvbox",
+    "tokyo",
+    "rosepine",
+    "github",
+    "onedark",
+];
+const THEME_CSS_FILE_NAME: &str = "ce-git.css";
+const MAX_THEME_CSS_BYTES: u64 = 256 * 1024;
+const THEME_CSS_TEMPLATE: &str = "\
+/*
+ce-git loads this file on top of the selected theme.
+Uncomment a block, edit the colors, and save.
+This file is read when ce-git starts and when its window is focused.
+
+Rules on html[data-theme][data-mode] override the built-in palette.
+Shade numbers are roles: 950 is the page, 900 is a raised surface, 800 is hover,
+700 is a border, 500 is muted text, and 100 is primary text.
+sky is the main accent, violet is the AI accent, emerald is success,
+amber is a warning, and red is an error. 600 is the solid button color.
+*/
+
+/*
+html[data-theme][data-mode=\"dark\"] {
+  --app-zinc-950: #09090b;
+  --app-zinc-900: #18181b;
+  --app-zinc-800: #27272a;
+  --app-zinc-700: #3f3f46;
+  --app-zinc-500: #71717a;
+  --app-zinc-300: #d4d4d8;
+  --app-zinc-100: #f4f4f5;
+  --app-sky-400: #38bdf8;
+  --app-sky-500: #0ea5e9;
+  --app-sky-600: #0284c7;
+  --app-violet-300: #c4b5fd;
+  --app-violet-600: #7c3aed;
+  --app-emerald-400: #34d399;
+  --app-emerald-600: #059669;
+  --app-amber-300: #fcd34d;
+  --app-red-400: #f87171;
+  --app-red-600: #dc2626;
+}
+*/
+
+/*
+html[data-theme][data-mode=\"light\"] {
+  --app-zinc-950: #fafafa;
+  --app-zinc-900: #f4f4f5;
+  --app-zinc-800: #e4e4e7;
+  --app-zinc-700: #d4d4d8;
+  --app-zinc-500: #71717a;
+  --app-zinc-300: #3f3f46;
+  --app-zinc-100: #18181b;
+  --app-sky-400: #0369a1;
+  --app-sky-500: #0284c7;
+  --app-sky-600: #0284c7;
+  --app-violet-300: #6d28d9;
+  --app-violet-600: #7c3aed;
+  --app-emerald-400: #059669;
+  --app-emerald-600: #059669;
+  --app-amber-300: #b45309;
+  --app-red-400: #dc2626;
+  --app-red-600: #dc2626;
+}
+*/
+";
+const COLOR_MODES: &[&str] = &["dark", "light", "system"];
 const THINKING_MODES: &[&str] = &["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const PROMPT_KEYS: [&str; 3] = ["prompt1", "prompt2", "prompt3"];
 
@@ -34,6 +109,8 @@ pub struct AppSettings {
     pub commit_verbosity: String,
     pub selected_prompt: Option<u8>,
     pub font_zoom: u32,
+    pub theme: String,
+    pub color_mode: String,
     pub model: String,
     pub thinking: String,
     pub prompts: Vec<String>,
@@ -71,6 +148,8 @@ struct PortableFile {
     commit_verbosity: String,
     selected_prompt: Option<u8>,
     font_zoom: u32,
+    theme: String,
+    color_mode: String,
     model: String,
     thinking: String,
     prompts: Vec<String>,
@@ -84,6 +163,8 @@ impl Default for PortableFile {
             commit_verbosity: DEFAULT_VERBOSITY.to_string(),
             selected_prompt: None,
             font_zoom: DEFAULT_ZOOM,
+            theme: DEFAULT_THEME.to_string(),
+            color_mode: DEFAULT_COLOR_MODE.to_string(),
             model: String::new(),
             thinking: DEFAULT_THINKING.to_string(),
             prompts: vec![String::new(); 3],
@@ -116,6 +197,8 @@ pub fn save_app_settings(
     app: &AppHandle,
     settings_folder: String,
     font_zoom: u32,
+    theme: String,
+    color_mode: String,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
 ) -> Result<AppSettings, String> {
@@ -135,6 +218,8 @@ pub fn save_app_settings(
         }
 
         let zoom = clamp_zoom(font_zoom);
+        let theme = normalize_theme(&theme);
+        let color_mode = normalize_color_mode(&color_mode);
         let prompt = normalize_prompt(selected_prompt);
         let prompts = normalize_prompts(prompts);
         let destination_exists = !next_folder.is_empty() && settings_path(&next_folder).is_file();
@@ -148,6 +233,8 @@ pub fn save_app_settings(
                 write_local_ai(app, &file)?;
                 write_local_workspace(app, &file)?;
                 file.font_zoom = zoom;
+                file.theme = theme;
+                file.color_mode = color_mode;
                 Ok(view_of(&Loaded {
                     folder: String::new(),
                     shared: false,
@@ -169,6 +256,8 @@ pub fn save_app_settings(
             FolderPlan::Write => {
                 let mut file = loaded.file;
                 file.font_zoom = zoom;
+                file.theme = theme;
+                file.color_mode = color_mode;
                 file.selected_prompt = prompt;
                 file.prompts = prompts;
                 file.normalize_in_place();
@@ -342,6 +431,8 @@ fn view_of(loaded: &Loaded) -> AppSettings {
         commit_verbosity: file.commit_verbosity.clone(),
         selected_prompt: file.selected_prompt,
         font_zoom: file.font_zoom,
+        theme: file.theme.clone(),
+        color_mode: file.color_mode.clone(),
         model: file.model.clone(),
         thinking: file.thinking.clone(),
         prompts: file.prompts.clone(),
@@ -455,6 +546,65 @@ fn settings_path(folder: &str) -> PathBuf {
     Path::new(folder).join(SETTINGS_FILE_NAME)
 }
 
+pub fn theme_css(app: &AppHandle) -> Result<String, String> {
+    with_settings_lock(|| {
+        let folder = read_pointer(app)?;
+        read_theme_css_file(&folder)
+    })
+}
+
+fn theme_css_path(folder: &str) -> PathBuf {
+    Path::new(folder).join(THEME_CSS_FILE_NAME)
+}
+
+fn ensure_theme_css_file(folder: &str) -> Result<(), String> {
+    if folder.is_empty() || !Path::new(folder).is_dir() {
+        return Ok(());
+    }
+    let path = theme_css_path(folder);
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(mut file) => file
+            .write_all(THEME_CSS_TEMPLATE.as_bytes())
+            .map_err(|error| {
+                let _ = fs::remove_file(&path);
+                format!("Couldn't create {}: {error}", path.display())
+            }),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(format!("Couldn't create {}: {error}", path.display())),
+    }
+}
+
+fn read_theme_css_file(folder: &str) -> Result<String, String> {
+    if folder.is_empty() {
+        return Ok(String::new());
+    }
+    ensure_theme_css_file(folder)?;
+    let path = theme_css_path(folder);
+    if !path.is_file() {
+        return Ok(String::new());
+    }
+    let metadata = fs::metadata(&path)
+        .map_err(|error| format!("Couldn't read {}: {error}", path.display()))?;
+    if metadata.len() > MAX_THEME_CSS_BYTES {
+        return Err(format!(
+            "{} is larger than 256 KB, so it was not loaded.",
+            path.display()
+        ));
+    }
+    let bytes =
+        fs::read(&path).map_err(|error| format!("Couldn't read {}: {error}", path.display()))?;
+    if bytes.contains(&0) {
+        return Err(format!("{} is not a text stylesheet.", path.display()));
+    }
+    let text =
+        String::from_utf8(bytes).map_err(|_| format!("{} is not valid UTF-8.", path.display()))?;
+    Ok(text.trim_start_matches('\u{feff}').to_string())
+}
+
 fn read_portable_file(path: &Path) -> Result<PortableFile, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("Couldn't read {}: {error}", path.display()))?;
@@ -525,9 +675,29 @@ impl PortableFile {
         self.commit_verbosity = normalize_verbosity(&self.commit_verbosity);
         self.selected_prompt = normalize_prompt(self.selected_prompt);
         self.font_zoom = clamp_zoom(self.font_zoom);
+        self.theme = normalize_theme(&self.theme);
+        self.color_mode = normalize_color_mode(&self.color_mode);
         self.model = self.model.trim().to_string();
         self.thinking = normalize_thinking(&self.thinking);
         self.prompts = normalize_prompts(std::mem::take(&mut self.prompts));
+    }
+}
+
+fn normalize_theme(value: &str) -> String {
+    let value = value.trim();
+    if THEMES.contains(&value) {
+        value.to_string()
+    } else {
+        DEFAULT_THEME.to_string()
+    }
+}
+
+fn normalize_color_mode(value: &str) -> String {
+    let value = value.trim();
+    if COLOR_MODES.contains(&value) {
+        value.to_string()
+    } else {
+        DEFAULT_COLOR_MODE.to_string()
     }
 }
 
@@ -670,13 +840,94 @@ mod tests {
         assert_eq!(loaded.font_zoom, 130);
         assert_eq!(loaded.commit_verbosity, "quick");
         assert_eq!(loaded.prompts.len(), 3);
+        assert_eq!(loaded.theme, "zinc");
+        assert_eq!(loaded.color_mode, "dark");
 
         let mut next = loaded;
         next.model = "gpt-test".into();
+        next.theme = "nord".into();
+        next.color_mode = "light".into();
         write_portable_file(&path, &next).unwrap();
         let saved: PortableFile = super::read_portable_file(&path).unwrap().normalize();
         assert_eq!(saved.model, "gpt-test");
         assert_eq!(saved.root_paths, vec![r"\\server\share\repos"]);
+        assert_eq!(saved.theme, "nord");
+        assert_eq!(saved.color_mode, "light");
+
+        let mut invalid = saved;
+        invalid.theme = "nope".into();
+        invalid.color_mode = "sepia".into();
+        let normalized = invalid.normalize();
+        assert_eq!(normalized.theme, "zinc");
+        assert_eq!(normalized.color_mode, "dark");
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn known_themes_are_kept_and_unknown_themes_fall_back() {
+        for theme in [
+            "zinc",
+            "nord",
+            "catppuccin",
+            "solarized",
+            "dracula",
+            "gruvbox",
+            "tokyo",
+            "rosepine",
+            "github",
+            "onedark",
+        ] {
+            let mut file = PortableFile::default();
+            file.theme = theme.into();
+            assert_eq!(file.normalize().theme, theme);
+        }
+    }
+
+    #[test]
+    fn theme_css_reads_a_stylesheet_from_the_settings_folder() {
+        let directory = std::env::temp_dir().join(format!(
+            "ce-git-theme-css-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let folder = directory.to_string_lossy().to_string();
+
+        assert_eq!(super::read_theme_css_file("").unwrap(), "");
+        let missing = directory.join("missing");
+        assert_eq!(
+            super::read_theme_css_file(&missing.to_string_lossy()).unwrap(),
+            ""
+        );
+        assert!(!missing.join("ce-git.css").exists());
+
+        let created = super::read_theme_css_file(&folder).unwrap();
+        assert_eq!(created, super::THEME_CSS_TEMPLATE);
+        assert_eq!(super::read_theme_css_file(&folder).unwrap(), created);
+
+        let path = directory.join("ce-git.css");
+        std::fs::write(&path, "\u{feff}html { color: red; }").unwrap();
+        assert_eq!(
+            super::read_theme_css_file(&folder).unwrap(),
+            "html { color: red; }"
+        );
+
+        std::fs::write(&path, b"html { color: red; }\0").unwrap();
+        assert!(
+            super::read_theme_css_file(&folder)
+                .unwrap_err()
+                .contains("not a text stylesheet")
+        );
+
+        std::fs::write(&path, vec![b'a'; (256 * 1024) + 1]).unwrap();
+        assert!(
+            super::read_theme_css_file(&folder)
+                .unwrap_err()
+                .contains("256 KB")
+        );
 
         let _ = std::fs::remove_dir_all(&directory);
     }

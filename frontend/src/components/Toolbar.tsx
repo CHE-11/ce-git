@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Settings, Sparkles, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
 
@@ -17,40 +17,20 @@ type ToolbarProps = {
   onPullAll: () => void;
   onPushAll: () => void;
   onAiCommitPrompt: (slot: number) => void;
-  onOpenAiSettings: () => void;
-  onOpenGitSettings: () => void;
   onAddRoot: () => void;
   onCreateNewRepo: () => void;
   onCommitClear: () => void;
+  onAdvancedSearch: () => void;
 };
 
 const PROMPT_SLOTS = [1, 2, 3] as const;
 
-export function Toolbar({
-  rootPaths,
-  repoCount,
-  prompts,
-  busy,
-  generating,
-  discovering,
-  hasSelection,
-  onOpenAppSettings,
-  onChooseFolder,
-  onRefresh,
-  onPullAll,
-  onPushAll,
-  onAiCommitPrompt,
-  onOpenAiSettings,
-  onOpenGitSettings,
-  onAddRoot,
-  onCreateNewRepo,
-  onCommitClear,
-}: ToolbarProps) {
+export function Toolbar({...props}: ToolbarProps) {
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [hoveredPrompt, setHoveredPrompt] = useState<number | null>(null);
   const promptMenuRef = useRef<HTMLDivElement>(null);
-  const filledPrompts = PROMPT_SLOTS.filter((slot) => prompts[slot - 1]?.trim());
-  const aiDisabled = busy || generating || repoCount === 0;
+  const filledPrompts = PROMPT_SLOTS.filter((slot) => props.prompts[slot - 1]?.trim());
+  const aiDisabled = props.busy || props.generating || props.repoCount === 0;
 
   useEffect(() => {
     if (!promptMenuOpen) {
@@ -77,28 +57,31 @@ export function Toolbar({
   return (
     <header id="toolbar" className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
       <div id="toolbar-left" className="flex items-center gap-2">
-        <Button id="app-settings-button" onClick={onOpenAppSettings} disabled={busy} title="App settings">
+        <Button id="app-settings-button" onClick={props.onOpenAppSettings} disabled={props.busy} title="Settings">
           <Settings id="app-settings-icon" className="size-4" />
         </Button>
-        <Button id="choose-folder-button" onClick={onChooseFolder} disabled={busy} title="Open folder as tree">
+        <Button id="choose-folder-button" onClick={props.onChooseFolder} disabled={props.busy} title="Open folder as tree">
           <FolderRoot id="choose-folder-icon" className="size-4" />
         </Button>
-        <Button id="add-root-button" onClick={onAddRoot} disabled={busy} title="Add folder to existing tree">
+        <Button id="add-root-button" onClick={props.onAddRoot} disabled={props.busy} title="Add folder to existing tree">
           <FolderPlus id="add-root-icon" className="size-4" />
         </Button>
-        <Button id="create-repo-button" onClick={onCreateNewRepo} disabled={busy} title="Create a new repo">
+        <Button id="create-repo-button" onClick={props.onCreateNewRepo} disabled={props.busy} title="Create a new repo">
           <PlusSquare id="create-repo-icon" className="size-4" />
         </Button>
-        <Button id="refresh-button" onClick={onRefresh} disabled={busy || rootPaths.length === 0} title="Refresh repositories">
-          <RefreshCw id="refresh-icon" className={`size-4 ${discovering ? "animate-spin" : ""}`} />
+        <Button id="advanced-search-button" onClick={props.onAdvancedSearch} disabled={props.busy || props.rootPaths.length === 0} title="Advanced search">
+          <Search id="advanced-search-icon" className="size-4" />
+        </Button>
+        <Button id="refresh-button" onClick={props.onRefresh} disabled={props.busy || props.rootPaths.length === 0} title="Refresh repositories">
+          <RefreshCw id="refresh-icon" className={`size-4 ${props.discovering ? "animate-spin" : ""}`} />
         </Button>
         <span id="repo-count" className="shrink-0 text-xs text-zinc-500">
-          {discovering ? "Scanning…" : `${repoCount} repos`}
+          {props.discovering ? "Scanning…" : `${props.repoCount} repos`}
         </span>
       </div>
 
       <div id="toolbar-center" className="flex items-center gap-2">
-        <Button id="commit-clear-button" onClick={onCommitClear} disabled={busy || repoCount === 0} className="border-violet-800 text-violet-200" title="Clear all uncommited commit messages and descriptions">
+        <Button id="commit-clear-button" onClick={props.onCommitClear} disabled={props.busy || props.repoCount === 0} className="border-violet-800 text-violet-200" title="Clear all uncommited commit messages and descriptions">
           <Trash2 id="commit-clear-icon" className="size-4" />
           <span id="commit-clear-label">Clear Commits</span>
         </Button>
@@ -144,7 +127,7 @@ export function Toolbar({
                         onClick={() => {
                           setHoveredPrompt(null);
                           setPromptMenuOpen(false);
-                          onAiCommitPrompt(slot);
+                          props.onAiCommitPrompt(slot);
                         }}
                         className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm ${
                           active ? "bg-violet-600/25 text-zinc-50" : "text-zinc-200 hover:bg-zinc-800"
@@ -160,7 +143,7 @@ export function Toolbar({
                           id={`ai-commit-prompt-${slot}-preview`}
                           className="absolute top-0 left-full z-40 ml-2 max-h-56 w-80 overflow-auto rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-left text-xs leading-5 whitespace-pre-wrap text-zinc-300 shadow-2xl"
                         >
-                          {prompts[slot - 1].trim()}
+                          {props.prompts[slot - 1].trim()}
                         </p>
                       ) : null}
                     </div>
@@ -172,7 +155,7 @@ export function Toolbar({
         ) : (
           <Button
             id="ai-commit-button"
-            onClick={() => onAiCommitPrompt(filledPrompts[0] ?? 1)}
+            onClick={() => props.onAiCommitPrompt(filledPrompts[0] ?? 1)}
             disabled={aiDisabled}
             className="border-violet-800 text-violet-200"
           >
@@ -187,32 +170,24 @@ export function Toolbar({
         <Button
           id="pull-all-button"
           variant="primary"
-          onClick={onPullAll}
-          disabled={busy || repoCount === 0 || hasSelection}
-          title={hasSelection ? "Clear the selection to pull every repository" : undefined}
+          onClick={props.onPullAll}
+          disabled={props.busy || props.repoCount === 0 || props.hasSelection}
+          title={props.hasSelection ? "Clear the selection to pull every repository" : undefined}
         >
           <ArrowDownToLine id="pull-all-icon" className="size-4" />
           <span id="pull-all-label">Pull all</span>
         </Button>
         <Button
           id="push-all-button"
-          onClick={onPushAll}
-          disabled={busy || repoCount === 0 || hasSelection}
-          title={hasSelection ? "Clear the selection to push every repository" : undefined}
+          onClick={props.onPushAll}
+          disabled={props.busy || props.repoCount === 0 || props.hasSelection}
+          title={props.hasSelection ? "Clear the selection to push every repository" : undefined}
         >
           <ArrowUpToLine id="push-all-icon" className="size-4" />
           <span id="push-all-label">Push all</span>
         </Button>
       </div>
 
-      <div id="toolbar-right" className="flex items-center gap-2">
-        <Button id="git-settings-button" variant="ghost" onClick={onOpenGitSettings}>
-          <span id="git-settings-button-label">Git</span>
-        </Button>
-        <Button id="ai-settings-button" variant="ghost" onClick={onOpenAiSettings}>
-          <span id="ai-settings-button-label">AI settings</span>
-        </Button>
-      </div>
 
     </header>
   );

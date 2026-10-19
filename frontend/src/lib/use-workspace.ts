@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
+import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, FileChange, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
 import {
   aiSettings,
   appSettings,
@@ -9,18 +9,26 @@ import {
   batchPull,
   batchPush,
   deleteFolder as deleteFolderOnDisk,
+  discardChange as discardFile,
   discoverRepos,
   generateCommitMessage,
   gitAvailable,
+  ignoreChange as ignoreFile,
   initRepo,
+  openChange as openFile,
   openInEditor as openFolderInEditor,
   patchAppSettings,
+  revealChange as revealFile,
+  themeCss,
+  type ChangeOpenMode,
   type FolderEditor,
+  type IgnoreKind,
   repoDiff,
   repoStatuses,
 } from "./git-client";
 import { withDefaultPrompts } from "./commit-prompts";
 import { baseName, collectRepos, containingRoot, hideRemovedRepos, messageOf, pathEquals, pathIsInside } from "./tree";
+import { applyUserThemeCss, publishAppearance } from "./appearance";
 import { clampZoom, publishZoom, readZoom, ZOOM_EVENT } from "./zoom";
 
 type SelectMode = "replace" | "toggle" | "range";
@@ -101,7 +109,6 @@ export function useWorkspace() {
   const [aiOpen, setAiOpen] = useState(false);
   const [drafts, setDrafts] = useState<AiCommitDraft[]>([]);
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
-  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [removedRepos, setRemovedRepos] = useState<string[]>([]);
 
   const sharedRef = useRef(false);
@@ -196,8 +203,27 @@ export function useWorkspace() {
     });
   };
 
+  const themeCssError = useRef<string | null>(null);
+
+  const refreshThemeCss = useCallback(async () => {
+    try {
+      applyUserThemeCss(await themeCss());
+      if (themeCssError.current) {
+        const previous = themeCssError.current;
+        themeCssError.current = null;
+        setError((current) => (current === previous ? null : current));
+      }
+    } catch (caught) {
+      const message = messageOf(caught);
+      themeCssError.current = message;
+      applyUserThemeCss("");
+      setError(message);
+    }
+  }, []);
+
   const applyAppSettings = useCallback(
     async (settings: AppSettings, source: "startup" | "save" = "save") => {
+      void refreshThemeCss();
       sharedRef.current = settings.shared;
       const useFilePreferences = settings.shared || source === "save";
       if (useFilePreferences) {
@@ -205,6 +231,7 @@ export function useWorkspace() {
         const prompt = promptSlot(settings.selectedPrompt);
         zoomRef.current = clampZoom(settings.fontZoom);
         publishZoom(settings.fontZoom);
+        publishAppearance(settings.theme, settings.colorMode);
         setSelectedPrompt(prompt);
         rememberPrompt(prompt);
         setCommitPrompts(prompts);
@@ -222,8 +249,16 @@ export function useWorkspace() {
       }
       await reloadTrees(roots);
     },
-    [reloadTrees],
+    [refreshThemeCss, reloadTrees],
   );
+
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshThemeCss();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshThemeCss]);
 
   useEffect(() => {
     function onZoom(event: Event) {
@@ -525,6 +560,72 @@ export function useWorkspace() {
     }
   };
 
+  const refreshRepo = async (repo: string) => {
+    const rows = await repoStatuses([repo]);
+    setStatuses((current) => {
+      const next = { ...current };
+      for (const row of rows) {
+        next[row.path] = row;
+      }
+      return next;
+    });
+    setDetailToken((token) => token + 1);
+  };
+
+  const discardChange = async (repo: string, file: FileChange) => {
+    if (!repo) {
+      return;
+    }
+    setBusyAction("discard");
+    setError(null);
+    try {
+      await discardFile(repo, file.path);
+      await refreshRepo(repo);
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const ignoreChange = async (repo: string, kind: IgnoreKind, target: string) => {
+    if (!repo) {
+      return;
+    }
+    setBusyAction("ignore");
+    setError(null);
+    try {
+      await ignoreFile(repo, kind, target);
+      await refreshRepo(repo);
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const revealChange = async (repo: string, relativePath: string) => {
+    setError(null);
+    try {
+      await revealFile(repo, relativePath);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
+  const openChange = async (repo: string, relativePath: string, mode: ChangeOpenMode) => {
+    setError(null);
+    try {
+      await openFile(repo, relativePath, mode);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
+  const reportError = (message: string) => {
+    setError(message);
+  };
+
   const finishBatch = async () => {
     await loadStatuses(repoPathsRef.current);
     setDetailToken((token) => token + 1);
@@ -732,8 +833,6 @@ export function useWorkspace() {
     diffLoading,
     gitReady,
     openaiReady,
-    aiSettingsOpen,
-    setAiSettingsOpen,
     refreshAi: async () => {
       applyAiSettings(await aiSettings());
     },
@@ -755,6 +854,11 @@ export function useWorkspace() {
     removeRepo,
     restoreRemoved,
     deleteFolder,
+    discardChange,
+    ignoreChange,
+    revealChange,
+    openChange,
+    reportError,
     pullAll: () => runBatch("pull", repoPaths),
     pullSelected: () => runBatch("pull", selectedPaths),
     requestPushAll: () => requestPush(repoPaths),

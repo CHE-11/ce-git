@@ -3,6 +3,7 @@ mod command;
 mod commit;
 mod diff;
 mod discover;
+mod search;
 mod settings;
 mod status;
 mod sync;
@@ -23,6 +24,7 @@ pub fn init_repo(path: &std::path::Path) -> Result<(), String> {
 pub use commit::commit_repo;
 pub use diff::{RepoDiff, collect_ai_context, repo_diff};
 pub use discover::{TreeNode, discover};
+pub use search::{RepoSearchResult, search_repos};
 pub use settings::{
     GitSettings, git_cancel_sign_in, git_sign_in, git_sign_out, read_git_settings,
     save_git_settings,
@@ -255,10 +257,7 @@ mod tests {
 
         let bare = tmp.join("origin.git");
         run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
-        run_git(
-            &local,
-            &["remote", "add", "origin", bare.to_str().unwrap()],
-        );
+        run_git(&local, &["remote", "add", "origin", bare.to_str().unwrap()]);
         let skipped = push_repo(&local);
         assert!(
             matches!(skipped, Outcome::Skipped(ref message) if message.contains("not GitHub")),
@@ -268,5 +267,66 @@ mod tests {
         assert_eq!(after.github, Some(false));
 
         let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn search_finds_tracked_and_untracked_text() {
+        let root = scratch("search");
+        let repo = root.join("alpha");
+        init_repo(&repo);
+        fs::write(repo.join("README.md"), "alpha needle\n").unwrap();
+        run_git(&repo, &["add", "."]);
+        run_git(&repo, &["commit", "-m", "alpha"]);
+        fs::write(repo.join("note.txt"), "untracked needle\n").unwrap();
+
+        let path = repo.to_string_lossy().into_owned();
+        let results = super::search_repos(
+            vec![path.clone()],
+            "needle".into(),
+            false,
+            false,
+            false,
+            String::new(),
+        );
+        assert_eq!(results.len(), 1);
+        assert!(results[0].error.is_none(), "{:?}", results[0].error);
+        let files: Vec<_> = results[0]
+            .matches
+            .iter()
+            .map(|hit| hit.path.as_str())
+            .collect();
+        assert!(files.contains(&"README.md"), "{files:?}");
+        assert!(files.contains(&"note.txt"), "{files:?}");
+
+        let markdown = super::search_repos(
+            vec![path.clone()],
+            "needle".into(),
+            false,
+            false,
+            false,
+            "*.md".into(),
+        );
+        assert!(markdown[0].error.is_none(), "{:?}", markdown[0].error);
+        assert!(
+            markdown[0]
+                .matches
+                .iter()
+                .all(|hit| hit.path.ends_with(".md")),
+            "{:?}",
+            markdown[0].matches
+        );
+
+        let missing = super::search_repos(
+            vec![path],
+            "zzznone".into(),
+            true,
+            false,
+            false,
+            String::new(),
+        );
+        assert!(missing[0].error.is_none(), "{:?}", missing[0].error);
+        assert!(missing[0].matches.is_empty());
+
+        let _ = fs::remove_dir_all(root);
     }
 }

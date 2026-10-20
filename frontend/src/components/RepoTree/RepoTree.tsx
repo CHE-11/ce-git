@@ -10,12 +10,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import type { RepoStatus, TreeNode } from "../../../types/git";
-import { cn } from "../lib/cn";
-import type { FolderEditor } from "../lib/git-client";
-import { countRemovedUnder, domId, filterRepoTree, hasNestedRepo, pathEquals, type RepoTreeFilter } from "../lib/tree";
-import { Button } from "./Button";
-import { Dialog } from "./Dialogs/Dialog";
+import type { RepoStatus, TreeNode } from "../../../../types/git";
+import { cn } from "../../lib/cn";
+import type { FolderEditor } from "../../lib/git-client";
+import { countRemovedUnder, domId, filterRepoTree, hasNestedRepo, pathEquals, type RepoTreeFilter } from "../../lib/tree";
+import { Button } from "../Button";
+import { Dialog } from "../Dialogs/Dialog";
 import { RepoTreeFilterStat } from "./RepoTreeFilterStat";
 import { RepoTreeNode } from "./RepoTreeNode";
 import { TreeContextMenu } from "./TreeContextMenu";

@@ -10,7 +10,7 @@ import { ActivityLog } from "../components/ActivityLog";
 import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RepoDetail } from "../components/RepoDetail";
-import { RepoTree } from "../components/RepoTree";
+import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
 import { Toolbar } from "../components/Toolbar";
 import { useWorkspace } from "../lib/use-workspace";

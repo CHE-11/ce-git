@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
-import type { RepoStatus, TreeNode } from "../../../types/git";
-import { collectRepos, domId, repoMatchesFilter, type RepoTreeFilter } from "../lib/tree";
-import { cn } from "../lib/cn";
+import type { RepoStatus, TreeNode } from "../../../../types/git";
+import { collectRepos, domId, repoMatchesFilter, type RepoTreeFilter } from "../../lib/tree";
+import { cn } from "../../lib/cn";
 
 type RepoTreeNodeProps = {
   node: TreeNode;

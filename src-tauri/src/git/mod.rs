@@ -21,6 +21,45 @@ pub fn init_repo(path: &std::path::Path) -> Result<(), String> {
     command::git(path, &["init", "-b", "main"])?;
     Ok(())
 }
+
+pub fn clone_repo(url: &str, destination: &std::path::Path) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() || url.chars().any(|ch| ch.is_control()) {
+        return Err("Enter a repository URL.".to_string());
+    }
+    if url.starts_with('-') {
+        return Err("Repository URL cannot start with '-'.".to_string());
+    }
+
+    let parent = destination
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| "Choose a parent folder.".to_string())?;
+    if !parent.is_dir() {
+        return Err(format!("Folder does not exist: {}", parent.display()));
+    }
+
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "Enter a folder name.".to_string())?;
+    if name == "." || name == ".." || name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+        return Err("Folder name contains invalid characters.".to_string());
+    }
+
+    let destination = parent.join(name);
+    if destination.exists() {
+        return Err(format!("A folder named {name} already exists in that location."));
+    }
+
+    command::git(parent, &["clone", "--", url, name])?;
+    if !discover::is_repository(&destination) {
+        return Err("Clone finished but the folder is not a git repository.".to_string());
+    }
+    Ok(())
+}
 pub use commit::commit_repo;
 pub use diff::{collect_ai_context, repo_diff, RepoDiff};
 pub use discover::{discover, TreeNode};
@@ -164,6 +203,42 @@ mod tests {
         assert_eq!(subject.trim(), "chore: add note");
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn clone_repo_copies_a_local_repository() {
+        let tmp = scratch("clone");
+        let origin = tmp.join("origin");
+        init_repo(&origin);
+        fs::write(origin.join("README.md"), "cloned\n").unwrap();
+        run_git(&origin, &["add", "."]);
+        run_git(&origin, &["commit", "-m", "initial"]);
+
+        let dest = tmp.join("copy");
+        super::clone_repo(origin.to_str().unwrap(), &dest).unwrap();
+        assert!(dest.join(".git").is_dir());
+        let readme = fs::read_to_string(dest.join("README.md")).unwrap();
+        assert!(readme.contains("cloned"));
+
+        let again = super::clone_repo(origin.to_str().unwrap(), &dest);
+        assert!(
+            matches!(again, Err(ref message) if message.contains("already exists")),
+            "{again:?}"
+        );
+
+        let missing_parent = super::clone_repo(origin.to_str().unwrap(), &tmp.join("missing").join("copy"));
+        assert!(
+            matches!(missing_parent, Err(ref message) if message.contains("does not exist")),
+            "{missing_parent:?}"
+        );
+
+        let empty = super::clone_repo("  ", &tmp.join("empty"));
+        assert!(
+            matches!(empty, Err(ref message) if message.contains("URL")),
+            "{empty:?}"
+        );
+
+        let _ = fs::remove_dir_all(tmp);
     }
 
     #[test]

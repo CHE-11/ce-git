@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
 
@@ -16,8 +16,10 @@ type ToolbarProps = {
   onAiCommitPrompt: (slot: number) => void;
   onAddRoot: () => void;
   onCreateNewRepo: () => void;
+  onCloneRepo: () => void;
   onCommitClear: () => void;
   onAdvancedSearch: () => void;
+  onOpenCommands: () => void;
 };
 
 const PROMPT_SLOTS = [1, 2, 3] as const;
@@ -66,6 +68,9 @@ export function Toolbar({...props}: ToolbarProps) {
         <Button id="create-repo-button" onClick={props.onCreateNewRepo} disabled={props.busy} title="Create a new repo">
           <PlusSquare id="create-repo-icon" className="size-4" />
         </Button>
+        <Button id="clone-repo-button" onClick={props.onCloneRepo} disabled={props.busy} title="Clone a repository">
+          <FolderGit2 id="clone-repo-icon" className="size-4" />
+        </Button>
         <Button id="advanced-search-button" onClick={props.onAdvancedSearch} disabled={props.busy || props.rootPaths.length === 0} title="Advanced search">
           <Search id="advanced-search-icon" className="size-4" />
         </Button>
@@ -78,6 +83,19 @@ export function Toolbar({...props}: ToolbarProps) {
       </div>
 
       <div id="toolbar-center" className="flex items-center gap-2">
+        <button
+          id="command-palette-button"
+          type="button"
+          onClick={props.onOpenCommands}
+          title="Commands"
+          className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        >
+          <Search id="command-palette-button-icon" className="size-3.5" />
+          <span id="command-palette-button-label">Commands</span>
+          <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+            Ctrl K
+          </kbd>
+        </button>
         <div id="ai-commit-menu" ref={promptMenuRef} className="relative">
           <button
             id="ai-commit-button"

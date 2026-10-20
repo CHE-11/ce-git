@@ -1,4 +1,4 @@
-import { AppWindow, ChevronRight, Copy, ExternalLink, FileX, Files, Folder, FolderSearch, FolderX, Link2, SquareCode, Undo2 } from "lucide-react";
+import { AppWindow, ChevronRight, Copy, FileX, Files, Folder, FolderSearch, FolderX, Link2, SquareCode, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { FileChange } from "../../../types/git";

@@ -165,6 +165,10 @@ export function initRepo(path: string) {
   return invoke<void>("init_repo", { path });
 }
 
+export function cloneRepo(url: string, path: string) {
+  return invoke<void>("clone_repo", { url, path });
+}
+
 export function deleteFolder(root: string, path: string) {
   return invoke<void>("delete_path", { root, path });
 }

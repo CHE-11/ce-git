@@ -15,6 +15,7 @@ import {
   generateCommitMessage,
   gitAvailable,
   ignoreChange as ignoreFile,
+  cloneRepo as cloneRepository,
   initRepo,
   openChange as openFile,
   openInEditor as openFolderInEditor,
@@ -555,6 +556,32 @@ export function useWorkspace() {
     activePathRef.current = created;
     setActivePath(created);
     setSelectedPaths([created]);
+  };
+
+  const cloneRepo = async (url: string, destination: string) => {
+    const remote = url.trim();
+    const path = destination.trim();
+    if (!remote) {
+      throw new Error("Enter a repository URL.");
+    }
+    if (!path) {
+      throw new Error("Choose a destination folder.");
+    }
+    await cloneRepository(remote, path);
+    const current = rootPathsRef.current;
+    const roots = containingRoot(current, path)
+      ? current
+      : [...current.filter((root) => !pathIsInside(path, root)), path];
+    if (roots !== current) {
+      await persistRoots(roots);
+    }
+    const found = await reloadTrees(roots);
+    const cloned = found.find((repo) => pathEquals(repo, path)) ?? path;
+    anchorRef.current = cloned;
+    interactionEpoch.current += 1;
+    activePathRef.current = cloned;
+    setActivePath(cloned);
+    setSelectedPaths([cloned]);
   };
 
   const addRootFolder = async () => {
@@ -1163,6 +1190,7 @@ export function useWorkspace() {
     chooseFolder,
     addRootFolder,
     createNewRepo,
+    cloneRepo,
     refresh,
     selectRepo,
     selectRepos,

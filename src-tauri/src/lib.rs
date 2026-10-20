@@ -230,6 +230,13 @@ fn init_repo(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn clone_repo(url: String, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || git::clone_repo(&url, Path::new(&path)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn open_in_editor(path: String, editor: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         crate::editor::open_in_editor(Path::new(&path), &editor)
@@ -342,6 +349,7 @@ pub fn run() {
             open_in_terminal,
             reveal_in_explorer,
             init_repo,
+            clone_repo,
             delete_path,
             discard_change,
             ignore_change,

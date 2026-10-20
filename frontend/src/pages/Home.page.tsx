@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { CommandPalette, type CommandItem } from "../components/CommandPalette";
 import { ActionConfirmDialog } from "../components/Dialogs/ActionConfirmDialog";
 import { AdvancedSearchDialog } from "../components/Dialogs/AdvancedSearchDialog";
 import { AiReviewDialog } from "../components/Dialogs/AiReviewDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
+import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
 import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
@@ -18,15 +20,211 @@ export function HomePage() {
   const workspace = useWorkspace();
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [createRepoOpen, setCreateRepoOpen] = useState(false);
+  const [cloneRepoOpen, setCloneRepoOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [treeFilter, setTreeFilter] = useState<RepoTreeFilter | null>(null);
   const [pendingAction, setPendingAction] = useState<"clear" | null>(null);
+  const [commandsOpen, setCommandsOpen] = useState(false);
 
   useEffect(() => {
     document.title = "ce-git";
   }, []);
 
   const busy = workspace.busyAction !== null;
+  const hasRoots = workspace.rootPaths.length > 0;
+  const hasRepos = workspace.repos.length > 0;
+  const hasSelection = workspace.selectedPaths.length > 0;
+  const hasActive = workspace.activePath !== null;
+  const commands: CommandItem[] = [
+    {
+      id: "open-folder",
+      label: "Open folder",
+      group: "Workspace",
+      keywords: "choose tree",
+      disabled: busy,
+      run: () => void workspace.chooseFolder(),
+    },
+    {
+      id: "add-folder",
+      label: "Add folder",
+      group: "Workspace",
+      keywords: "root tree",
+      disabled: busy,
+      run: () => void workspace.addRootFolder(),
+    },
+    {
+      id: "create-repo",
+      label: "Create repository",
+      group: "Workspace",
+      keywords: "new repo",
+      disabled: busy,
+      run: () => setCreateRepoOpen(true),
+    },
+    {
+      id: "clone-repo",
+      label: "Clone repository",
+      group: "Workspace",
+      keywords: "git clone",
+      disabled: busy,
+      run: () => setCloneRepoOpen(true),
+    },
+    {
+      id: "advanced-search",
+      label: "Advanced search",
+      group: "Workspace",
+      keywords: "find file",
+      disabled: busy || !hasRoots,
+      run: () => setAdvancedSearchOpen(true),
+    },
+    {
+      id: "refresh",
+      label: "Refresh repositories",
+      group: "Workspace",
+      keywords: "scan reload",
+      disabled: busy || !hasRoots,
+      run: () => void workspace.refresh(),
+    },
+    {
+      id: "clear-commits",
+      label: "Clear commit messages",
+      group: "Workspace",
+      keywords: "drafts",
+      disabled: busy,
+      run: () => setPendingAction("clear"),
+    },
+    {
+      id: "restore-removed",
+      label: "Restore removed repositories",
+      group: "Workspace",
+      keywords: "undo hide",
+      disabled: busy || workspace.removedRepos.length === 0,
+      run: () => void workspace.restoreRemoved(),
+    },
+    {
+      id: "pull-all",
+      label: "Pull all repositories",
+      group: "Git",
+      disabled: busy || !hasRepos,
+      run: () => workspace.requestPullAll(),
+    },
+    {
+      id: "push-all",
+      label: "Push all repositories",
+      group: "Git",
+      disabled: busy || !hasRepos,
+      run: () => workspace.requestPushAll(),
+    },
+    {
+      id: "pull-selected",
+      label: "Pull selected repositories",
+      group: "Git",
+      disabled: busy || !hasSelection,
+      run: () => void workspace.pullSelected(),
+    },
+    {
+      id: "push-selected",
+      label: "Push selected repositories",
+      group: "Git",
+      disabled: busy || !hasSelection,
+      run: () => workspace.requestPushSelected(),
+    },
+    {
+      id: "pull-active",
+      label: "Pull active repository",
+      group: "Git",
+      disabled: busy || !hasActive,
+      run: () => workspace.requestPullActive(),
+    },
+    {
+      id: "push-active",
+      label: "Push active repository",
+      group: "Git",
+      disabled: busy || !hasActive,
+      run: () => workspace.requestPushActive(),
+    },
+    {
+      id: "settings-app",
+      label: "App settings",
+      group: "Settings",
+      keywords: "theme zoom folder",
+      disabled: busy,
+      run: () => setSettingsTab("app"),
+    },
+    {
+      id: "settings-git",
+      label: "Git settings",
+      group: "Settings",
+      keywords: "name email sign in",
+      disabled: busy,
+      run: () => setSettingsTab("git"),
+    },
+    {
+      id: "settings-ai",
+      label: "AI settings",
+      group: "Settings",
+      keywords: "openai prompt model",
+      disabled: busy,
+      run: () => setSettingsTab("ai"),
+    },
+    {
+      id: "settings-ignore",
+      label: "Ignore settings",
+      group: "Settings",
+      keywords: "folder ignore",
+      disabled: busy,
+      run: () => setSettingsTab("ignore"),
+    },
+    {
+      id: "open-editor",
+      label: "Open in editor",
+      group: "Active repo",
+      disabled: busy || !hasActive,
+      run: () => {
+        if (workspace.activePath) {
+          void workspace.openInEditor(workspace.activePath, "default");
+        }
+      },
+    },
+    {
+      id: "open-terminal",
+      label: "Open in terminal",
+      group: "Active repo",
+      disabled: busy || !hasActive,
+      run: () => {
+        if (workspace.activePath) {
+          void workspace.openInTerminal(workspace.activePath);
+        }
+      },
+    },
+    {
+      id: "reveal-explorer",
+      label: "Reveal in Explorer",
+      group: "Active repo",
+      keywords: "folder show",
+      disabled: busy || !hasActive,
+      run: () => {
+        if (workspace.activePath) {
+          void workspace.revealInExplorer(workspace.activePath);
+        }
+      },
+    },
+    ...([1, 2, 3] as const).flatMap((slot) => {
+      const prompt = workspace.commitPrompts[slot - 1]?.trim();
+      if (!prompt) {
+        return [];
+      }
+      return [
+        {
+          id: `ai-prompt-${slot}`,
+          label: `AI commit with prompt ${slot}`,
+          group: "AI" as const,
+          keywords: prompt,
+          disabled: busy || workspace.generating || !hasRepos,
+          run: () => workspace.startAiForDirty(slot),
+        },
+      ];
+    }),
+  ];
   let pullCount = 0;
   let pushCount = 0;
   for (const status of Object.values(workspace.statuses)) {
@@ -56,8 +254,10 @@ export function HomePage() {
         onAiCommitPrompt={workspace.startAiForDirty}
         onAddRoot={() => void workspace.addRootFolder()}
         onCreateNewRepo={() => setCreateRepoOpen(true)}
+        onCloneRepo={() => setCloneRepoOpen(true)}
         onCommitClear={() => setPendingAction("clear")}
         onAdvancedSearch={() => setAdvancedSearchOpen(true)}
+        onOpenCommands={() => setCommandsOpen(true)}
       />
       {workspace.error ? (
         <p id="app-error" className="border-b border-red-900 bg-red-950/60 px-3 py-2 text-sm text-red-300">
@@ -168,6 +368,13 @@ export function HomePage() {
       {createRepoOpen ? (
         <CreateRepoDialog onClose={() => setCreateRepoOpen(false)} onCreate={workspace.createNewRepo} />
       ) : null}
+      {cloneRepoOpen ? (
+        <CloneRepoDialog
+          defaultParent={workspace.rootPaths[0] ?? ""}
+          onClose={() => setCloneRepoOpen(false)}
+          onClone={workspace.cloneRepo}
+        />
+      ) : null}
       <AdvancedSearchDialog
         open={advancedSearchOpen}
         trees={workspace.trees}
@@ -193,6 +400,7 @@ export function HomePage() {
         onClose={() => workspace.setPushPaths(null)}
         onConfirm={workspace.confirmPush}
       />
+      <CommandPalette open={commandsOpen} commands={commands} onOpenChange={setCommandsOpen} />
       <ActionConfirmDialog
         id="clear-commits-dialog"
         title="Clear commit messages"

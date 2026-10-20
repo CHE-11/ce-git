@@ -1,4 +1,4 @@
-import { EyeOff, FolderMinus, FolderSearch, Terminal, Trash2, Undo2 } from "lucide-react";
+import { Copy, EyeOff, FolderMinus, FolderSearch, Terminal, Text, Trash2, Undo2 } from "lucide-react";
 import type { TreeNode } from "../../../../types/git";
 import { fileManagerLabel } from "../../lib/changes";
 import { editorTargetTitle, editorsForMenu, openInLabel, type EditorId } from "../../lib/editors";
@@ -45,6 +45,11 @@ export function TreeContextMenu({
   const showManage = isRepo || canHideFolder || removedCount > 0;
   const editors = editorsForMenu(menuEditors);
 
+  const copy = (text: string) => {
+    void navigator.clipboard.writeText(text);
+    onClose();
+  };
+
   return (
     <ContextMenu
       id="tree-context-menu"
@@ -82,6 +87,23 @@ export function TreeContextMenu({
         label={fileManagerLabel()}
         title="Open this folder in the native file explorer"
         onClick={onReveal}
+      />
+
+      <ContextMenuSeparator id="tree-context-separator-copy" />
+
+      <ContextMenuItem
+        id="tree-context-copy-name"
+        icon={<Text id="tree-context-copy-name-glyph" aria-hidden="true" />}
+        label="Copy name"
+        title={node.name}
+        onClick={() => copy(node.name)}
+      />
+      <ContextMenuItem
+        id="tree-context-copy-path"
+        icon={<Copy id="tree-context-copy-path-glyph" aria-hidden="true" />}
+        label="Copy path"
+        title={node.path}
+        onClick={() => copy(node.path)}
       />
 
       {showManage ? <ContextMenuSeparator id="tree-context-separator-manage" /> : null}

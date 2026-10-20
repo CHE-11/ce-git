@@ -24,6 +24,7 @@ const LANE_COLORS = ["#38bdf8", "#c084fc", "#34d399", "#fbbf24", "#fb7185", "#22
 type GitGraphProps = {
   path: string | null;
   refreshToken: string;
+  onClose: () => void;
 };
 
 function paneLimit() {
@@ -127,7 +128,7 @@ function refToken(ref: GraphRef) {
   return `${ref.kind}-${ref.name}`.replace(/[^a-zA-Z0-9_-]+/g, "-");
 }
 
-export function GitGraph({ path, refreshToken }: GitGraphProps) {
+export function GitGraph({ path, refreshToken, onClose }: GitGraphProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
   const [limit, setLimit] = useState(PAGE);
@@ -274,6 +275,9 @@ export function GitGraph({ path, refreshToken }: GitGraphProps) {
                 {loading ? "Loading…" : "Load more"}
               </Button>
             ) : null}
+            <Button id="git-graph-close" variant="ghost" size="xs" className="h-6 px-1" title="Close graph" aria-label="Close graph" onClick={onClose}>
+              <X id="git-graph-close-icon" className="size-3.5" />
+            </Button>
           </div>
         </div>
         <form id="git-graph-search" className="mt-1.5 flex items-center gap-1.5" onSubmit={(event) => event.preventDefault()}>

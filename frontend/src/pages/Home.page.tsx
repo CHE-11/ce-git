@@ -132,7 +132,7 @@ export function HomePage() {
       id: "push-all",
       label: "Push all repositories",
       group: "Git",
-      disabled: busy || !hasRepos,
+      disabled: busy || !hasRepos || pushCount === 0,
       run: () => workspace.requestPushAll(),
     },
     {
@@ -226,7 +226,7 @@ export function HomePage() {
           label: `AI commit with prompt ${slot}`,
           group: "AI" as const,
           keywords: prompt,
-          disabled: busy || workspace.generating || !hasRepos,
+          disabled: busy || workspace.generating || !hasRepos || dirtyCount === 0,
           run: () => workspace.startAiForDirty(slot),
         },
       ];
@@ -298,6 +298,7 @@ export function HomePage() {
                 ? `${workspace.activeStatus.branch}:${workspace.activeStatus.ahead}:${workspace.activeStatus.behind}:${workspace.activeStatus.dirty ? 1 : 0}`
                 : ""
             }
+            onClose={() => setGraphOpen(false)}
           />
         ) : null}
         <RepoDetail

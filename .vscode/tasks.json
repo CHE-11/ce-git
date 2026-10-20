@@ -67,22 +67,23 @@
         "reveal": "always"
       }
     },
-    {
-      "label": "Build macOS",
-      "type": "shell",
-      "command": "pnpm build:app",
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "statusbar": {
-          "hide": false,
-          "color": "#46c227"
-        }
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "panel": "dedicated",
-        "reveal": "always"
-      }
-    }
+    // macOS build is disabled for now as I use windows only for development
+    // {
+    //   "label": "Build macOS",
+    //   "type": "shell",
+    //   "command": "pnpm build:app",
+    //   "options": {
+    //     "cwd": "${workspaceFolder}",
+    //     "statusbar": {
+    //       "hide": false,
+    //       "color": "#46c227"
+    //     }
+    //   },
+    //   "problemMatcher": [],
+    //   "presentation": {
+    //     "panel": "dedicated",
+    //     "reveal": "always"
+    //   }
+    // }
   ]
 }

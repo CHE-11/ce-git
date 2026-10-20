@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
 
@@ -72,7 +72,7 @@ export function Toolbar({...props}: ToolbarProps) {
   const [hoveredPrompt, setHoveredPrompt] = useState<number | null>(null);
   const promptMenuRef = useRef<HTMLDivElement>(null);
   const filledPrompts = PROMPT_SLOTS.filter((slot) => props.prompts[slot - 1]?.trim());
-  const aiDisabled = props.busy || props.generating || props.repoCount === 0;
+  const aiDisabled = props.busy || props.generating || props.repoCount === 0 || props.dirtyCount === 0;
 
   useEffect(() => {
     if (!promptMenuOpen) {
@@ -165,7 +165,7 @@ export function Toolbar({...props}: ToolbarProps) {
               <ChevronDown id="ai-commit-chevron" className={`size-3.5 transition-transform ${promptMenuOpen ? "rotate-180" : ""}`} />
             </span>
           </button>
-          {promptMenuOpen ? (
+          {promptMenuOpen && !aiDisabled ? (
             <div
               id="ai-commit-prompt-list"
               role="menu"
@@ -233,7 +233,7 @@ export function Toolbar({...props}: ToolbarProps) {
           id="push-all-button"
           size="sm"
           onClick={props.onPushAll}
-          disabled={props.busy || props.repoCount === 0}
+          disabled={props.busy || props.repoCount === 0 || props.pushCount === 0}
           title={syncTitle("push", props.pushCount)}
         >
           <ArrowUpToLine id="push-all-icon" className="size-3.5" />

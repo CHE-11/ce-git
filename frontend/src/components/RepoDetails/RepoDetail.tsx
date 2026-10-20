@@ -11,6 +11,26 @@ import { CommitBox } from "./CommitBox";
 import { PublishDialog } from "../Dialogs/PublishDialog";
 import { DiffView } from "../DiffView";
 
+function CommitCountBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" }) {
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <span
+      id={id}
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ${
+        tone === "pull" ? "bg-sky-950 text-sky-100" : "bg-emerald-950 text-emerald-300"
+      }`}
+    >
+      {count}
+    </span>
+  );
+}
+
+function commitCountLabel(count: number) {
+  return `${count} ${count === 1 ? "commit" : "commits"}`;
+}
+
 type RepoDetailProps = {
   path: string | null;
   status: RepoStatus | null;
@@ -96,6 +116,20 @@ export function RepoDetail({
   const published = status !== null && status.github !== null && !status.error;
   const canPublish = unpublished && Boolean(status?.hasCommits) && !busy;
   const publishTitle = status !== null && !status.hasCommits ? "Commit something before publishing" : "Create this repository on GitHub";
+  const ahead = status?.ahead ?? 0;
+  const behind = status?.behind ?? 0;
+  const untrackedBranch = Boolean(status?.hasCommits) && status?.upstream == null && !status?.detached;
+  const canPush = !busy && (ahead > 0 || untrackedBranch);
+  const pushTitle =
+    ahead > 0
+      ? `Push ${commitCountLabel(ahead)}`
+      : untrackedBranch
+        ? "Push this branch and set its upstream"
+        : "No commits to push";
+  const pullTitle =
+    behind > 0
+      ? `Pull ${commitCountLabel(behind)}. A branch that is ahead is merged.`
+      : "Pull the default branch. A branch that is ahead is merged.";
 
   return (
     <section id="repo-detail" className="flex min-w-0 flex-1 flex-col bg-zinc-950">
@@ -123,13 +157,15 @@ export function RepoDetail({
             ) : null}
             {published ? (
               <>
-                <Button id="repo-pull-button" variant="primary" size="sm" onClick={onPull} disabled={busy} title="Pull the default branch. A branch that is ahead is merged.">
+                <Button id="repo-pull-button" variant="primary" size="sm" onClick={onPull} disabled={busy} title={pullTitle}>
                   <ArrowDownToLine id="repo-pull-icon" className="size-3.5" />
                   <span id="repo-pull-label">Pull</span>
+                  <CommitCountBadge id="repo-pull-count" count={behind} tone="pull" />
                 </Button>
-                <Button id="repo-push-button" variant="secondary" size="sm" onClick={onPush} disabled={busy} title="Push this repository">
+                <Button id="repo-push-button" variant="secondary" size="sm" onClick={onPush} disabled={!canPush} title={pushTitle}>
                   <ArrowUpToLine id="repo-push-icon" className="size-3.5" />
                   <span id="repo-push-label">Push</span>
+                  <CommitCountBadge id="repo-push-count" count={ahead} tone="push" />
                 </Button>
               </>
             ) : null}

@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { ChevronsDown, ChevronsUp, Search, X } from "lucide-react";
+import { ChevronsDown, ChevronsUp, Search } from "lucide-react";
 import {
   useCallback,
   useEffect,

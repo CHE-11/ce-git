@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { RepoStatus, TreeNode } from "../../../../types/git";
 import { domId, repoMatchesFilter, type RepoTreeFilter } from "../../lib/tree";
 import { cn } from "../../lib/cn";
@@ -48,6 +48,12 @@ export function RepoTreeNode({
   const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, [], filter);
 
   const onRowClick = () => {
+    if (depth === 0) {
+      if (isRepo) {
+        onOpen(node.path);
+      }
+      return;
+    }
     if (!isRepo) {
       if (canToggle) {
         onToggle(node.path);
@@ -57,18 +63,26 @@ export function RepoTreeNode({
     onOpen(node.path);
   };
 
+  const onRootLabelClick = (event: MouseEvent<HTMLSpanElement>) => {
+    if (!canToggle) {
+      return;
+    }
+    event.stopPropagation();
+    onToggle(node.path);
+  };
+
   return (
     <div id={domId("tree-node", node.path)}>
       <div
         id={rowId}
         className={cn(
-          "flex items-center gap-1.5 rounded-md py-1 pr-2 text-sm hover:bg-zinc-800/80",
-          (isRepo || canToggle) && "cursor-pointer",
+          "flex items-center gap-1.5 rounded-md py-1 pr-2 text-sm select-none hover:bg-zinc-800/80",
+          (isRepo || (canToggle && depth > 0)) && "cursor-pointer",
           active && "bg-sky-950/70",
           targeted && "ring-1 ring-inset ring-sky-800",
           dimmed && "opacity-50",
         )}
-        style={{ paddingLeft: 8 + depth * 14 }}
+        style={{ paddingLeft: depth === 0 ? 8 : 8 + depth * 14 - 18 }}
         onClick={onRowClick}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -76,7 +90,7 @@ export function RepoTreeNode({
           onContextMenu(node, event.clientX, event.clientY);
         }}
       >
-        {canToggle ? (
+        {depth > 0 && canToggle ? (
           <button
             id={domId("tree-toggle", node.path)}
             type="button"
@@ -92,10 +106,15 @@ export function RepoTreeNode({
               <ChevronRight id={domId("tree-chevron", node.path)} className="size-3.5" />
             )}
           </button>
-        ) : (
+        ) : depth > 0 ? (
           <span id={domId("tree-spacer", node.path)} className="size-4 shrink-0" />
-        )}
-        <span id={domId("tree-name", node.path)} className="shrink-0 text-zinc-100" title={node.path}>
+        ) : null}
+        <span
+          id={domId("tree-name", node.path)}
+          className={cn("shrink-0 text-zinc-100", depth === 0 && canToggle && "cursor-pointer")}
+          title={node.path}
+          onClick={depth === 0 ? onRootLabelClick : undefined}
+        >
           {node.name}
         </span>
         {showRootPath || status || trailing ? (
@@ -103,8 +122,9 @@ export function RepoTreeNode({
             {showRootPath ? (
               <span
                 id={domId("tree-root-path", node.path)}
-                className="min-w-0 truncate text-right text-xs text-zinc-500"
+                className={cn("min-w-0 truncate text-right text-xs text-zinc-500", canToggle && "cursor-pointer")}
                 title={rootPath ?? ""}
+                onClick={onRootLabelClick}
               >
                 {rootPath}
               </span>

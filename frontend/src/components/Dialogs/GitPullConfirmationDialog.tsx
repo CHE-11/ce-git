@@ -48,7 +48,13 @@ export function GitPullConfirmationDialog({ pullPaths, logs, error, onClose, onC
   }
 
   return (
-    <Dialog id="pull-confirm-dialog" title={running ? "Pulling repositories" : phase === "done" ? "Pull finished" : "Pull repositories"} open={open} onClose={close}>
+    <Dialog
+      id="pull-confirm-dialog"
+      title={running ? "Pulling repositories" : phase === "done" ? "Pull finished" : "Pull repositories"}
+      open={open}
+      onClose={close}
+      onEnter={running ? undefined : phase === "done" ? onClose : () => void confirm()}
+    >
       {phase === "confirm" ? (
         <p id="pull-confirm-copy" className="text-sm text-zinc-300">
           Pull {count} repositories. A dirty working tree, or a repository that is already up to date, is skipped. Each repo&apos;s default branch is fast-forwarded from origin.
@@ -58,9 +64,9 @@ export function GitPullConfirmationDialog({ pullPaths, logs, error, onClose, onC
       )}
       <div id="pull-confirm-actions" className="mt-4 flex justify-end gap-2">
         {phase === "done" ? (
-          <Button id="pull-confirm-close" variant="primary" onClick={onClose} onKeyDown={(event) => { if (event.key === "Enter") { onClose(); } }}>
+          <Button id="pull-confirm-close" variant="primary" autoFocus onClick={onClose}>
             <span id="pull-confirm-close-label">Close</span>
-            <kbd id="pull-confirm-close-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">  
+            <kbd id="pull-confirm-close-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
               Enter
             </kbd>
           </Button>
@@ -69,7 +75,7 @@ export function GitPullConfirmationDialog({ pullPaths, logs, error, onClose, onC
             <Button id="pull-confirm-cancel" variant="ghost" onClick={close} disabled={running}>
               <span id="pull-confirm-cancel-label">Cancel</span>
             </Button>
-            <Button id="pull-confirm-button" variant="primary" onClick={() => void confirm()} onKeyDown={(event) => { if (event.key === "Enter") { confirm(); } }} disabled={running}>
+            <Button id="pull-confirm-button" variant="primary" autoFocus onClick={() => void confirm()} disabled={running}>
               <span id="pull-confirm-button-label">{running ? "Pulling…" : "Pull"}</span>
               <kbd id="pull-confirm-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
                 Enter

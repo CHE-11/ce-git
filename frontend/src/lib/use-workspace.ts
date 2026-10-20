@@ -33,6 +33,7 @@ import {
 import { withDefaultPrompts } from "./commit-prompts";
 import { baseName, collectRepos, containingRoot, hideIgnoredFolders, hideRemovedRepos, messageOf, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
 import { applyUserThemeCss, publishAppearance } from "./appearance";
+import { publishToolbarLabels, readToolbarLabels } from "./toolbar-labels";
 import { clampZoom, publishZoom, readZoom, ZOOM_EVENT } from "./zoom";
 
 type SelectMode = "replace" | "toggle" | "range";
@@ -159,6 +160,7 @@ export function useWorkspace() {
   const [pullPaths, setPullPaths] = useState<string[] | null>(null);
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
   const [removedRepos, setRemovedRepos] = useState<string[]>([]);
+  const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
 
   const sharedRef = useRef(false);
   const zoomRef = useRef(readZoom());
@@ -370,6 +372,7 @@ export function useWorkspace() {
         zoomRef.current = clampZoom(settings.fontZoom);
         publishZoom(settings.fontZoom);
         publishAppearance(settings.theme, settings.colorMode);
+        setToolbarLabels(publishToolbarLabels(settings.toolbarLabels));
         setSelectedPrompt(prompt);
         rememberPrompt(prompt);
         setCommitPrompts(prompts);
@@ -1143,6 +1146,7 @@ export function useWorkspace() {
 
   return {
     rootPaths,
+    toolbarLabels,
     trees,
     repos,
     statuses,

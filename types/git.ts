@@ -134,6 +134,7 @@ export interface AppSettings {
   fontZoom: number;
   theme: string;
   colorMode: "dark" | "light" | "system";
+  toolbarLabels: boolean;
   model: string;
   thinking: ThinkingMode;
   prompts: AiPrompts;

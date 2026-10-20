@@ -248,6 +248,7 @@ export function HomePage() {
         busy={busy}
         generating={workspace.generating}
         discovering={workspace.discovering}
+        showLabels={workspace.toolbarLabels}
         onOpenAppSettings={() => setSettingsTab("app")}
         onChooseFolder={() => void workspace.chooseFolder()}
         onRefresh={() => void workspace.refresh()}

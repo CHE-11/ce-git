@@ -48,7 +48,13 @@ export function GitPushConfirmationDialog({ pushPaths, logs, error, onClose, onC
   }
 
   return (
-    <Dialog id="push-confirm-dialog" title={running ? "Pushing repositories" : phase === "done" ? "Push finished" : "Push repositories"} open={open} onClose={close}>
+    <Dialog
+      id="push-confirm-dialog"
+      title={running ? "Pushing repositories" : phase === "done" ? "Push finished" : "Push repositories"}
+      open={open}
+      onClose={close}
+      onEnter={running ? undefined : phase === "done" ? onClose : () => void confirm()}
+    >
       {phase === "confirm" ? (
         <p id="push-confirm-copy" className="text-sm text-zinc-300">
           Push {count} repositories to GitHub. Repos with nothing to push are skipped. A repository with no remote is created as a
@@ -59,7 +65,7 @@ export function GitPushConfirmationDialog({ pushPaths, logs, error, onClose, onC
       )}
       <div id="push-confirm-actions" className="mt-4 flex justify-end gap-2">
         {phase === "done" ? (
-          <Button id="push-confirm-close" variant="primary" onClick={onClose} onKeyDown={(event) => { if (event.key === "Enter") { onClose(); } }}>
+          <Button id="push-confirm-close" variant="primary" autoFocus onClick={onClose}>
             <span id="push-confirm-close-label">Close</span>
             <kbd id="push-confirm-close-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
               Enter
@@ -70,7 +76,7 @@ export function GitPushConfirmationDialog({ pushPaths, logs, error, onClose, onC
             <Button id="push-confirm-cancel" variant="ghost" onClick={close} disabled={running}>
               <span id="push-confirm-cancel-label">Cancel</span>
             </Button>
-            <Button id="push-confirm-button" variant="primary" onClick={() => void confirm()} onKeyDown={(event) => { if (event.key === "Enter") { confirm(); } }} disabled={running}>
+            <Button id="push-confirm-button" variant="primary" autoFocus onClick={() => void confirm()} disabled={running}>
               <span id="push-confirm-button-label">{running ? "Pushing…" : "Push"}</span>
               <kbd id="push-confirm-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
                 Enter

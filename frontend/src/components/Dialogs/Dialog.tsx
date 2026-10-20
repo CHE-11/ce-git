@@ -6,12 +6,21 @@ type DialogProps = {
   title: string;
   open: boolean;
   onClose: () => void;
+  onEnter?: () => void;
   children: ReactNode;
   panelClassName?: string;
   bodyClassName?: string;
 };
 
-export function Dialog({ id, title, open, onClose, children, panelClassName, bodyClassName }: DialogProps) {
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
+export function Dialog({ id, title, open, onClose, onEnter, children, panelClassName, bodyClassName }: DialogProps) {
   const ignoreBackdropUntil = useRef(0);
 
   useEffect(() => {
@@ -23,16 +32,29 @@ export function Dialog({ id, title, open, onClose, children, panelClassName, bod
         onClose();
       }
     };
+    const onEnterKey = (event: KeyboardEvent) => {
+      if (!onEnter || event.key !== "Enter" || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) {
+        return;
+      }
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      onEnter();
+    };
     const onFocus = () => {
       ignoreBackdropUntil.current = Date.now() + 500;
     };
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onEnterKey, true);
     window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onEnterKey, true);
       window.removeEventListener("focus", onFocus);
     };
-  }, [open, onClose]);
+  }, [open, onClose, onEnter]);
 
   if (!open) {
     return null;

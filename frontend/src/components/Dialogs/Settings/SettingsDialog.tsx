@@ -27,6 +27,7 @@ import {
   saveGitSettings,
 } from "../../../lib/git-client";
 import { folderIgnoreError, messageOf, pickedFolderPath } from "../../../lib/tree";
+import { readToolbarLabels } from "../../../lib/toolbar-labels";
 import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, readZoom } from "../../../lib/zoom";
 import { Button } from "../../Button";
 import { Dialog } from "../Dialog";
@@ -62,6 +63,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const openedAppearance = useRef(readAppearance());
   const [theme, setTheme] = useState<ThemeId>(openedAppearance.current.theme);
   const [colorMode, setColorMode] = useState<ColorMode>(openedAppearance.current.colorMode);
+  const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
   const [warning, setWarning] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
   const [folderIgnore, setFolderIgnore] = useState("");
@@ -131,6 +133,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         setColorMode(appearance.colorMode);
         if (settings.shared) {
           setZoom(clampDialogZoom(settings.fontZoom));
+          setToolbarLabels(settings.toolbarLabels);
           applyAppearance(appearance.theme, appearance.colorMode);
         }
       } else {
@@ -236,6 +239,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     setTheme(appearance.theme);
     setColorMode(appearance.colorMode);
     setZoom(clampDialogZoom(preview.fontZoom));
+    setToolbarLabels(preview.toolbarLabels);
     setPrompts(withDefaultPrompts(preview.prompts));
     applyAppearance(appearance.theme, appearance.colorMode);
   };
@@ -293,6 +297,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         fontZoom: zoom,
         theme,
         colorMode,
+        toolbarLabels,
         selectedPrompt,
         prompts,
         folderIgnore,
@@ -517,6 +522,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           zoom={zoom}
           theme={theme}
           colorMode={colorMode}
+          toolbarLabels={toolbarLabels}
           warning={warning}
           error={appError}
           onFolderChange={(value) => {
@@ -528,6 +534,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           onZoomChange={(value) => setZoom(clampDialogZoom(value))}
           onThemeChange={chooseTheme}
           onColorModeChange={chooseColorMode}
+          onToolbarLabelsChange={setToolbarLabels}
           onBrowse={() => void browse()}
           onClearFolder={() => {
             folderPreviewRef.current += 1;

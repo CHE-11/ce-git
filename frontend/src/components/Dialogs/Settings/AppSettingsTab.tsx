@@ -16,6 +16,7 @@ type AppSettingsTabProps = {
   zoom: number;
   theme: ThemeId;
   colorMode: ColorMode;
+  toolbarLabels: boolean;
   warning: string | null;
   error: string | null;
   onFolderChange: (folder: string) => void;
@@ -23,6 +24,7 @@ type AppSettingsTabProps = {
   onZoomChange: (zoom: number) => void;
   onThemeChange: (theme: ThemeId) => void;
   onColorModeChange: (colorMode: ColorMode) => void;
+  onToolbarLabelsChange: (toolbarLabels: boolean) => void;
   onBrowse: () => void;
   onClearFolder: () => void;
   onSubmit: () => void;
@@ -34,6 +36,7 @@ export function AppSettingsTab({
   zoom,
   theme,
   colorMode,
+  toolbarLabels,
   warning,
   error,
   onFolderChange,
@@ -41,6 +44,7 @@ export function AppSettingsTab({
   onZoomChange,
   onThemeChange,
   onColorModeChange,
+  onToolbarLabelsChange,
   onBrowse,
   onClearFolder,
   onSubmit,
@@ -61,7 +65,7 @@ export function AppSettingsTab({
       >
         <p id="app-settings-intro" className="mt-4 text-sm text-zinc-300">
           Point ce-git at one folder, including a shared drive. Workspace folders, hidden repositories, folder ignore
-          patterns, text size, theme, color mode, and AI model, thinking, and prompts are saved there in ce-git.json.
+          patterns, text size, theme, color mode, toolbar labels, and AI model, thinking, and prompts are saved there in ce-git.json.
           ce-git adds{" "}
           {THEME_STYLESHEET_NAME} in that folder when it is missing, with the color overrides commented out, and loads
           the file on top of the theme. The OpenAI key stays in this computer's credential manager,
@@ -215,6 +219,21 @@ export function AppSettingsTab({
           </div>
           <p id="app-settings-mode-hint" className="mt-1 text-xs text-zinc-500">
             Match system follows this computer's light or dark setting.
+          </p>
+
+          <label id="app-settings-toolbar-labels" className="mt-4 flex items-center gap-2 text-sm text-zinc-200">
+            <input
+              id="app-settings-toolbar-labels-input"
+              type="checkbox"
+              checked={toolbarLabels}
+              disabled={busy}
+              onChange={(event) => onToolbarLabelsChange(event.target.checked)}
+              className="size-4 accent-sky-500 disabled:opacity-50"
+            />
+            <span id="app-settings-toolbar-labels-text">Toolbar labels</span>
+          </label>
+          <p id="app-settings-toolbar-labels-hint" className="mt-1 text-xs text-zinc-500">
+            Show a short name under each button on the left side of the toolbar.
           </p>
           <p id="app-settings-theme-css-hint" className="mt-3 text-xs text-zinc-500">
             {themeStylesheet

@@ -55,6 +55,7 @@ export function saveAppSettings(settings: {
   fontZoom: number;
   theme: string;
   colorMode: "dark" | "light" | "system";
+  toolbarLabels: boolean;
   selectedPrompt: number | null;
   prompts: AiPrompts;
   folderIgnore: string;

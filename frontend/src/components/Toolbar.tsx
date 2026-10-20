@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
@@ -10,6 +10,7 @@ type ToolbarProps = {
   busy: boolean;
   generating: boolean;
   discovering: boolean;
+  showLabels: boolean;
   onOpenAppSettings: () => void;
   onChooseFolder: () => void;
   onRefresh: () => void;
@@ -23,6 +24,19 @@ type ToolbarProps = {
 };
 
 const PROMPT_SLOTS = [1, 2, 3] as const;
+
+function ToolbarIconButton({ id, label, showLabel, children, ...props }: ComponentProps<typeof Button> & { label: string; showLabel: boolean }) {
+  return (
+    <Button id={id} {...props} className={showLabel ? "h-auto flex-col gap-0.5 px-1.5 py-1" : undefined}>
+      {children}
+      {showLabel ? (
+        <span id={`${id}-label`} className="text-[8px] leading-none font-normal text-zinc-400">
+          {label}
+        </span>
+      ) : null}
+    </Button>
+  );
+}
 
 export function Toolbar({...props}: ToolbarProps) {
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
@@ -56,27 +70,27 @@ export function Toolbar({...props}: ToolbarProps) {
   return (
     <header id="toolbar" className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
       <div id="toolbar-left" className="flex items-center gap-2">
-        <Button id="app-settings-button" onClick={props.onOpenAppSettings} disabled={props.busy} title="Settings">
+        <ToolbarIconButton id="app-settings-button" label="Settings" onClick={props.onOpenAppSettings} disabled={props.busy} title="Settings" showLabel={props.showLabels}>
           <Settings id="app-settings-icon" className="size-4" />
-        </Button>
-        <Button id="choose-folder-button" onClick={props.onChooseFolder} disabled={props.busy} title="Open folder as tree">
+        </ToolbarIconButton>
+        <ToolbarIconButton id="choose-folder-button" label="Open" onClick={props.onChooseFolder} disabled={props.busy} title="Open folder as tree" showLabel={props.showLabels}>
           <FolderRoot id="choose-folder-icon" className="size-4" />
-        </Button>
-        <Button id="add-root-button" onClick={props.onAddRoot} disabled={props.busy} title="Add folder to existing tree">
+        </ToolbarIconButton>
+        <ToolbarIconButton id="add-root-button" label="Add" onClick={props.onAddRoot} disabled={props.busy} title="Add folder to existing tree" showLabel={props.showLabels}>
           <FolderPlus id="add-root-icon" className="size-4" />
-        </Button>
-        <Button id="create-repo-button" onClick={props.onCreateNewRepo} disabled={props.busy} title="Create a new repo">
+        </ToolbarIconButton>
+        <ToolbarIconButton id="create-repo-button" label="New" onClick={props.onCreateNewRepo} disabled={props.busy} title="Create a new repo" showLabel={props.showLabels}>
           <PlusSquare id="create-repo-icon" className="size-4" />
-        </Button>
-        <Button id="clone-repo-button" onClick={props.onCloneRepo} disabled={props.busy} title="Clone a repository">
+        </ToolbarIconButton>
+        <ToolbarIconButton id="clone-repo-button" label="Clone" onClick={props.onCloneRepo} disabled={props.busy} title="Clone a repository" showLabel={props.showLabels}>
           <FolderGit2 id="clone-repo-icon" className="size-4" />
-        </Button>
-        <Button id="advanced-search-button" onClick={props.onAdvancedSearch} disabled={props.busy || props.rootPaths.length === 0} title="Advanced search">
+        </ToolbarIconButton>
+        <ToolbarIconButton id="advanced-search-button" label="Search" onClick={props.onAdvancedSearch} disabled={props.busy || props.rootPaths.length === 0} title="Advanced search" showLabel={props.showLabels}>
           <Search id="advanced-search-icon" className="size-4" />
-        </Button>
-        <Button id="refresh-button" onClick={props.onRefresh} disabled={props.busy || props.rootPaths.length === 0} title="Refresh repositories">
+        </ToolbarIconButton>
+        <ToolbarIconButton id="refresh-button" label="Refresh" onClick={props.onRefresh} disabled={props.busy || props.rootPaths.length === 0} title="Refresh repositories" showLabel={props.showLabels}>
           <RefreshCw id="refresh-icon" className={`size-4 ${props.discovering ? "animate-spin" : ""}`} />
-        </Button>
+        </ToolbarIconButton>
         <span id="repo-count" className="shrink-0 text-xs text-zinc-500">
           {props.discovering ? "Scanning…" : `${props.repoCount} repos`}
         </span>

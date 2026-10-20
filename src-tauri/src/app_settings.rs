@@ -15,7 +15,7 @@ const SETTINGS_FILE_NAME: &str = "ce-git.json";
 const DEFAULT_VERBOSITY: &str = "quick";
 const DEFAULT_THINKING: &str = "low";
 const DEFAULT_ZOOM: u32 = 100;
-const MIN_ZOOM: u32 = 80;
+const MIN_ZOOM: u32 = 60;
 const MAX_ZOOM: u32 = 160;
 const ZOOM_STEP: u32 = 10;
 const DEFAULT_THEME: &str = "zinc";
@@ -112,6 +112,7 @@ pub struct AppSettings {
     pub font_zoom: u32,
     pub theme: String,
     pub color_mode: String,
+    pub toolbar_labels: bool,
     pub model: String,
     pub thinking: String,
     pub prompts: Vec<String>,
@@ -154,6 +155,7 @@ struct PortableFile {
     font_zoom: u32,
     theme: String,
     color_mode: String,
+    toolbar_labels: bool,
     model: String,
     thinking: String,
     prompts: Vec<String>,
@@ -170,6 +172,7 @@ impl Default for PortableFile {
             font_zoom: DEFAULT_ZOOM,
             theme: DEFAULT_THEME.to_string(),
             color_mode: DEFAULT_COLOR_MODE.to_string(),
+            toolbar_labels: false,
             model: String::new(),
             thinking: DEFAULT_THINKING.to_string(),
             prompts: vec![String::new(); 3],
@@ -209,6 +212,7 @@ pub fn save_app_settings(
     font_zoom: u32,
     theme: String,
     color_mode: String,
+    toolbar_labels: bool,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
     folder_ignore: String,
@@ -248,6 +252,7 @@ pub fn save_app_settings(
                 file.font_zoom = zoom;
                 file.theme = theme;
                 file.color_mode = color_mode;
+                file.toolbar_labels = toolbar_labels;
                 Ok(view_of(&Loaded {
                     folder: String::new(),
                     shared: false,
@@ -271,6 +276,7 @@ pub fn save_app_settings(
                 file.font_zoom = zoom;
                 file.theme = theme;
                 file.color_mode = color_mode;
+                file.toolbar_labels = toolbar_labels;
                 file.selected_prompt = prompt;
                 file.prompts = prompts;
                 file.folder_ignore = folder_ignore;
@@ -484,6 +490,7 @@ fn view_of(loaded: &Loaded) -> AppSettings {
         font_zoom: file.font_zoom,
         theme: file.theme.clone(),
         color_mode: file.color_mode.clone(),
+        toolbar_labels: file.toolbar_labels,
         model: file.model.clone(),
         thinking: file.thinking.clone(),
         prompts: file.prompts.clone(),
@@ -866,6 +873,8 @@ mod tests {
     #[test]
     fn zoom_stays_on_the_ten_percent_steps() {
         assert_eq!(clamp_zoom(0), DEFAULT_ZOOM);
+        assert_eq!(clamp_zoom(50), 60);
+        assert_eq!(clamp_zoom(60), 60);
         assert_eq!(clamp_zoom(80), 80);
         assert_eq!(clamp_zoom(84), 80);
         assert_eq!(clamp_zoom(85), 90);
@@ -955,12 +964,14 @@ mod tests {
         assert_eq!(loaded.prompts.len(), 3);
         assert_eq!(loaded.theme, "zinc");
         assert_eq!(loaded.color_mode, "dark");
+        assert_eq!(loaded.toolbar_labels, false);
         assert_eq!(loaded.folder_ignore, "");
 
         let mut next = loaded;
         next.model = "gpt-test".into();
         next.theme = "nord".into();
         next.color_mode = "light".into();
+        next.toolbar_labels = true;
         next.folder_ignore = "node_modules\n(^|[\\\\/])vendor$".into();
         write_portable_file(&path, &next).unwrap();
         let saved: PortableFile = super::read_portable_file(&path).unwrap().normalize();
@@ -968,6 +979,7 @@ mod tests {
         assert_eq!(saved.root_paths, vec![r"\\server\share\repos"]);
         assert_eq!(saved.theme, "nord");
         assert_eq!(saved.color_mode, "light");
+        assert_eq!(saved.toolbar_labels, true);
         assert_eq!(saved.folder_ignore, "node_modules\n(^|[\\\\/])vendor$");
 
         let mut invalid = saved;

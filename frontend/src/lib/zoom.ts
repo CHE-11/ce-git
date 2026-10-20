@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export const ZOOM_KEY = "ce-git.font-zoom";
 export const ZOOM_EVENT = "ce-git-zoom";
 export const DEFAULT_ZOOM = 100;
-export const MIN_ZOOM = 80;
+export const MIN_ZOOM = 60;
 export const MAX_ZOOM = 160;
 export const ZOOM_STEP = 10;
 

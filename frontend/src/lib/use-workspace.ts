@@ -18,6 +18,7 @@ import {
   initRepo,
   openChange as openFile,
   openInEditor as openFolderInEditor,
+  openInTerminal as openFolderInTerminal,
   revealInExplorer as revealFolderInExplorer,
   patchAppSettings,
   revealChange as revealFile,
@@ -760,6 +761,15 @@ export function useWorkspace() {
     }
   };
 
+  const openInTerminal = async (path: string) => {
+    setError(null);
+    try {
+      await openFolderInTerminal(path);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
   const removeRepo = async (path: string) => {
     if (trees.length === 0 || removedRef.current.some((item) => pathEquals(item, path))) {
       return;
@@ -1159,6 +1169,7 @@ export function useWorkspace() {
     clearSelection,
     removedRepos,
     openInEditor,
+    openInTerminal,
     revealInExplorer,
     removeRepo,
     restoreRemoved,

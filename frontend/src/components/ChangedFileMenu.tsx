@@ -1,4 +1,4 @@
-import { AppWindow, ChevronRight, Copy, ExternalLink, FileX, Files, Folder, FolderSearch, FolderX, Link2, Undo2 } from "lucide-react";
+import { AppWindow, ChevronRight, Copy, ExternalLink, FileX, Files, Folder, FolderSearch, FolderX, Link2, SquareCode, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { FileChange } from "../../../types/git";
@@ -18,6 +18,8 @@ type ChangedFileMenuProps = {
   onReveal: () => void;
   onOpenEditor: () => void;
   onOpenCursor: () => void;
+  onOpenGitignoreCursor: () => void;
+  onOpenGitignoreCode: () => void;
   onOpenDefault: () => void;
   onCopy: (text: string) => void;
   onClose: () => void;
@@ -75,6 +77,8 @@ export function ChangedFileMenu({
   onReveal,
   onOpenEditor,
   onOpenCursor,
+  onOpenGitignoreCursor,
+  onOpenGitignoreCode,
   onOpenDefault,
   onCopy,
   onClose,
@@ -215,7 +219,9 @@ export function ChangedFileMenu({
         disabled={busy}
         onClick={() => run(onDiscard)}
       />
+
       <MenuSeparator id="changed-file-menu-separator-ignore" />
+
       <MenuItem
         id="changed-file-menu-ignore-file"
         icon={<FileX id="changed-file-menu-ignore-file-glyph" className="size-4" aria-hidden="true" />}
@@ -303,7 +309,9 @@ export function ChangedFileMenu({
           onClick={() => run(() => onIgnore("extension", extension))}
         />
       ) : null}
+
       <MenuSeparator id="changed-file-menu-separator-copy" />
+
       <MenuItem
         id="changed-file-menu-copy-absolute"
         icon={<Copy id="changed-file-menu-copy-absolute-glyph" className="size-4" aria-hidden="true" />}
@@ -316,27 +324,48 @@ export function ChangedFileMenu({
         label="Copy relative file path"
         onClick={() => run(() => onCopy(file.path))}
       />
+
       <MenuSeparator id="changed-file-menu-separator-open" />
+
       <MenuItem
         id="changed-file-menu-reveal"
         icon={<FolderSearch id="changed-file-menu-reveal-glyph" className="size-4" aria-hidden="true" />}
         label={revealLabel}
         onClick={() => run(onReveal)}
       />
+
+      <MenuSeparator id="changed-file-menu-separator-open" />
+
+      <MenuItem
+        id="changed-file-menu-gitignore-cursor"
+        icon={<CursorIcon id="changed-file-menu-gitignore-cursor-glyph" />}
+        label="Open gitignore in Cursor"
+        onClick={() => run(onOpenGitignoreCursor)}
+      />
+      <MenuItem
+        id="changed-file-menu-gitignore-code"
+        icon={<SquareCode id="changed-file-menu-gitignore-code-glyph" className="size-4" aria-hidden="true" />}
+        label="Open gitignore in VS Code"
+        onClick={() => run(onOpenGitignoreCode)}
+      />
+
+      <MenuSeparator id="changed-file-menu-separator-open" />
+
       <MenuItem
         id="changed-file-menu-open-editor"
-        icon={<ExternalLink id="changed-file-menu-open-editor-glyph" className="size-4" aria-hidden="true" />}
-        label="Open in external editor"
+        icon={<SquareCode id="changed-file-menu-open-editor-glyph" className="size-4" aria-hidden="true" />}
+        label="Open Repo in VS Code editor"
         disabled={openDisabled}
         onClick={() => run(onOpenEditor)}
       />
       <MenuItem
         id="changed-file-menu-open-cursor"
         icon={<CursorIcon id="changed-file-menu-open-cursor-glyph" />}
-        label="Open in Cursor"
+        label="Open Repo in Cursor"
         disabled={openDisabled}
         onClick={() => run(onOpenCursor)}
       />
+
       <MenuItem
         id="changed-file-menu-open-default"
         icon={<AppWindow id="changed-file-menu-open-default-glyph" className="size-4" aria-hidden="true" />}

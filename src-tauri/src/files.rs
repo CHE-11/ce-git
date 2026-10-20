@@ -84,6 +84,33 @@ pub fn reveal_path(path: &Path) -> Result<(), String> {
     reveal_existing(&target, select_file && path.exists())
 }
 
+pub fn open_in_terminal(path: &Path) -> Result<(), String> {
+    let path = if path.exists() {
+        display_path(path)
+    } else {
+        return Err(format!("Folder does not exist: {}", path.display()));
+    };
+    if !path.is_dir() {
+        return Err(format!("Folder does not exist: {}", path.display()));
+    }
+    #[cfg(windows)]
+    {
+        return windows_shell::open_terminal(&path);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return spawn_command("open", &["-a", "Terminal", &path.to_string_lossy()]);
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let directory = path.to_string_lossy();
+        if spawn_command("x-terminal-emulator", &["--working-directory", &directory]).is_ok() {
+            return Ok(());
+        }
+        return spawn_command("gnome-terminal", &["--working-directory", &directory]);
+    }
+}
+
 pub fn open_with_default(path: &Path) -> Result<(), String> {
     if !path.is_file() {
         return Err(format!("File does not exist: {}", path.display()));
@@ -177,6 +204,26 @@ mod windows_shell {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|error| format!("Could not show {} in Explorer: {error}", path.display()))?;
+        Ok(())
+    }
+
+    pub fn open_terminal(path: &Path) -> Result<(), String> {
+        let mut terminal = Command::new("wt.exe");
+        terminal
+            .arg("-d")
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if terminal.spawn().is_ok() {
+            return Ok(());
+        }
+        Command::new("powershell.exe")
+            .args(["-NoExit", "-NoLogo"])
+            .current_dir(path)
+            .stdin(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("Could not open {} in a terminal: {error}", path.display()))?;
         Ok(())
     }
 

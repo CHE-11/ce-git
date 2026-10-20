@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { RepoStatus, TreeNode } from "../../../types/git";
 import { collectRepos, domId, repoMatchesFilter, type RepoTreeFilter } from "../lib/tree";
 import { cn } from "../lib/cn";
@@ -18,6 +18,7 @@ type RepoTreeNodeProps = {
   onSelect: (path: string, mode: "replace" | "toggle" | "range") => void;
   onSelectRepos: (paths: string[], selected: boolean) => void;
   onContextMenu: (node: TreeNode, x: number, y: number) => void;
+  trailing?: ReactNode;
 };
 
 export function RepoTreeNode({
@@ -34,6 +35,7 @@ export function RepoTreeNode({
   onSelect,
   onSelectRepos,
   onContextMenu,
+  trailing,
 }: RepoTreeNodeProps) {
   const rowId = domId("tree-row", node.path);
   const isRepo = node.kind === "repo";
@@ -143,7 +145,7 @@ export function RepoTreeNode({
         <span id={domId("tree-name", node.path)} className="shrink-0 text-zinc-100" title={node.path}>
           {node.name}
         </span>
-        {showRootPath || status ? (
+        {showRootPath || status || trailing ? (
           <span id={domId("tree-aside", node.path)} className="ml-auto flex min-w-0 items-center justify-end gap-1.5">
             {showRootPath ? (
               <span
@@ -186,6 +188,11 @@ export function RepoTreeNode({
                     !
                   </span>
                 ) : null}
+              </span>
+            ) : null}
+            {trailing ? (
+              <span id={domId("tree-trailing", node.path)} className="shrink-0">
+                {trailing}
               </span>
             ) : null}
           </span>

@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp, Search, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp, Search, X, XCircle } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -78,6 +78,7 @@ type RepoTreeProps = {
   busy: boolean;
   removedRepos: string[];
   onOpenInEditor: (path: string, editor: FolderEditor) => void;
+  onOpenInTerminal: (path: string) => void;
   onRevealInExplorer: (path: string) => void;
   onRemoveRepo: (path: string) => void;
   onDeleteFolder: (path: string) => void;
@@ -200,6 +201,7 @@ export function RepoTree({
   busy,
   removedRepos,
   onOpenInEditor,
+  onOpenInTerminal,
   onRevealInExplorer,
   onRemoveRepo,
   onDeleteFolder,
@@ -383,66 +385,7 @@ export function RepoTree({
           </Button>
         ) : null}
       </form>
-      <div id="repo-tree-header" className="flex items-center justify-between px-3 py-2 h-10">
-        {selectedCount > 0 ? (
-          <div id="selection-actions" className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Button id="pull-selected-button" variant="primary" size="xs" onClick={onPullSelected} disabled={busy}>
-              <ArrowDownToLine id="pull-selected-icon" className="size-3.5" />
-              <span id="pull-selected-label">Pull</span>
-            </Button>
-            <Button id="push-selected-button" variant="secondary" size="xs" onClick={onPushSelected} disabled={busy}>
-              <ArrowUpToLine id="push-selected-icon" className="size-3.5" />
-              <span id="push-selected-label">Push</span>
-            </Button>
-            <Button id="clear-selection-button" variant="destructive" size="xs" onClick={onClearSelection} disabled={busy}>
-              <X id="clear-selection-icon" className="size-3.5" />
-              <span id="clear-selection-label">Clear</span>
-            </Button>
-          </div>
-        ) : (
-          <div id="repo-tree-heading" className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Button
-              id="pull-all-button"
-              variant="primary"
-              size="xs"
-              onClick={onPullAll}
-              disabled={busy || repoCount === 0}
-              title={syncTitle("pull", pullCount)}
-            >
-              <ArrowDownToLine id="pull-all-icon" className="size-3.5" />
-              <span id="pull-all-label">Pull all</span>
-              <SyncBadge id="pull-all-count" count={pullCount} tone="pull" />
-            </Button>
-            <Button
-              id="push-all-button"
-              size="xs"
-              onClick={onPushAll}
-              disabled={busy || repoCount === 0}
-              title={syncTitle("push", pushCount)}
-            >
-              <ArrowUpToLine id="push-all-icon" className="size-3.5" />
-              <span id="push-all-label">Push all</span>
-              <SyncBadge id="push-all-count" count={pushCount} tone="push" />
-            </Button>
-          </div>
-        )}
 
-        <Button
-          id="repo-tree-collapse-button"
-          variant="ghost"
-          title={allCollapsed ? "Expand all" : "Collapse all"}
-          aria-label={allCollapsed ? "Expand all" : "Collapse all"}
-          disabled={trees.length === 0}
-          onClick={toggleFolders}
-          className="h-7 px-1.5"
-        >
-          {allCollapsed ? (
-            <ChevronsDown id="repo-tree-collapse-icon" className="size-4" />
-          ) : (
-            <ChevronsUp id="repo-tree-collapse-icon" className="size-4" />
-          )}
-        </Button>
-      </div>
       <div id="repo-tree-filters" className="flex flex-wrap items-center justify-between gap-0.5 border-b border-zinc-800 px-1.5 select-none h-6.75">
         <div className="flex flex-wrap items-center justify-center gap-0.5 select-none">
           <RepoTreeFilterStat
@@ -481,15 +424,64 @@ export function RepoTree({
             title="Show repositories with no remote. Push creates a private GitHub repo when the GitHub CLI is available."
             onClick={() => toggleFilter("unpublished")}
           />
-
         </div>
-
-        {filter ? (
-          <Button id="repo-tree-filter-clear" className="ml-2" variant="destructive" size="xs" onClick={() => onFilter(null)}>
-            Clear
+        {(filter || query) ? (
+          <Button id="clear-filter-button" variant="destructive" size="xs" onClick={() => {
+            onFilter(null);
+            setQuery("");
+          }}>
+            <span id="clear-filter-label">Clear</span>
           </Button>
         ) : null}
+
       </div>
+
+      <div id="repo-tree-header" className="w-full flex items-center justify-center px-3 py-2 h-10 border-b border-zinc-800">
+        {selectedCount > 0 ? (
+          <div id="selection-actions" className="flex min-w-0 w-full justify-center items-center gap-1.5">
+            <Button id="pull-selected-button" variant="primary" size="xs" onClick={onPullSelected} disabled={busy}>
+              <ArrowDownToLine id="pull-selected-icon" className="size-3.5" />
+              <span id="pull-selected-label">Pull</span>
+            </Button>
+            <Button id="push-selected-button" variant="secondary" size="xs" onClick={onPushSelected} disabled={busy}>
+              <ArrowUpToLine id="push-selected-icon" className="size-3.5" />
+              <span id="push-selected-label">Push</span>
+            </Button>
+            <Button id="clear-selection-button" variant="destructive" size="xs" onClick={onClearSelection} disabled={busy}>
+              <XCircle id="clear-selection-icon" className="size-3.5" />
+              <span id="clear-selection-label">Deselect All</span>
+            </Button>
+          </div>
+        ) : (
+          <div id="repo-tree-heading" className="flex min-w-0 flex-1 justify-center items-center gap-1.5">
+            <Button
+              id="pull-all-button"
+              variant="primary"
+              size="xs"
+              onClick={onPullAll}
+              disabled={busy || repoCount === 0}
+              title={syncTitle("pull", pullCount)}
+            >
+              <ArrowDownToLine id="pull-all-icon" className="size-3.5" />
+              <span id="pull-all-label">Pull all</span>
+              <SyncBadge id="pull-all-count" count={pullCount} tone="pull" />
+            </Button>
+            <Button
+              id="push-all-button"
+              size="xs"
+              onClick={onPushAll}
+              disabled={busy || repoCount === 0}
+              title={syncTitle("push", pushCount)}
+            >
+              <ArrowUpToLine id="push-all-icon" className="size-3.5" />
+              <span id="push-all-label">Push all</span>
+              <SyncBadge id="push-all-count" count={pushCount} tone="push" />
+            </Button>
+          </div>
+        )}
+
+      </div>
+
       <div id="repo-tree-scroll" className="min-h-0 flex-1 overflow-auto pr-2 pb-3 pl-1">
         {rootPaths.length === 0 ? (
           <p id="repo-tree-empty" className="px-3 py-6 text-sm text-zinc-500">
@@ -521,6 +513,32 @@ export function RepoTree({
                   onSelect={onSelect}
                   onSelectRepos={onSelectRepos}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
+                  trailing={
+                    <Button
+                      id={shownTrees.length === 1 ? "repo-tree-collapse-button" : `repo-tree-collapse-button-${index}`}
+                      variant="ghost"
+                      title={allCollapsed ? "Expand all" : "Collapse all"}
+                      aria-label={allCollapsed ? "Expand all" : "Collapse all"}
+                      disabled={trees.length === 0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFolders();
+                      }}
+                      className="h-7 px-1.5 -mr-1.5"
+                    >
+                      {allCollapsed ? (
+                        <ChevronsDown
+                          id={shownTrees.length === 1 ? "repo-tree-collapse-icon" : `repo-tree-collapse-icon-${index}`}
+                          className="size-4"
+                        />
+                      ) : (
+                        <ChevronsUp
+                          id={shownTrees.length === 1 ? "repo-tree-collapse-icon" : `repo-tree-collapse-icon-${index}`}
+                          className="size-4"
+                        />
+                      )}
+                    </Button>
+                  }
                 />
               </div>
             ))}
@@ -594,6 +612,11 @@ export function RepoTree({
             const path = menu.node.path;
             setMenu(null);
             onOpenInEditor(path, editor);
+          }}
+          onOpenTerminal={() => {
+            const path = menu.node.path;
+            setMenu(null);
+            onOpenInTerminal(path);
           }}
           onReveal={() => {
             const path = menu.node.path;

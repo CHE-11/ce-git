@@ -157,6 +157,10 @@ export function revealInExplorer(path: string) {
   return invoke<void>("reveal_in_explorer", { path });
 }
 
+export function openInTerminal(path: string) {
+  return invoke<void>("open_in_terminal", { path });
+}
+
 export function initRepo(path: string) {
   return invoke<void>("init_repo", { path });
 }
@@ -166,7 +170,7 @@ export function deleteFolder(root: string, path: string) {
 }
 
 export type IgnoreKind = "file" | "folder" | "extension";
-export type ChangeOpenMode = "editor" | "cursor" | "default";
+export type ChangeOpenMode = "editor" | "cursor" | "code" | "default";
 
 export function discardChange(repo: string, path: string) {
   return invoke<void>("discard_change", { repo, path });

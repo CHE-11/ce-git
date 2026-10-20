@@ -1,4 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { ChevronDown, Sparkles } from "lucide-react";
+import { useState } from "react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
 
@@ -37,6 +38,7 @@ export function CommitBox({
 }: CommitBoxProps) {
   const locked = !dirty || busy;
   const filledPrompts = PROMPT_SLOTS.filter((slot) => prompts[slot - 1]?.trim());
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <form
@@ -44,12 +46,30 @@ export function CommitBox({
       className="border-t border-zinc-800 bg-zinc-950 p-3"
       onSubmit={(event) => {
         event.preventDefault();
-        onCommit();
+        if (!collapsed) onCommit();
       }}
     >
-      <label id="commit-message-label" htmlFor="commit-message" className="mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-        Commit message
-      </label>
+      <div id="commit-box-header" className={`flex items-center justify-between gap-2 ${collapsed ? "" : "mb-1"}`}>
+        <label id="commit-message-label" htmlFor="commit-message" className="block text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+          Commit message
+        </label>
+        <button
+          id="commit-box-toggle"
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls="commit-box-body"
+          title={collapsed ? "Expand commit box" : "Collapse commit box"}
+          onClick={() => setCollapsed((open) => !open)}
+          className="rounded p-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+        >
+          <ChevronDown
+            id="commit-box-toggle-icon"
+            className={`size-4 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+          />
+        </button>
+      </div>
+      {collapsed ? null : (
+      <div id="commit-box-body">
       <textarea
         id="commit-message"
         value={message}
@@ -124,6 +144,8 @@ export function CommitBox({
           <span id="commit-button-label">Commit</span>
         </Button>
       </div>
+      </div>
+      )}
     </form>
   );
 }

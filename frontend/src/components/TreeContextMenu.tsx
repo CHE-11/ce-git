@@ -1,4 +1,4 @@
-import { ExternalLink, FolderMinus, FolderSearch, Trash2, Undo2 } from "lucide-react";
+import { ExternalLink, FolderMinus, FolderSearch, Terminal, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { TreeNode } from "../../../types/git";
@@ -15,6 +15,7 @@ type TreeContextMenuProps = {
   removedCount: number;
   actionsDisabled: boolean;
   onOpen: (editor: FolderEditor) => void;
+  onOpenTerminal: () => void;
   onReveal: () => void;
   onRemove: () => void;
   onRestore: () => void;
@@ -67,6 +68,7 @@ export function TreeContextMenu({
   removedCount,
   actionsDisabled,
   onOpen,
+  onOpenTerminal,
   onReveal,
   onRemove,
   onRestore,
@@ -74,7 +76,7 @@ export function TreeContextMenu({
   onClose,
 }: TreeContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [point, setPoint] = useState(() => clampToViewport(x, y, 240, 248));
+  const [point, setPoint] = useState(() => clampToViewport(x, y, 240, 280));
   const isRepo = node.kind === "repo";
   const isRoot = rootPaths.some((root) => pathEquals(node.path, root));
 
@@ -167,6 +169,19 @@ export function TreeContextMenu({
         <CursorIcon id="tree-context-open-cursor-icon" />
         <span id="tree-context-open-cursor-label">Open in Cursor</span>
       </button>
+      {isRepo ? (
+        <button
+          id="tree-context-terminal"
+          type="button"
+          role="menuitem"
+          className={itemClass}
+          title="Open this repository in a terminal"
+          onClick={onOpenTerminal}
+        >
+          <Terminal id="tree-context-terminal-icon" className="size-4 shrink-0 text-zinc-400" />
+          <span id="tree-context-terminal-label">Open in terminal</span>
+        </button>
+      ) : null}
       <button
         id="tree-context-reveal"
         type="button"

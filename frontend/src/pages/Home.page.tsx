@@ -87,6 +87,7 @@ export function HomePage() {
           busy={busy}
           removedRepos={workspace.removedRepos}
           onOpenInEditor={(path, editor) => void workspace.openInEditor(path, editor)}
+          onOpenInTerminal={(path) => void workspace.openInTerminal(path)}
           onRevealInExplorer={(path) => void workspace.revealInExplorer(path)}
           onRemoveRepo={(path) => void workspace.removeRepo(path)}
           onDeleteFolder={(path) => void workspace.deleteFolder(path)}

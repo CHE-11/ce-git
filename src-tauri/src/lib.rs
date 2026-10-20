@@ -262,6 +262,13 @@ async fn ignore_change(repo: String, kind: String, path: String) -> Result<(), S
 }
 
 #[tauri::command]
+async fn open_in_terminal(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || files::open_in_terminal(Path::new(&path)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn reveal_in_explorer(path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || files::reveal_path(Path::new(&path)))
         .await
@@ -285,6 +292,7 @@ async fn open_change(repo: String, path: String, mode: String) -> Result<(), Str
         match mode.as_str() {
             "editor" => crate::editor::open_file_in_editor(&full, "default"),
             "cursor" => crate::editor::open_file_in_editor(&full, "cursor"),
+            "code" => crate::editor::open_file_in_editor(&full, "code"),
             "default" => files::open_with_default(&full),
             _ => Err("Unknown open mode.".into()),
         }
@@ -331,6 +339,7 @@ pub fn run() {
             batch_commit,
             publish_repo,
             open_in_editor,
+            open_in_terminal,
             reveal_in_explorer,
             init_repo,
             delete_path,

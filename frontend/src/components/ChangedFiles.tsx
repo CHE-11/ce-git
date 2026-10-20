@@ -83,6 +83,27 @@ function fileName(path: string) {
   return path.split(/[/\\]/).pop() ?? path;
 }
 
+const STATUS_MARK: Record<string, { letter: string; label: string; className: string }> = {
+  added: { letter: "A", label: "Added", className: "text-emerald-400" },
+  modified: { letter: "M", label: "Modified", className: "text-amber-300" },
+  deleted: { letter: "D", label: "Deleted", className: "text-rose-400" },
+  untracked: { letter: "U", label: "Untracked", className: "text-lime-400" },
+  renamed: { letter: "R", label: "Renamed", className: "text-sky-400" },
+  copied: { letter: "C", label: "Copied", className: "text-cyan-400" },
+  unmerged: { letter: "!", label: "Unmerged", className: "text-violet-400" },
+  typechange: { letter: "T", label: "Type change", className: "text-fuchsia-400" },
+};
+
+function statusMark(status: string) {
+  return (
+    STATUS_MARK[status] ?? {
+      letter: status.slice(0, 1).toUpperCase() || "?",
+      label: status.charAt(0).toUpperCase() + status.slice(1),
+      className: "text-zinc-400",
+    }
+  );
+}
+
 export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, onSelect }: ChangedFilesProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
@@ -254,6 +275,7 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
           {visibleFiles.map((file) => {
             const selected = file.path === selectedPath;
             const key = `${file.status}-${file.path}`;
+            const mark = statusMark(file.status);
             return (
               <li id={domId("changed-file-item", key)} key={`${file.status}-${file.staged}-${file.path}`}>
                 <button
@@ -274,9 +296,14 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
                 >
                   <span
                     id={domId("changed-file-status", key)}
-                    className="w-16 shrink-0 text-xs text-amber-300"
+                    title={mark.label}
+                    aria-label={mark.label}
+                    className={cn(
+                      "w-4 shrink-0 text-center text-xs font-semibold",
+                      mark.className,
+                    )}
                   >
-                    {file.status}
+                    {mark.letter}
                   </span>
                   <span id={domId("changed-file-path", key)} className="truncate text-zinc-200" title={file.path}>
                     {file.path}
@@ -330,6 +357,8 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
           onReveal={() => handlers.reveal(menu.file.path)}
           onOpenEditor={() => handlers.open(menu.file.path, "editor")}
           onOpenCursor={() => handlers.open(menu.file.path, "cursor")}
+          onOpenGitignoreCursor={() => handlers.open(".gitignore", "cursor")}
+          onOpenGitignoreCode={() => handlers.open(".gitignore", "code")}
           onOpenDefault={() => handlers.open(menu.file.path, "default")}
           onCopy={(text) => {
             void navigator.clipboard.writeText(text).catch((caught) => {

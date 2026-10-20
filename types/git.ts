@@ -144,3 +144,25 @@ export interface AppSettings {
   /** One regular expression per line. Matching folders are hidden in the repository tree. */
   folderIgnore: string;
 }
+
+export type GraphRefKind = "head" | "branch" | "remote" | "tag";
+
+export interface GraphRef {
+  name: string;
+  kind: GraphRefKind;
+}
+
+export interface GraphCommit {
+  hash: string;
+  parents: string[];
+  subject: string;
+  author: string;
+  date: string;
+  refs: GraphRef[];
+}
+
+export interface RepoGraph {
+  head: string | null;
+  commits: GraphCommit[];
+  truncated: boolean;
+}

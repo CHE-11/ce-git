@@ -11,6 +11,7 @@ import type {
   OpenAiModel,
   PublishOptions,
   RepoDiff,
+  RepoGraph,
   RepoSearchResult,
   RepoStatus,
   ThinkingMode,
@@ -122,6 +123,10 @@ export function repoStatuses(paths: string[]) {
 
 export function repoDiff(path: string) {
   return invoke<RepoDiff>("repo_diff", { path });
+}
+
+export function repoGraph(path: string, limit: number) {
+  return invoke<RepoGraph>("repo_graph", { path, limit });
 }
 
 export function searchRepos(request: {

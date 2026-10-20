@@ -10,6 +10,7 @@ import { ActivityLog } from "../components/ActivityLog";
 import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RestoreDialog } from "../components/Dialogs/RestoreDialog";
+import { GitGraph } from "../components/GitGraph/GitGraph";
 import { RepoDetail } from "../components/RepoDetails/RepoDetail";
 import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
@@ -28,6 +29,7 @@ export function HomePage() {
   const [pendingAction, setPendingAction] = useState<"clear" | null>(null);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [graphOpen, setGraphOpen] = useState(false);
 
   useEffect(() => {
     document.title = "ce-git";
@@ -305,6 +307,16 @@ export function HomePage() {
           filter={treeFilter}
           onFilter={setTreeFilter}
         />
+        {graphOpen && workspace.activePath ? (
+          <GitGraph
+            path={workspace.activePath}
+            refreshToken={
+              workspace.activeStatus
+                ? `${workspace.activeStatus.branch}:${workspace.activeStatus.ahead}:${workspace.activeStatus.behind}:${workspace.activeStatus.dirty ? 1 : 0}`
+                : ""
+            }
+          />
+        ) : null}
         <RepoDetail
           path={workspace.activePath}
           status={workspace.activeStatus}
@@ -326,6 +338,8 @@ export function HomePage() {
           onPush={workspace.requestPushActive}
           onPublish={workspace.publishActive}
           menuEditors={workspace.menuEditors}
+          graphOpen={graphOpen}
+          onToggleGraph={() => setGraphOpen((open) => !open)}
           fileHandlers={{
             discard: (file) => {
               if (workspace.activePath) {

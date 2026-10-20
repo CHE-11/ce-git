@@ -6,6 +6,8 @@ type BadgeProps = {
   children: ReactNode;
   tone?: "neutral" | "green" | "blue" | "amber" | "red" | "violet" | "grey";
   onClick?: () => void;
+  title?: string;
+  pressed?: boolean;
 };
 
 const tones = {
@@ -19,9 +21,27 @@ const tones = {
   clickable: "cursor-pointer hover:bg-zinc-700 hover:text-zinc-200",
 };
 
-export function Badge({ id, children, tone = "neutral", onClick }: BadgeProps) {
+export function Badge({ id, children, tone = "neutral", onClick, title, pressed }: BadgeProps) {
   return (
-    <span id={id} className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium", tones[tone], onClick ? tones.clickable : "")} onClick={onClick}>
+    <span
+      id={id}
+      title={title}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-pressed={onClick ? Boolean(pressed) : undefined}
+      className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium", tones[tone], onClick ? tones.clickable : "")}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
       {children}
     </span>
   );

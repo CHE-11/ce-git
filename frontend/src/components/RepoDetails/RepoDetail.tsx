@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, GitGraph, Upload } from "lucide-react";
 import { useState } from "react";
 import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
@@ -33,6 +33,8 @@ type RepoDetailProps = {
   onPublish: (options: PublishOptions) => Promise<void>;
   fileHandlers: ChangeFileHandlers;
   menuEditors: readonly EditorId[];
+  graphOpen: boolean;
+  onToggleGraph: () => void;
 };
 
 export function RepoDetail({
@@ -57,6 +59,8 @@ export function RepoDetail({
   onPublish,
   fileHandlers,
   menuEditors,
+  graphOpen,
+  onToggleGraph,
 }: RepoDetailProps) {
   const files = diff?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -128,6 +132,9 @@ export function RepoDetail({
           {path}
         </p>
         <div id="repo-detail-badges" className="mt-2 flex flex-wrap gap-1.5">
+          <Badge id="badge-graph" tone={graphOpen ? "violet" : "grey"} title="Commit graph" pressed={graphOpen} onClick={onToggleGraph}>
+            <GitGraph className="size-3.5" />
+          </Badge>
           <Badge id="badge-branch" tone="blue">
             {status?.branch ?? "…"}
           </Badge>

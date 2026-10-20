@@ -127,12 +127,31 @@ async fn list_openai_models(
 }
 
 #[tauri::command]
-fn discover_repos(root: String) -> Result<TreeNode, String> {
-    git::discover(Path::new(&root))
+async fn discover_repos(root: String) -> Result<TreeNode, String> {
+    // Synchronous commands run on the WebView UI thread. A click while that
+    // thread is inside a scan crashes the window, so this stays off-thread.
+    spawn_git(move || git::discover(Path::new(&root))).await?
 }
 
 #[tauri::command]
-fn repo_statuses(paths: Vec<String>) -> Vec<RepoStatus> {
+async fn repo_statuses(paths: Vec<String>) -> Result<Vec<RepoStatus>, String> {
+    spawn_git(move || repo_statuses_blocking(paths)).await
+}
+
+#[tauri::command]
+async fn repo_diff(path: String) -> Result<RepoDiff, String> {
+    spawn_git(move || read_repo_diff(Path::new(&path))).await?
+}
+
+async fn spawn_git<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+fn repo_statuses_blocking(paths: Vec<String>) -> Vec<RepoStatus> {
     std::thread::scope(|scope| {
         let mut statuses = Vec::with_capacity(paths.len());
         for chunk in paths.chunks(8) {
@@ -151,11 +170,6 @@ fn repo_statuses(paths: Vec<String>) -> Vec<RepoStatus> {
         }
         statuses
     })
-}
-
-#[tauri::command]
-fn repo_diff(path: String) -> Result<RepoDiff, String> {
-    read_repo_diff(Path::new(&path))
 }
 
 #[tauri::command]

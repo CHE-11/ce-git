@@ -5,6 +5,7 @@ import { AiReviewDialog } from "../components/Dialogs/AiReviewDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
+import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RepoDetail } from "../components/RepoDetail";
 import { RepoTree } from "../components/RepoTree";
@@ -19,7 +20,7 @@ export function HomePage() {
   const [createRepoOpen, setCreateRepoOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [treeFilter, setTreeFilter] = useState<RepoTreeFilter | null>(null);
-  const [pendingAction, setPendingAction] = useState<"pull" | "clear" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"clear" | null>(null);
 
   useEffect(() => {
     document.title = "ce-git";
@@ -55,7 +56,7 @@ export function HomePage() {
         onOpenAppSettings={() => setSettingsTab("app")}
         onChooseFolder={() => void workspace.chooseFolder()}
         onRefresh={() => void workspace.refresh()}
-        onPullAll={() => setPendingAction("pull")}
+        onPullAll={workspace.requestPullAll}
         onPushAll={workspace.requestPushAll}
         onAiCommitPrompt={workspace.startAiForDirty}
         onAddRoot={() => void workspace.addRootFolder()}
@@ -175,18 +176,19 @@ export function HomePage() {
         }}
       />
       <AiReviewDialog open={workspace.aiOpen} drafts={workspace.drafts} generating={workspace.generating} busy={busy} onClose={() => workspace.setAiOpen(false)} onChange={workspace.updateDraft} onToggle={workspace.toggleDraft} onCommit={() => void workspace.commitDrafts()} />
-      <GitPushConfirmationDialog pushPaths={workspace.pushPaths} onClose={() => workspace.setPushPaths(null)} onConfirm={workspace.confirmPush} />
-      <ActionConfirmDialog
-        id="pull-confirm-dialog"
-        title="Pull repositories"
-        copy={`Pull ${workspace.repos.length} repositories. A dirty working tree is skipped. Each repo's default branch is fast-forwarded from origin.`}
-        confirmLabel="Pull"
-        open={pendingAction === "pull"}
-        onClose={() => setPendingAction(null)}
-        onConfirm={() => {
-          setPendingAction(null);
-          void workspace.pullAll();
-        }}
+      <GitPullConfirmationDialog
+        pullPaths={workspace.pullPaths}
+        logs={workspace.logs}
+        error={workspace.error}
+        onClose={() => workspace.setPullPaths(null)}
+        onConfirm={workspace.confirmPull}
+      />
+      <GitPushConfirmationDialog
+        pushPaths={workspace.pushPaths}
+        logs={workspace.logs}
+        error={workspace.error}
+        onClose={() => workspace.setPushPaths(null)}
+        onConfirm={workspace.confirmPush}
       />
       <ActionConfirmDialog
         id="clear-commits-dialog"

@@ -376,9 +376,6 @@ export function RepoTree({
             <h2 id="repo-tree-title" className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
               Repositories
             </h2>
-            <span id="repo-tree-status" className="ml-auto text-xs text-zinc-600">
-              {discovering ? "Scanning…" : statusLoading ? "Checking status…" : ""}
-            </span>
           </div>
         )}
 

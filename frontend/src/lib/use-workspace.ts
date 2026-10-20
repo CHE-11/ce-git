@@ -36,6 +36,7 @@ type SelectMode = "replace" | "toggle" | "range";
 
 const VERBOSITY_KEY = "ce-git.commit-verbosity";
 const PROMPT_KEY = "ce-git.commit-prompt";
+const CHECK_INTERVAL_MS = 10_000;
 
 function readPromptSlot(): number {
   try {
@@ -63,6 +64,48 @@ function joinCommit(subject: string, description: string) {
 
 function samePaths(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((path, index) => pathEquals(path, right[index] ?? ""));
+}
+
+function treeKey(node: TreeNode): string {
+  return `${node.kind}\u0000${node.path}\u0000${node.children.map(treeKey).join("\u0001")}`;
+}
+
+function sameTrees(left: readonly TreeNode[], right: readonly TreeNode[]) {
+  return left.length === right.length && left.every((node, index) => treeKey(node) === treeKey(right[index]));
+}
+
+function statusKey(status: RepoStatus) {
+  return [
+    status.path,
+    status.name,
+    status.branch,
+    status.detached,
+    status.upstream ?? "",
+    status.github,
+    status.ahead,
+    status.behind,
+    status.dirty,
+    status.staged,
+    status.unstaged,
+    status.untracked,
+    status.defaultBranch ?? "",
+    status.error ?? "",
+  ].join("\u0000");
+}
+
+function sameStatuses(current: Record<string, RepoStatus>, rows: readonly RepoStatus[]) {
+  const keys = Object.keys(current);
+  return keys.length === rows.length && rows.every((row) => current[row.path] && statusKey(current[row.path]) === statusKey(row));
+}
+
+function diffKey(diff: RepoDiff | null) {
+  if (!diff) {
+    return "";
+  }
+  const files = diff.files
+    .map((file) => `${file.path}\u0000${file.previousPath ?? ""}\u0000${file.status}\u0000${file.staged}`)
+    .join("\u0001");
+  return `${diff.truncated}\u0000${diff.patch}\u0000${files}`;
 }
 
 function rememberPrompt(value: number) {
@@ -109,6 +152,7 @@ export function useWorkspace() {
   const [generating, setGenerating] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [drafts, setDrafts] = useState<AiCommitDraft[]>([]);
+  const [pullPaths, setPullPaths] = useState<string[] | null>(null);
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
   const [removedRepos, setRemovedRepos] = useState<string[]>([]);
 
@@ -122,6 +166,16 @@ export function useWorkspace() {
   const repoPathsRef = useRef<string[]>([]);
   const logGeneration = useRef(0);
   const seenGeneration = useRef(0);
+  const busyRef = useRef(false);
+  const discoveringRef = useRef(false);
+  const gitReadyRef = useRef(true);
+  const scanRef = useRef<Promise<string[]> | null>(null);
+  const statusPollRef = useRef<Promise<void> | null>(null);
+  const statusesRef = useRef<Record<string, RepoStatus>>({});
+  const activePathRef = useRef<string | null>(null);
+  const scanErrorRef = useRef<string | null>(null);
+  const interactionEpoch = useRef(0);
+  const pointerDownRef = useRef(0);
 
   const repos = useMemo(() => trees.flatMap((node) => collectRepos(node)), [trees]);
   const repoPaths = useMemo(() => repos.map((repo) => repo.path), [repos]);
@@ -130,19 +184,46 @@ export function useWorkspace() {
     repoPathsRef.current = repoPaths;
   }, [repoPaths]);
 
-  const loadStatuses = useCallback(async (paths: string[]) => {
+  const beginWork = (action: string) => {
+    interactionEpoch.current += 1;
+    busyRef.current = true;
+    setBusyAction(action);
+  };
+
+  const endWork = () => {
+    busyRef.current = false;
+    setBusyAction(null);
+  };
+
+  useEffect(() => {
+    gitReadyRef.current = gitReady;
+  }, [gitReady]);
+
+  useEffect(() => {
+    activePathRef.current = activePath;
+  }, [activePath]);
+
+  useEffect(() => {
+    statusesRef.current = statuses;
+  }, [statuses]);
+
+  const loadStatuses = useCallback(async (paths: string[], quiet = false) => {
     if (paths.length === 0) {
-      setStatuses({});
+      setStatuses((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
     }
-    setStatusLoading(true);
+    if (!quiet) {
+      setStatusLoading(true);
+    }
     try {
       const rows = await repoStatuses(paths);
-      setStatuses(Object.fromEntries(rows.map((row) => [row.path, row])));
+      setStatuses((current) => (sameStatuses(current, rows) ? current : Object.fromEntries(rows.map((row) => [row.path, row]))));
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setStatusLoading(false);
+      if (!quiet) {
+        setStatusLoading(false);
+      }
     }
   }, []);
 
@@ -153,53 +234,90 @@ export function useWorkspace() {
       return next ? [next] : [];
     });
     const found = visible.flatMap((node) => collectRepos(node));
-    setTrees(visible);
-    setSelectedPaths((current) => current.filter((path) => found.some((repo) => pathEquals(repo.path, path))));
-    setActivePath((current) => {
-      if (current && found.some((repo) => pathEquals(repo.path, current))) {
-        return current;
-      }
-      return found[0]?.path ?? null;
+    setTrees((current) => (sameTrees(current, visible) ? current : visible));
+    setSelectedPaths((current) => {
+      const next = current.filter((path) => found.some((repo) => pathEquals(repo.path, path)));
+      return next.length === current.length ? current : next;
     });
+    const currentActive = activePathRef.current;
+    const nextActive =
+      currentActive && found.some((repo) => pathEquals(repo.path, currentActive)) ? currentActive : (found[0]?.path ?? null);
+    activePathRef.current = nextActive;
+    setActivePath(nextActive);
     return found.map((repo) => repo.path);
   }, []);
 
   const reloadTrees = useCallback(
-    async (roots: string[]) => {
-      if (roots.length === 0) {
-        sourceTreesRef.current = [];
-        setTrees([]);
-        setStatuses({});
-        setSelectedPaths([]);
-        setActivePath(null);
-        return [];
-      }
-      setDiscovering(true);
-      setError(null);
-      try {
-        const results = await Promise.all(
-          roots.map(async (root) => {
-            try {
-              const discovered = await discoverRepos(root);
-              return { tree: hideRemovedRepos(discovered, removedRef.current), error: null as string | null };
-            } catch (caught) {
-              return { tree: null, error: messageOf(caught) };
-            }
-          }),
-        );
-        const failures = results.flatMap((result) => (result.error ? [result.error] : []));
-        if (failures.length > 0) {
-          setError(failures.join(" "));
+    async (roots: string[], quiet = false) => {
+      if (scanRef.current) {
+        if (quiet) {
+          return repoPathsRef.current;
         }
-        const nextTrees = results.flatMap((result) => (result.tree ? [result.tree] : []));
-        const foundPaths = applyVisibleTrees(nextTrees);
-        await loadStatuses(foundPaths);
-        return foundPaths;
-      } catch (caught) {
-        setError(messageOf(caught));
-        return [];
+        await scanRef.current.catch(() => []);
+      }
+
+      const run = (async () => {
+        interactionEpoch.current += 1;
+        if (roots.length === 0) {
+          sourceTreesRef.current = [];
+          setTrees([]);
+          setStatuses({});
+          setSelectedPaths([]);
+          activePathRef.current = null;
+          setActivePath(null);
+          return [];
+        }
+        if (!quiet) {
+          discoveringRef.current = true;
+          setDiscovering(true);
+          scanErrorRef.current = null;
+          setError(null);
+        }
+        try {
+          const results = await Promise.all(
+            roots.map(async (root) => {
+              try {
+                const discovered = await discoverRepos(root);
+                return { tree: hideRemovedRepos(discovered, removedRef.current), error: null as string | null };
+              } catch (caught) {
+                return { tree: null, error: messageOf(caught) };
+              }
+            }),
+          );
+          const failures = results.flatMap((result) => (result.error ? [result.error] : []));
+          if (failures.length > 0) {
+            const message = failures.join(" ");
+            scanErrorRef.current = message;
+            setError(message);
+          } else if (scanErrorRef.current) {
+            const previous = scanErrorRef.current;
+            scanErrorRef.current = null;
+            setError((current) => (current === previous ? null : current));
+          }
+          const nextTrees = results.flatMap((result) => (result.tree ? [result.tree] : []));
+          const foundPaths = quiet && sameTrees(sourceTreesRef.current, nextTrees) ? repoPathsRef.current : applyVisibleTrees(nextTrees);
+          await loadStatuses(foundPaths, quiet);
+          return foundPaths;
+        } catch (caught) {
+          const message = messageOf(caught);
+          scanErrorRef.current = message;
+          setError(message);
+          return [];
+        } finally {
+          if (!quiet) {
+            discoveringRef.current = false;
+            setDiscovering(false);
+          }
+        }
+      })();
+
+      scanRef.current = run;
+      try {
+        return await run;
       } finally {
-        setDiscovering(false);
+        if (scanRef.current === run) {
+          scanRef.current = null;
+        }
       }
     },
     [applyVisibleTrees, loadStatuses],
@@ -430,6 +548,8 @@ export function useWorkspace() {
     const found = await reloadTrees(roots);
     const created = found.find((repo) => pathEquals(repo, path)) ?? path;
     anchorRef.current = created;
+    interactionEpoch.current += 1;
+    activePathRef.current = created;
     setActivePath(created);
     setSelectedPaths([created]);
   };
@@ -466,7 +586,105 @@ export function useWorkspace() {
     }
   };
 
+  const checkForChanges = useCallback(async () => {
+    if (
+      document.hidden ||
+      pointerDownRef.current > 0 ||
+      !gitReadyRef.current ||
+      busyRef.current ||
+      discoveringRef.current ||
+      scanRef.current ||
+      statusPollRef.current
+    ) {
+      return;
+    }
+    const paths = repoPathsRef.current;
+    if (paths.length === 0) {
+      return;
+    }
+    const epoch = interactionEpoch.current;
+    const activeAtStart = activePathRef.current;
+
+    const run = (async () => {
+      let rows: RepoStatus[];
+      try {
+        rows = await repoStatuses(paths);
+      } catch {
+        return;
+      }
+      if (!pollStillCurrent(epoch, paths)) {
+        return;
+      }
+      setStatuses((current) => (sameStatuses(current, rows) ? current : Object.fromEntries(rows.map((row) => [row.path, row]))));
+
+      const active = activePathRef.current;
+      if (!active || !activeAtStart || !pathEquals(active, activeAtStart) || !paths.some((path) => pathEquals(path, active))) {
+        return;
+      }
+      try {
+        const next = await repoDiff(active);
+        if (!pollStillCurrent(epoch, paths) || !activePathRef.current || !pathEquals(activePathRef.current, active)) {
+          return;
+        }
+        setDiff((current) => (diffKey(current) === diffKey(next) ? current : next));
+      } catch {
+        // A background check leaves the open diff in place.
+      }
+    })();
+
+    statusPollRef.current = run;
+    try {
+      await run;
+    } finally {
+      if (statusPollRef.current === run) {
+        statusPollRef.current = null;
+      }
+    }
+
+    function pollStillCurrent(startedAt: number, startedPaths: readonly string[]) {
+      return (
+        interactionEpoch.current === startedAt &&
+        pointerDownRef.current === 0 &&
+        !busyRef.current &&
+        !discoveringRef.current &&
+        !scanRef.current &&
+        samePaths(startedPaths, repoPathsRef.current)
+      );
+    }
+  }, []);
+
+  const checkRef = useRef(checkForChanges);
+  checkRef.current = checkForChanges;
+
+  useEffect(() => {
+    const down = () => {
+      pointerDownRef.current += 1;
+    };
+    const up = () => {
+      pointerDownRef.current = Math.max(0, pointerDownRef.current - 1);
+    };
+    const tick = () => {
+      if (!document.hidden && pointerDownRef.current === 0) {
+        void checkRef.current();
+      }
+    };
+    const timer = window.setInterval(tick, CHECK_INTERVAL_MS);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("pointerdown", down);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, []);
+
   const selectRepo = (path: string, mode: SelectMode) => {
+    interactionEpoch.current += 1;
+    activePathRef.current = path;
     setActivePath(path);
     setSelectedPaths((current) => {
       if (mode === "toggle") {
@@ -565,7 +783,7 @@ export function useWorkspace() {
       setError("An open folder cannot be deleted.");
       return;
     }
-    setBusyAction("delete");
+    beginWork("delete");
     setError(null);
     try {
       await deleteFolderOnDisk(owner, path);
@@ -577,11 +795,12 @@ export function useWorkspace() {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setBusyAction(null);
+      endWork();
     }
   };
 
   const refreshRepo = async (repo: string) => {
+    interactionEpoch.current += 1;
     const rows = await repoStatuses([repo]);
     setStatuses((current) => {
       const next = { ...current };
@@ -597,7 +816,7 @@ export function useWorkspace() {
     if (!repo) {
       return;
     }
-    setBusyAction("discard");
+    beginWork("discard");
     setError(null);
     try {
       await discardFile(repo, file.path);
@@ -605,7 +824,7 @@ export function useWorkspace() {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setBusyAction(null);
+      endWork();
     }
   };
 
@@ -613,7 +832,7 @@ export function useWorkspace() {
     if (!repo) {
       return;
     }
-    setBusyAction("ignore");
+    beginWork("ignore");
     setError(null);
     try {
       await ignoreFile(repo, kind, target);
@@ -621,7 +840,7 @@ export function useWorkspace() {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setBusyAction(null);
+      endWork();
     }
   };
 
@@ -648,6 +867,7 @@ export function useWorkspace() {
   };
 
   const finishBatch = async () => {
+    interactionEpoch.current += 1;
     await loadStatuses(repoPathsRef.current);
     setDetailToken((token) => token + 1);
   };
@@ -658,7 +878,9 @@ export function useWorkspace() {
       return;
     }
     logGeneration.current += 1;
-    setBusyAction(action);
+    seenGeneration.current = logGeneration.current;
+    setLogs([]);
+    beginWork(action);
     setError(null);
     try {
       if (action === "pull") {
@@ -670,8 +892,20 @@ export function useWorkspace() {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setBusyAction(null);
+      endWork();
     }
+  };
+
+  const requestPull = (paths: string[]) => {
+    if (paths.length === 0) {
+      setError("No repositories to pull.");
+      return;
+    }
+    setPullPaths(paths);
+  };
+
+  const confirmPull = async () => {
+    await runBatch("pull", pullPaths ?? []);
   };
 
   const requestPush = (paths: string[]) => {
@@ -683,9 +917,7 @@ export function useWorkspace() {
   };
 
   const confirmPush = async () => {
-    const paths = pushPaths ?? [];
-    setPushPaths(null);
-    await runBatch("push", paths);
+    await runBatch("push", pushPaths ?? []);
   };
 
   const commitActive = async () => {
@@ -698,7 +930,7 @@ export function useWorkspace() {
       return;
     }
     logGeneration.current += 1;
-    setBusyAction("commit");
+    beginWork("commit");
     setError(null);
     try {
       await batchCommit([{ path: activePath, message }]);
@@ -708,7 +940,7 @@ export function useWorkspace() {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setBusyAction(null);
+      endWork();
     }
   };
 
@@ -718,6 +950,8 @@ export function useWorkspace() {
   };
 
   const generateIntoBox = async (path: string, prompt = activePrompt()) => {
+    interactionEpoch.current += 1;
+    activePathRef.current = path;
     setActivePath(path);
     setGenerating(true);
     setError(null);
@@ -793,7 +1027,7 @@ export function useWorkspace() {
       return;
     }
     logGeneration.current += 1;
-    setBusyAction("commit");
+    beginWork("commit");
     setError(null);
     try {
       await batchCommit(items);
@@ -807,7 +1041,7 @@ export function useWorkspace() {
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
-      setBusyAction(null);
+      endWork();
     }
   };
 
@@ -862,6 +1096,8 @@ export function useWorkspace() {
     setAiOpen,
     drafts,
     setDrafts,
+    pullPaths,
+    setPullPaths,
     pushPaths,
     setPushPaths,
     chooseFolder,
@@ -883,6 +1119,8 @@ export function useWorkspace() {
     reportError,
     pullAll: () => runBatch("pull", repoPaths),
     pullSelected: () => runBatch("pull", selectedPaths),
+    requestPullAll: () => requestPull(repoPaths),
+    confirmPull,
     requestPushAll: () => requestPush(repoPaths),
     requestPushSelected: () => requestPush(selectedPaths),
     confirmPush,

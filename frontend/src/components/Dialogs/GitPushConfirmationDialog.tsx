@@ -59,16 +59,22 @@ export function GitPushConfirmationDialog({ pushPaths, logs, error, onClose, onC
       )}
       <div id="push-confirm-actions" className="mt-4 flex justify-end gap-2">
         {phase === "done" ? (
-          <Button id="push-confirm-close" variant="primary" onClick={onClose}>
+          <Button id="push-confirm-close" variant="primary" onClick={onClose} onKeyDown={(event) => { if (event.key === "Enter") { onClose(); } }}>
             <span id="push-confirm-close-label">Close</span>
+            <kbd id="push-confirm-close-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+              Enter
+            </kbd>
           </Button>
         ) : (
           <>
             <Button id="push-confirm-cancel" variant="ghost" onClick={close} disabled={running}>
               <span id="push-confirm-cancel-label">Cancel</span>
             </Button>
-            <Button id="push-confirm-button" variant="primary" onClick={() => void confirm()} disabled={running}>
+            <Button id="push-confirm-button" variant="primary" onClick={() => void confirm()} onKeyDown={(event) => { if (event.key === "Enter") { confirm(); } }} disabled={running}>
               <span id="push-confirm-button-label">{running ? "Pushing…" : "Push"}</span>
+              <kbd id="push-confirm-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+                Enter
+              </kbd>
             </Button>
           </>
         )}

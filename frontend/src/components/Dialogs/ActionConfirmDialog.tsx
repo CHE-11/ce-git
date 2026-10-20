@@ -31,8 +31,11 @@ export function ActionConfirmDialog({
         <Button id={`${id}-cancel`} variant="ghost" onClick={onClose}>
           <span id={`${id}-cancel-label`}>Cancel</span>
         </Button>
-        <Button id={`${id}-confirm`} variant={confirmTone} onClick={onConfirm}>
+        <Button id={`${id}-confirm`} variant={confirmTone} onClick={onConfirm} onKeyDown={(event) => { if (event.key === "Enter") { onConfirm(); } }}>
           <span id={`${id}-confirm-label`}>{confirmLabel}</span>
+          <kbd id={`${id}-confirm-shortcut`} className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+            Enter
+          </kbd>
         </Button>
       </div>
     </Dialog>

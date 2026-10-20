@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",
+    "build:exe": "pnpm tauri build --no-bundle",
     "tauri": "tauri"
   },
   "devDependencies": {

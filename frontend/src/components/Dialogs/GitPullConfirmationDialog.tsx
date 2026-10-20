@@ -51,7 +51,7 @@ export function GitPullConfirmationDialog({ pullPaths, logs, error, onClose, onC
     <Dialog id="pull-confirm-dialog" title={running ? "Pulling repositories" : phase === "done" ? "Pull finished" : "Pull repositories"} open={open} onClose={close}>
       {phase === "confirm" ? (
         <p id="pull-confirm-copy" className="text-sm text-zinc-300">
-          Pull {count} repositories. A dirty working tree is skipped. Each repo&apos;s default branch is fast-forwarded from origin.
+          Pull {count} repositories. A dirty working tree, or a repository that is already up to date, is skipped. Each repo&apos;s default branch is fast-forwarded from origin.
         </p>
       ) : (
         <GitSyncProgress id="pull-confirm-progress" label="Pulling" total={count} logs={entries} running={running} error={error} />

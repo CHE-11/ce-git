@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import type { BatchProgress } from "../../../../types/git";
+import { batchStatusLabel } from "../../lib/batch-status";
 import { cn } from "../../lib/cn";
 
 const statusClass: Record<BatchProgress["status"], string> = {
@@ -105,7 +106,7 @@ export function GitSyncProgress({ id, label, total, logs, running, error }: GitS
                 {entry.repo}
               </span>{" "}
               <span id={`${id}-state-${index}`} className={statusClass[entry.status]}>
-                {entry.status}
+                {batchStatusLabel(entry)}
               </span>{" "}
               <span id={`${id}-message-${index}`} className="text-zinc-400">
                 {entry.message}

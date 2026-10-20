@@ -43,6 +43,6 @@ pnpm install
 pnpm tauri dev
 ```
 
-**Install**, **Run**, and **Build** are also VS Code tasks. Build produces the desktop app with `pnpm tauri build`.
+**Install**, **Run**, and **Build** are also VS Code tasks. Build produces the Windows exe at `src-tauri/target/release/ce-git.exe` with `pnpm build:exe`.
 
 Choose the folder once. ce-git remembers it the next time you open the window.

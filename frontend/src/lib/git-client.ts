@@ -9,6 +9,7 @@ import type {
   GeneratedCommit,
   GitSettings,
   OpenAiModel,
+  PublishOptions,
   RepoDiff,
   RepoSearchResult,
   RepoStatus,
@@ -136,6 +137,10 @@ export function batchPull(paths: string[]) {
 
 export function batchPush(paths: string[]) {
   return invoke<BatchProgress[]>("batch_push", { paths });
+}
+
+export function publishRepo(path: string, options: PublishOptions) {
+  return invoke<void>("publish_repo", { path, options });
 }
 
 export function batchCommit(commits: CommitRequest[]) {

@@ -1,10 +1,13 @@
+import { ArrowDownToLine, ArrowUpToLine, Upload } from "lucide-react";
 import { useState } from "react";
-import type { AiPrompts, RepoDiff, RepoStatus } from "../../../types/git";
+import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../types/git";
 import { patchForPath } from "../lib/diff";
 import { baseName } from "../lib/tree";
 import { Badge } from "./Badge";
+import { Button } from "./Button";
 import { ChangedFiles, type ChangeFileHandlers } from "./ChangedFiles";
 import { CommitBox } from "./CommitBox";
+import { PublishDialog } from "./Dialogs/PublishDialog";
 import { DiffView } from "./DiffView";
 
 type RepoDetailProps = {
@@ -24,6 +27,9 @@ type RepoDetailProps = {
   onSelectedPrompt: (slot: number) => void;
   onGenerate: () => void;
   onCommit: () => void;
+  onPull: () => void;
+  onPush: () => void;
+  onPublish: (options: PublishOptions) => Promise<void>;
   fileHandlers: ChangeFileHandlers;
 };
 
@@ -44,14 +50,19 @@ export function RepoDetail({
   onSelectedPrompt,
   onGenerate,
   onCommit,
+  onPull,
+  onPush,
+  onPublish,
   fileHandlers,
 }: RepoDetailProps) {
   const files = diff?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [selectionRepo, setSelectionRepo] = useState(path);
   if (selectionRepo !== path) {
     setSelectionRepo(path);
     setSelectedPath(null);
+    setPublishOpen(false);
   }
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
   const selectedPatch = patchForPath(diff?.patch ?? "", selectedFile?.path ?? null);
@@ -67,13 +78,49 @@ export function RepoDetail({
   }
 
   const name = status?.name ?? baseName(path);
+  const unpublished = status !== null && status.github === null && !status.error;
+  const published = status !== null && status.github !== null && !status.error;
+  const canPublish = unpublished && Boolean(status?.hasCommits) && !busy;
+  const publishTitle = status !== null && !status.hasCommits ? "Commit something before publishing" : "Create this repository on GitHub";
 
   return (
     <section id="repo-detail" className="flex min-w-0 flex-1 flex-col bg-zinc-950">
       <header id="repo-detail-header" className="border-b border-zinc-800 px-4 py-3">
-        <h2 id="repo-detail-name" className="truncate text-lg font-semibold text-zinc-100">
-          {name}
-        </h2>
+        <div id="repo-detail-title-row" className="flex items-center justify-between gap-3">
+          <h2 id="repo-detail-name" className="min-w-0 truncate text-lg font-semibold text-zinc-100">
+            {name}
+          </h2>
+          <div id="repo-detail-actions" className="flex shrink-0 items-center gap-1.5">
+            {unpublished ? (
+              <span id="repo-publish-wrap" className="inline-flex" title={publishTitle}>
+                <Button
+                  id="repo-publish-button"
+                  variant="primary"
+                  size="sm"
+                  className="bg-violet-600 hover:bg-violet-500 disabled:pointer-events-none"
+                  onClick={() => setPublishOpen(true)}
+                  disabled={!canPublish}
+                  title={publishTitle}
+                >
+                  <Upload id="repo-publish-icon" className="size-3.5" />
+                  <span id="repo-publish-label">Publish</span>
+                </Button>
+              </span>
+            ) : null}
+            {published ? (
+              <>
+                <Button id="repo-pull-button" variant="primary" size="sm" onClick={onPull} disabled={busy} title="Pull the default branch">
+                  <ArrowDownToLine id="repo-pull-icon" className="size-3.5" />
+                  <span id="repo-pull-label">Pull</span>
+                </Button>
+                <Button id="repo-push-button" variant="secondary" size="sm" onClick={onPush} disabled={busy} title="Push this repository">
+                  <ArrowUpToLine id="repo-push-icon" className="size-3.5" />
+                  <span id="repo-push-label">Push</span>
+                </Button>
+              </>
+            ) : null}
+          </div>
+        </div>
         <p id="repo-detail-path" className="truncate text-xs text-zinc-500" title={path}>
           {path}
         </p>
@@ -144,6 +191,15 @@ export function RepoDetail({
         onPrompt={onSelectedPrompt}
         onGenerate={onGenerate}
         onCommit={onCommit}
+      />
+      <PublishDialog
+        open={publishOpen}
+        repoName={name}
+        onClose={() => setPublishOpen(false)}
+        onPublish={async (options) => {
+          await onPublish(options);
+          setPublishOpen(false);
+        }}
       />
     </section>
   );

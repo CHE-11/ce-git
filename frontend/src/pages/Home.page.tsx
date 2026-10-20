@@ -83,8 +83,8 @@ export function HomePage() {
           selectedPaths={workspace.selectedPaths}
           activePath={workspace.activePath}
           discovering={workspace.discovering}
-          statusLoading={workspace.statusLoading}
           onSelect={workspace.selectRepo}
+          onSelectRepos={workspace.selectRepos}
           selectedCount={workspace.selectedPaths.length}
           onPullSelected={() => void workspace.pullSelected()}
           onPushSelected={workspace.requestPushSelected}
@@ -117,6 +117,9 @@ export function HomePage() {
           onSelectedPrompt={workspace.setSelectedPrompt}
           onGenerate={workspace.generateForActive}
           onCommit={() => void workspace.commitActive()}
+          onPull={workspace.requestPullActive}
+          onPush={workspace.requestPushActive}
+          onPublish={workspace.publishActive}
           fileHandlers={{
             discard: (file) => {
               if (workspace.activePath) {

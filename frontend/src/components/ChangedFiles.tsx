@@ -1,5 +1,8 @@
+import Fuse from "fuse.js";
+import { Search, X } from "lucide-react";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -9,6 +12,7 @@ import type { FileChange } from "../../../types/git";
 import { cn } from "../lib/cn";
 import type { ChangeOpenMode, IgnoreKind } from "../lib/git-client";
 import { domId, messageOf } from "../lib/tree";
+import { Button } from "./Button";
 import { ActionConfirmDialog } from "./Dialogs/ActionConfirmDialog";
 import { ChangedFileMenu } from "./ChangedFileMenu";
 
@@ -75,15 +79,50 @@ function discardCopy(file: FileChange) {
   return `Discard ${file.path}? Your changes will be replaced with the last committed version.`;
 }
 
+function fileName(path: string) {
+  return path.split(/[/\\]/).pop() ?? path;
+}
+
 export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, onSelect }: ChangedFilesProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState<FileMenu | null>(null);
   const [discarding, setDiscarding] = useState<FileChange | null>(null);
+  const [query, setQuery] = useState("");
+  const searchQuery = query.trim();
+  const visibleFiles = useMemo(() => {
+    if (!searchQuery) {
+      return files;
+    }
+    const fuse = new Fuse(
+      files.map((file) => ({
+        file,
+        name: fileName(file.path),
+        path: file.path,
+        previousPath: file.previousPath ?? "",
+        status: file.status,
+      })),
+      {
+        keys: [
+          { name: "name", weight: 0.6 },
+          { name: "path", weight: 0.25 },
+          { name: "previousPath", weight: 0.1 },
+          { name: "status", weight: 0.05 },
+        ],
+        threshold: 0.35,
+        ignoreLocation: true,
+      },
+    );
+    return fuse.search(searchQuery).map((result) => result.item.file);
+  }, [files, searchQuery]);
   const widthRef = useRef(width);
   const dragStart = useRef<{ x: number; width: number } | null>(null);
   const moved = useRef(false);
   widthRef.current = width;
+
+  useEffect(() => {
+    setQuery("");
+  }, [repoPath]);
 
   useEffect(() => {
     function onResize() {
@@ -170,6 +209,35 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
       className="relative flex shrink-0 flex-col border-r border-zinc-800"
       onContextMenu={(event) => event.preventDefault()}
     >
+      <form
+        id="changed-files-search"
+        className="flex items-center gap-1.5 border-b border-zinc-800 px-2 py-1.5"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <Search id="changed-files-search-icon" className="size-3.5 shrink-0 text-zinc-500" />
+        <input
+          id="changed-files-search-input"
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search changes"
+          aria-label="Search changes"
+          className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
+        />
+        {query ? (
+          <Button
+            id="changed-files-search-clear"
+            variant="ghost"
+            size="xs"
+            className="h-6 px-1"
+            title="Clear search"
+            aria-label="Clear search"
+            onClick={() => setQuery("")}
+          >
+            <X id="changed-files-search-clear-icon" className="size-3.5" />
+          </Button>
+        ) : null}
+      </form>
       <h3 id="changed-files-title" className="px-3 py-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
         Changes
       </h3>
@@ -177,9 +245,13 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
         <p id="changed-files-empty" className="px-3 text-sm text-zinc-500">
           Working tree clean
         </p>
+      ) : visibleFiles.length === 0 ? (
+        <p id="changed-files-search-empty" className="px-3 text-sm text-zinc-500">
+          No files match “{searchQuery}”.
+        </p>
       ) : (
         <ul id="changed-files" className="min-h-0 flex-1 overflow-auto">
-          {files.map((file) => {
+          {visibleFiles.map((file) => {
             const selected = file.path === selectedPath;
             const key = `${file.status}-${file.path}`;
             return (

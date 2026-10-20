@@ -7,6 +7,7 @@ import {
 } from "react";
 import { ChevronDown } from "lucide-react";
 import type { BatchProgress } from "../../../types/git";
+import { batchStatusLabel } from "../lib/batch-status";
 import { cn } from "../lib/cn";
 import { Button } from "./Button";
 
@@ -224,7 +225,7 @@ export function ActivityLog({ logs, onClear }: Props) {
       >
         {logs.length === 0 ? (
           <p id="batch-log-empty" className="text-zinc-600">
-            Pull, push, and commit results show up here.
+            Pull, push, publish, and commit results show up here.
           </p>
         ) : (
           logs.map((entry, index) => (
@@ -236,7 +237,7 @@ export function ActivityLog({ logs, onClear }: Props) {
                 {entry.repo}
               </span>{" "}
               <span id={`batch-log-status-${index}`} className={cn(statusClass[entry.status])}>
-                {entry.status}
+                {batchStatusLabel(entry)}
               </span>{" "}
               <span id={`batch-log-message-${index}`} className="text-zinc-400">
                 {entry.message}

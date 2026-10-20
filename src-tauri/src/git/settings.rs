@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use super::command::{GitOutput, git_available, spawn_git, stop_process};
+use super::command::{git_available, spawn_git, stop_process, GitOutput};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -442,7 +442,11 @@ fn redact_secrets(value: &str) -> String {
             let bare = word.trim_matches(|character: char| {
                 !character.is_ascii_alphanumeric() && character != '_'
             });
-            if is_token(bare) { "[redacted]" } else { word }
+            if is_token(bare) {
+                "[redacted]"
+            } else {
+                word
+            }
         })
         .collect::<Vec<_>>()
         .join(" ")

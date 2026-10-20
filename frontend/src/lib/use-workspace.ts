@@ -1,13 +1,14 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, FileChange, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
+import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, FileChange, PublishOptions, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
 import {
   aiSettings,
   appSettings,
   batchCommit,
   batchPull,
   batchPush,
+  publishRepo,
   deleteFolder as deleteFolderOnDisk,
   discardChange as discardFile,
   discoverRepos,
@@ -89,6 +90,7 @@ function statusKey(status: RepoStatus) {
     status.unstaged,
     status.untracked,
     status.defaultBranch ?? "",
+    status.hasCommits,
     status.error ?? "",
   ].join("\u0000");
 }
@@ -705,6 +707,31 @@ export function useWorkspace() {
     });
   };
 
+  const selectRepos = (paths: string[], selected: boolean) => {
+    if (paths.length === 0) {
+      return;
+    }
+    interactionEpoch.current += 1;
+    const focus = paths[0];
+    activePathRef.current = focus;
+    setActivePath(focus);
+    anchorRef.current = focus;
+    setSelectedPaths((current) => {
+      if (selected) {
+        const have = new Set(current);
+        const next = [...current];
+        for (const path of paths) {
+          if (!have.has(path)) {
+            next.push(path);
+          }
+        }
+        return next;
+      }
+      const remove = new Set(paths);
+      return current.filter((path) => !remove.has(path));
+    });
+  };
+
   const clearSelection = () => {
     setSelectedPaths([]);
   };
@@ -920,6 +947,29 @@ export function useWorkspace() {
     await runBatch("push", pushPaths ?? []);
   };
 
+  const publishActive = async (options: PublishOptions) => {
+    if (!activePath) {
+      const message = "Select a repository to publish.";
+      setError(message);
+      throw new Error(message);
+    }
+    logGeneration.current += 1;
+    seenGeneration.current = logGeneration.current;
+    setLogs([]);
+    beginWork("publish");
+    setError(null);
+    try {
+      await publishRepo(activePath, options);
+      await finishBatch();
+    } catch (caught) {
+      const message = messageOf(caught);
+      setError(message);
+      throw new Error(message);
+    } finally {
+      endWork();
+    }
+  };
+
   const commitActive = async () => {
     if (!activePath) {
       return;
@@ -1105,6 +1155,7 @@ export function useWorkspace() {
     createNewRepo,
     refresh,
     selectRepo,
+    selectRepos,
     clearSelection,
     removedRepos,
     openInEditor,
@@ -1120,10 +1171,21 @@ export function useWorkspace() {
     pullAll: () => runBatch("pull", repoPaths),
     pullSelected: () => runBatch("pull", selectedPaths),
     requestPullAll: () => requestPull(repoPaths),
+    requestPullActive: () => {
+      if (activePath) {
+        requestPull([activePath]);
+      }
+    },
     confirmPull,
     requestPushAll: () => requestPush(repoPaths),
     requestPushSelected: () => requestPush(selectedPaths),
+    requestPushActive: () => {
+      if (activePath) {
+        requestPush([activePath]);
+      }
+    },
     confirmPush,
+    publishActive,
     commitActive,
     generateForActive: () => {
       if (activePath) {

@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { RepoStatus, TreeNode } from "../../../types/git";
-import { domId, repoMatchesFilter, type RepoTreeFilter } from "../lib/tree";
+import { collectRepos, domId, repoMatchesFilter, type RepoTreeFilter } from "../lib/tree";
 import { cn } from "../lib/cn";
 
 type RepoTreeNodeProps = {
@@ -16,6 +16,7 @@ type RepoTreeNodeProps = {
   filter: RepoTreeFilter | null;
   onToggle: (path: string) => void;
   onSelect: (path: string, mode: "replace" | "toggle" | "range") => void;
+  onSelectRepos: (paths: string[], selected: boolean) => void;
   onContextMenu: (node: TreeNode, x: number, y: number) => void;
 };
 
@@ -31,6 +32,7 @@ export function RepoTreeNode({
   filter,
   onToggle,
   onSelect,
+  onSelectRepos,
   onContextMenu,
 }: RepoTreeNodeProps) {
   const rowId = domId("tree-row", node.path);
@@ -43,6 +45,10 @@ export function RepoTreeNode({
   const showRootPath = depth === 0 && Boolean(rootPath);
   const targeted = node.path === contextPath;
   const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, selectedPaths, filter);
+  const rootRepos = depth === 0 ? collectRepos(node) : [];
+  const rootSelectedCount = rootRepos.filter((repo) => selectedPaths.includes(repo.path)).length;
+  const rootAllChecked = rootRepos.length > 0 && rootSelectedCount === rootRepos.length;
+  const rootIndeterminate = rootSelectedCount > 0 && !rootAllChecked;
 
   const onRowClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!isRepo) {
@@ -86,7 +92,26 @@ export function RepoTreeNode({
           onContextMenu(node, event.clientX, event.clientY);
         }}
       >
-        {hasChildren ? (
+        {depth === 0 && hasChildren ? (
+          <span id={domId("tree-root-check-wrap", node.path)} className="flex size-4 shrink-0 items-center justify-center">
+            <input
+              id={domId("tree-root-check", node.path)}
+              type="checkbox"
+              className="size-3.5 shrink-0 accent-sky-500"
+              checked={rootAllChecked}
+              disabled={rootRepos.length === 0}
+              ref={(element) => {
+                if (element) {
+                  element.indeterminate = rootIndeterminate;
+                }
+              }}
+              aria-label={rootAllChecked ? `Unselect all repositories in ${node.name}` : `Select all repositories in ${node.name}`}
+              title={rootAllChecked ? "Unselect all" : "Select all"}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => onSelectRepos(rootRepos.map((repo) => repo.path), !rootAllChecked)}
+            />
+          </span>
+        ) : hasChildren ? (
           <button
             id={domId("tree-toggle", node.path)}
             type="button"
@@ -180,6 +205,7 @@ export function RepoTreeNode({
               filter={filter}
               onToggle={onToggle}
               onSelect={onSelect}
+              onSelectRepos={onSelectRepos}
               onContextMenu={onContextMenu}
             />
           ))

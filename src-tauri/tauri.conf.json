@@ -16,7 +16,8 @@
         "width": 1280,
         "height": 840,
         "minWidth": 960,
-        "minHeight": 640
+        "minHeight": 640,
+        "devtools": true
       }
     ],
     "security": {
@@ -24,7 +25,7 @@
     }
   },
   "bundle": {
-    "active": true,
+    "active": false,
     "targets": "all",
     "icon": [
       "icons/32x32.png",

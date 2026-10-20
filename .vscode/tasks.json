@@ -49,7 +49,7 @@
     {
       "label": "Build",
       "type": "shell",
-      "command": "pnpm tauri build",
+      "command": "pnpm build:exe",
       "group": {
         "kind": "build",
         "isDefault": true

@@ -216,6 +216,15 @@ async fn batch_commit(
 }
 
 #[tauri::command]
+async fn publish_repo(
+    app: tauri::AppHandle,
+    path: String,
+    options: git::PublishOptions,
+) -> Result<(), String> {
+    batch::run_publish(app, path, options).await
+}
+
+#[tauri::command]
 fn init_repo(path: String) -> Result<(), String> {
     git::init_repo(Path::new(&path))
 }
@@ -320,6 +329,7 @@ pub fn run() {
             batch_pull,
             batch_push,
             batch_commit,
+            publish_repo,
             open_in_editor,
             reveal_in_explorer,
             init_repo,

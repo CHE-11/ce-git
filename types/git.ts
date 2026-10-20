@@ -22,6 +22,7 @@ export interface RepoStatus {
   unstaged: number;
   untracked: number;
   defaultBranch: string | null;
+  hasCommits: boolean;
   error: string | null;
 }
 
@@ -52,7 +53,16 @@ export interface RepoDiff {
   truncated: boolean;
 }
 
-export type BatchAction = "pull" | "push" | "commit";
+export type BatchAction = "pull" | "push" | "commit" | "publish";
+
+export type RepoVisibility = "private" | "public" | "internal";
+
+export interface PublishOptions {
+  name: string;
+  description: string;
+  visibility: RepoVisibility;
+  homepage: string;
+}
 export type BatchStatus = "running" | "ok" | "skipped" | "failed";
 
 export interface BatchProgress {

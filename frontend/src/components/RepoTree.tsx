@@ -69,8 +69,8 @@ type RepoTreeProps = {
   selectedPaths: string[];
   activePath: string | null;
   discovering: boolean;
-  statusLoading: boolean;
   onSelect: (path: string, mode: "replace" | "toggle" | "range") => void;
+  onSelectRepos: (paths: string[], selected: boolean) => void;
   selectedCount: number;
   onPullSelected: () => void;
   onPushSelected: () => void;
@@ -163,8 +163,8 @@ export function RepoTree({
   selectedPaths,
   activePath,
   discovering,
-  statusLoading,
   onSelect,
+  onSelectRepos,
   selectedCount,
   onPullSelected,
   onPushSelected,
@@ -471,6 +471,7 @@ export function RepoTree({
                   filter={filter}
                   onToggle={(path) => setCollapsed((current) => ({ ...current, [path]: !current[path] }))}
                   onSelect={onSelect}
+                  onSelectRepos={onSelectRepos}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
                 />
               </div>

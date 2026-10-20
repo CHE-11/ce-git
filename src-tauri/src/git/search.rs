@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use super::command::{GitOutput, dir_name, git_output};
+use super::command::{dir_name, git_output, GitOutput};
 
 const MAX_MATCHES: usize = 200;
 const MAX_TEXT: usize = 500;

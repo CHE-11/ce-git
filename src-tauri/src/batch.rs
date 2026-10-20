@@ -5,7 +5,7 @@ use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::git::{Outcome, commit_repo, pull_default, push_repo};
+use crate::git::{Outcome, PublishOptions, commit_repo, pull_default, publish_repo, push_repo};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +43,38 @@ pub async fn batch_push(app: AppHandle, paths: Vec<String>) -> Vec<BatchProgress
         |path| push_repo(Path::new(&path)),
     )
     .await
+}
+
+pub async fn run_publish(app: AppHandle, path: String, options: PublishOptions) -> Result<(), String> {
+    let repo = base_name(&path);
+    let _ = app.emit(
+        "batch-progress",
+        BatchProgress {
+            repo: repo.clone(),
+            action: "publish".into(),
+            status: "running".into(),
+            message: "Working…".into(),
+        },
+    );
+
+    let outcome = tauri::async_runtime::spawn_blocking(move || publish_repo(Path::new(&path), &options))
+        .await
+        .unwrap_or_else(|error| Outcome::Failed(error.to_string()));
+    let (status, message, failed) = match &outcome {
+        Outcome::Ok(message) => ("ok", message.clone(), false),
+        Outcome::Skipped(message) => ("skipped", message.clone(), true),
+        Outcome::Failed(message) => ("failed", message.clone(), true),
+    };
+    let _ = app.emit(
+        "batch-progress",
+        BatchProgress {
+            repo,
+            action: "publish".into(),
+            status: status.into(),
+            message: message.clone(),
+        },
+    );
+    if failed { Err(message) } else { Ok(()) }
 }
 
 pub async fn batch_commit(app: AppHandle, commits: Vec<CommitRequest>) -> Vec<BatchProgress> {

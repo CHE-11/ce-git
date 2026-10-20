@@ -21,6 +21,7 @@ pub struct RepoStatus {
     pub unstaged: u32,
     pub untracked: u32,
     pub default_branch: Option<String>,
+    pub has_commits: bool,
     pub error: Option<String>,
 }
 
@@ -49,6 +50,7 @@ pub fn status_of(path: &Path) -> RepoStatus {
             unstaged: 0,
             untracked: 0,
             default_branch: None,
+            has_commits: false,
             error: Some(error),
         },
     }
@@ -102,6 +104,7 @@ fn read_status(path: &Path) -> Result<RepoStatus, String> {
         unstaged,
         untracked,
         default_branch: local_default_branch(path),
+        has_commits: current.has_commits,
         error: None,
     })
 }

@@ -22,15 +22,15 @@ pub fn init_repo(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 pub use commit::commit_repo;
-pub use diff::{RepoDiff, collect_ai_context, repo_diff};
-pub use discover::{TreeNode, discover};
-pub use search::{RepoSearchResult, search_repos};
+pub use diff::{collect_ai_context, repo_diff, RepoDiff};
+pub use discover::{discover, TreeNode};
+pub use search::{search_repos, RepoSearchResult};
 pub use settings::{
-    GitSettings, git_cancel_sign_in, git_sign_in, git_sign_out, read_git_settings,
-    save_git_settings,
+    git_cancel_sign_in, git_sign_in, git_sign_out, read_git_settings, save_git_settings,
+    GitSettings,
 };
-pub use status::{RepoStatus, status_of};
-pub use sync::{Outcome, pull_default, push_repo};
+pub use status::{status_of, RepoStatus};
+pub use sync::{publish_repo, pull_default, push_repo, Outcome, PublishOptions};
 
 #[cfg(test)]
 mod tests {
@@ -39,10 +39,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::command::git;
-    use super::discover::{NodeKind, discover};
+    use super::discover::{discover, NodeKind};
     use super::status::{is_github_url, status_of};
-    use super::sync::{Outcome, pull_default, push_repo};
-    use super::{TreeNode, commit_repo};
+    use super::sync::{publish_repo, pull_default, push_repo, Outcome, PublishOptions};
+    use super::{commit_repo, TreeNode};
 
     fn scratch(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -111,11 +111,10 @@ mod tests {
             !paths.iter().any(|path| path.contains("node_modules")),
             "{paths:?}"
         );
-        assert!(
-            tree.children
-                .iter()
-                .any(|child| child.name == "group" && child.kind == NodeKind::Folder)
-        );
+        assert!(tree
+            .children
+            .iter()
+            .any(|child| child.name == "group" && child.kind == NodeKind::Folder));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -131,10 +130,7 @@ mod tests {
 
         let tree = discover(&root).unwrap();
         let paths = repo_paths(&tree);
-        assert!(
-            paths.iter().any(|path| path.ends_with("real")),
-            "{paths:?}"
-        );
+        assert!(paths.iter().any(|path| path.ends_with("real")), "{paths:?}");
         assert!(
             !paths.iter().any(|path| path.ends_with("decoy")),
             "{paths:?}"
@@ -253,12 +249,18 @@ mod tests {
 
         let outcome = pull_default(&alpha);
         assert!(
-            matches!(outcome, Outcome::Ok(ref message) if message.contains("main")),
+            matches!(outcome, Outcome::Ok(ref message) if message.contains("main") && message.contains("1 commit")),
             "{outcome:?}"
         );
         let local_main = git(&alpha, &["rev-parse", "HEAD"]).unwrap();
         let seed_main = git(&seed, &["rev-parse", "HEAD"]).unwrap();
         assert_eq!(local_main.trim(), seed_main.trim());
+
+        let again = pull_default(&alpha);
+        assert!(
+            matches!(again, Outcome::Skipped(ref message) if message.contains("already up to date")),
+            "{again:?}"
+        );
 
         let _ = fs::remove_dir_all(tmp);
     }
@@ -288,6 +290,67 @@ mod tests {
         );
         let after = status_of(&local);
         assert_eq!(after.github, Some(false));
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    fn publish_options(name: &str, visibility: &str, homepage: &str) -> PublishOptions {
+        PublishOptions {
+            name: name.into(),
+            description: String::new(),
+            visibility: visibility.into(),
+            homepage: homepage.into(),
+        }
+    }
+
+    #[test]
+    fn publish_rejects_invalid_repos_before_calling_github() {
+        let tmp = scratch("publish");
+        let missing = publish_repo(&tmp.join("missing"), &publish_options("widget", "private", ""));
+        assert!(
+            matches!(missing, Outcome::Failed(ref message) if message.contains("not a git repository")),
+            "{missing:?}"
+        );
+
+        let local = tmp.join("local");
+        init_repo(&local);
+        let empty = publish_repo(&local, &publish_options("widget", "private", ""));
+        assert!(
+            matches!(empty, Outcome::Failed(ref message) if message.contains("Commit")),
+            "{empty:?}"
+        );
+
+        fs::write(local.join("README.md"), "one\n").unwrap();
+        run_git(&local, &["add", "."]);
+        run_git(&local, &["commit", "-m", "initial"]);
+
+        let named = publish_repo(&local, &publish_options("bad name", "private", ""));
+        assert!(
+            matches!(named, Outcome::Failed(ref message) if message.contains("name")),
+            "{named:?}"
+        );
+        let visibility = publish_repo(&local, &publish_options("widget", "secret", ""));
+        assert!(
+            matches!(visibility, Outcome::Failed(ref message) if message.contains("Visibility")),
+            "{visibility:?}"
+        );
+        let homepage = publish_repo(&local, &publish_options("widget", "public", "example.com"));
+        assert!(
+            matches!(homepage, Outcome::Failed(ref message) if message.contains("Homepage")),
+            "{homepage:?}"
+        );
+
+        let bare = tmp.join("origin.git");
+        run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
+        run_git(
+            &local,
+            &["remote", "add", "origin", bare.to_str().unwrap()],
+        );
+        let exists = publish_repo(&local, &publish_options("widget", "private", ""));
+        assert!(
+            matches!(exists, Outcome::Failed(ref message) if message.contains("origin")),
+            "{exists:?}"
+        );
 
         let _ = fs::remove_dir_all(tmp);
     }

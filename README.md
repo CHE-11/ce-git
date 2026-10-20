@@ -1,8 +1,5 @@
-![ce-git logo](frontend/public/ce-git-logo.png)
 
-<video src="docs/demo.mp4" controls width="720">
-  <a href="docs/demo.mp4">Watch the ce-git demo</a>
-</video>
+https://github.com/user-attachments/assets/66df062a-c5a1-4f08-8279-45aeaec771b4
 
 # One folder, a lot of repos
 
@@ -39,6 +36,13 @@ Open a repo, review the diff, and commit from the box at the bottom. **Generate 
 Select several dirty repos and **AI commit** drafts a message for each one in a review list. You can edit any line, uncheck a repo, and then commit the ones you keep.
 
 Open **AI settings** to save an OpenAI key, pick a model, and choose how much the model thinks. After the key is saved, ce-git loads the 10 newest text and multimodal models from your OpenAI account. Each model shows a price tier from `$` to `$$$$`. Thinking can be none, minimal, low, medium, high, extra high, or max. The key is stored in the operating system's credential manager and is not shown again. Model and thinking preferences stay in the app's local settings. An `OPENAI_API_KEY` environment variable is used only when no key is saved.
+
+## Github CLI
+If you want to publish to Github, you can use the Github CLI.
+
+To install the Github CLI, please refer to the [Github CLI Installation documentation](https://github.com/cli/cli#installation).
+
+To autenticate with Github, you can use the Github CLI by running `gh auth login` and following the prompts.
 
 ## Run it
 

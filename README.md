@@ -1,8 +1,5 @@
-![ce-git logo](frontend/public/ce-git-logo.png)
 
-<video src="docs/demo.mp4" controls width="720">
-  <a href="docs/demo.mp4">Watch the ce-git demo</a>
-</video>
+https://github.com/user-attachments/assets/66df062a-c5a1-4f08-8279-45aeaec771b4
 
 # One folder, a lot of repos
 

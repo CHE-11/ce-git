@@ -50,14 +50,9 @@ export function HomePage() {
         busy={busy}
         generating={workspace.generating}
         discovering={workspace.discovering}
-        hasSelection={workspace.selectedPaths.length > 0}
-        pullCount={pullCount}
-        pushCount={pushCount}
         onOpenAppSettings={() => setSettingsTab("app")}
         onChooseFolder={() => void workspace.chooseFolder()}
         onRefresh={() => void workspace.refresh()}
-        onPullAll={workspace.requestPullAll}
-        onPushAll={workspace.requestPushAll}
         onAiCommitPrompt={workspace.startAiForDirty}
         onAddRoot={() => void workspace.addRootFolder()}
         onCreateNewRepo={() => setCreateRepoOpen(true)}
@@ -97,6 +92,10 @@ export function HomePage() {
           onDeleteFolder={(path) => void workspace.deleteFolder(path)}
           onRestoreRemoved={() => void workspace.restoreRemoved()}
           repoCount={workspace.repos.length}
+          pullCount={pullCount}
+          pushCount={pushCount}
+          onPullAll={workspace.requestPullAll}
+          onPushAll={workspace.requestPushAll}
           filter={treeFilter}
           onFilter={setTreeFilter}
         />

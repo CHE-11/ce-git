@@ -99,13 +99,18 @@ export function CommitBox({
                   >
                     {slot}
                   </button>
-                  <p
+                  <div
                     id={`commit-prompt-tooltip-${slot}`}
                     role="tooltip"
-                    className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden max-h-48 w-80 overflow-y-auto rounded-md border border-zinc-700 bg-zinc-950 p-2 text-left text-xs whitespace-pre-wrap text-zinc-200 shadow-xl group-hover:block group-focus-within:block"
+                    className="absolute right-0 bottom-full z-30 hidden pb-2 group-hover:block group-focus-within:block"
                   >
-                    {prompt}
-                  </p>
+                    <p
+                      id={`commit-prompt-tooltip-body-${slot}`}
+                      className="max-h-48 w-80 overflow-y-auto rounded-md border border-zinc-700 bg-zinc-950 p-2 text-left text-xs whitespace-pre-wrap text-zinc-200 shadow-xl"
+                    >
+                      {prompt}
+                    </p>
+                  </div>
                 </div>
               );
             })}

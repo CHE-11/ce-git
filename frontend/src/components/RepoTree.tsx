@@ -84,6 +84,10 @@ type RepoTreeProps = {
   onRestoreRemoved: () => void;
   onAddRoot: () => void;
   repoCount: number;
+  pullCount: number;
+  pushCount: number;
+  onPullAll: () => void;
+  onPushAll: () => void;
   filter: RepoTreeFilter | null;
   onFilter: (filter: RepoTreeFilter | null) => void;
 };
@@ -95,6 +99,30 @@ const filterEmpty: Record<RepoTreeFilter, string> = {
   unpublished: "Every repository already has a remote.",
   selected: "No repositories are selected.",
 };
+
+function syncTitle(action: "pull" | "push", count: number) {
+  if (count === 0) {
+    return action === "pull" ? "No repositories are behind their upstream" : "No repositories are ahead of their upstream";
+  }
+  const repos = count === 1 ? "repository is" : "repositories are";
+  return action === "pull" ? `${count} ${repos} behind their upstream` : `${count} ${repos} ahead of their upstream`;
+}
+
+function SyncBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" }) {
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <span
+      id={id}
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ${
+        tone === "pull" ? "bg-sky-950 text-sky-100" : "bg-emerald-950 text-emerald-300"
+      }`}
+    >
+      {count}
+    </span>
+  );
+}
 
 function treeHasRepos(tree: TreeNode) {
   return tree.kind === "repo" || tree.children.length > 0;
@@ -176,6 +204,11 @@ export function RepoTree({
   onRemoveRepo,
   onDeleteFolder,
   onRestoreRemoved,
+  repoCount,
+  pullCount,
+  pushCount,
+  onPullAll,
+  onPushAll,
   filter,
   onFilter,
 }: RepoTreeProps) {
@@ -352,30 +385,45 @@ export function RepoTree({
       </form>
       <div id="repo-tree-header" className="flex items-center justify-between px-3 py-2 h-10">
         {selectedCount > 0 ? (
-          <>
-            <span className="w-[22.4px]">
-            </span>
-            
-            <div id="selection-actions" className="flex items-center gap-2 border-zinc-800">
-              <Button id="pull-selected-button" variant="primary" size="xs" onClick={onPullSelected} disabled={busy}>
-                <ArrowDownToLine id="pull-selected-icon" className="size-3.5" />
-                <span id="pull-selected-label">Pull</span>
-              </Button>
-              <Button id="push-selected-button" variant="secondary" size="xs" onClick={onPushSelected} disabled={busy}>
-                <ArrowUpToLine id="push-selected-icon" className="size-3.5" />
-                <span id="push-selected-label">Push</span>
-              </Button>
-              <Button id="clear-selection-button" variant="destructive" size="xs" onClick={onClearSelection} disabled={busy}>
-                <X id="clear-selection-icon" className="size-3.5" />
-                <span id="clear-selection-label">Clear</span>
-              </Button>
-            </div>
-          </>
+          <div id="selection-actions" className="flex min-w-0 flex-1 items-center gap-1.5">
+            <Button id="pull-selected-button" variant="primary" size="xs" onClick={onPullSelected} disabled={busy}>
+              <ArrowDownToLine id="pull-selected-icon" className="size-3.5" />
+              <span id="pull-selected-label">Pull</span>
+            </Button>
+            <Button id="push-selected-button" variant="secondary" size="xs" onClick={onPushSelected} disabled={busy}>
+              <ArrowUpToLine id="push-selected-icon" className="size-3.5" />
+              <span id="push-selected-label">Push</span>
+            </Button>
+            <Button id="clear-selection-button" variant="destructive" size="xs" onClick={onClearSelection} disabled={busy}>
+              <X id="clear-selection-icon" className="size-3.5" />
+              <span id="clear-selection-label">Clear</span>
+            </Button>
+          </div>
         ) : (
-          <div id="repo-tree-heading" className="flex min-w-0 flex-1 items-center">
-            <h2 id="repo-tree-title" className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-              Repositories
-            </h2>
+          <div id="repo-tree-heading" className="flex min-w-0 flex-1 items-center gap-1.5">
+            <Button
+              id="pull-all-button"
+              variant="primary"
+              size="xs"
+              onClick={onPullAll}
+              disabled={busy || repoCount === 0}
+              title={syncTitle("pull", pullCount)}
+            >
+              <ArrowDownToLine id="pull-all-icon" className="size-3.5" />
+              <span id="pull-all-label">Pull all</span>
+              <SyncBadge id="pull-all-count" count={pullCount} tone="pull" />
+            </Button>
+            <Button
+              id="push-all-button"
+              size="xs"
+              onClick={onPushAll}
+              disabled={busy || repoCount === 0}
+              title={syncTitle("push", pushCount)}
+            >
+              <ArrowUpToLine id="push-all-icon" className="size-3.5" />
+              <span id="push-all-label">Push all</span>
+              <SyncBadge id="push-all-count" count={pushCount} tone="push" />
+            </Button>
           </div>
         )}
 

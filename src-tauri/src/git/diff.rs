@@ -201,7 +201,7 @@ pub fn truncate_text(value: &str, limit: usize) -> (String, bool) {
 }
 
 pub fn ensure_repo(path: &Path) -> Result<(), String> {
-    if path.join(".git").exists() {
+    if super::discover::is_repository(path) {
         Ok(())
     } else {
         Err("Not a git repository".into())

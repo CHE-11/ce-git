@@ -1,6 +1,6 @@
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
-import { messageOf } from "../../lib/tree";
+import { messageOf, pickedFolderPath } from "../../lib/tree";
 import { Button } from "../Button";
 import { Dialog } from "./Dialog";
 
@@ -33,8 +33,9 @@ export function CreateRepoDialog({ onClose, onCreate }: CreateRepoDialogProps) {
         title: "Choose a folder to initialize",
         defaultPath: folder.trim() || undefined,
       });
-      if (typeof picked === "string") {
-        setFolder(picked);
+      const path = pickedFolderPath(picked);
+      if (path) {
+        setFolder(path);
       }
     } catch (caught) {
       setError(messageOf(caught));

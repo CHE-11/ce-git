@@ -37,6 +37,81 @@ export function hasNestedRepo(node: TreeNode): boolean {
   return node.children.some((child) => child.kind === "repo" || hasNestedRepo(child));
 }
 
+const MAX_FOLDER_IGNORE_CHARS = 16 * 1024;
+
+export function folderIgnoreError(patternText: string) {
+  if (patternText.length > MAX_FOLDER_IGNORE_CHARS) {
+    return "Folder patterns are limited to 16 KB.";
+  }
+  const lines = patternText.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line) {
+      continue;
+    }
+    try {
+      new RegExp(line, "i");
+    } catch {
+      return `Line ${index + 1} is not a valid regular expression.`;
+    }
+  }
+  return null;
+}
+
+export function hideIgnoredFolders(tree: TreeNode, patternText: string): TreeNode | null {
+  const patterns = compileFolderIgnore(patternText);
+  if (patterns.length === 0) {
+    return tree;
+  }
+  return pruneIgnored(tree, patterns);
+}
+
+function compileFolderIgnore(patternText: string) {
+  const patterns: RegExp[] = [];
+  for (const line of patternText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      patterns.push(new RegExp(trimmed, "i"));
+    } catch {
+      // A line that is not a valid expression hides nothing.
+    }
+  }
+  return patterns;
+}
+
+function folderMatchesIgnore(node: TreeNode, patterns: readonly RegExp[]) {
+  const path = node.path;
+  const portable = path.replaceAll("\\", "/");
+  return patterns.some((pattern) => pattern.test(node.name) || pattern.test(path) || pattern.test(portable));
+}
+
+function pruneIgnored(node: TreeNode, patterns: readonly RegExp[]): TreeNode | null {
+  if (folderMatchesIgnore(node, patterns)) {
+    return null;
+  }
+  let childrenChanged = false;
+  const children: TreeNode[] = [];
+  for (const child of node.children) {
+    const next = pruneIgnored(child, patterns);
+    if (next !== child) {
+      childrenChanged = true;
+    }
+    if (next) {
+      children.push(next);
+    }
+  }
+  if (!childrenChanged) {
+    return node;
+  }
+  if (node.kind === "folder" && children.length === 0) {
+    return null;
+  }
+  return { name: node.name, path: node.path, kind: node.kind, children };
+}
+
 export function hideRemovedRepos(tree: TreeNode, removed: readonly string[]): TreeNode {
   if (removed.length === 0) {
     return tree;
@@ -160,6 +235,42 @@ export function messageOf(error: unknown) {
     return error.message;
   }
   return "Something went wrong.";
+}
+
+export function pickedFolderPath(picked: unknown): string | null {
+  const value = Array.isArray(picked) ? picked[0] : picked;
+  if (typeof value === "string") {
+    return normalizePickedPath(value);
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["path", "Path", "folder", "Folder"]) {
+      if (typeof record[key] === "string") {
+        return normalizePickedPath(record[key]);
+      }
+    }
+  }
+  return null;
+}
+
+function normalizePickedPath(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!trimmed.toLowerCase().startsWith("file:")) {
+    return trimmed;
+  }
+  try {
+    const url = new URL(trimmed);
+    let path = decodeURIComponent(url.pathname);
+    if (/^\/[A-Za-z]:/.test(path)) {
+      path = path.slice(1).replace(/\//g, "\\");
+    }
+    return path;
+  } catch {
+    return trimmed;
+  }
 }
 
 export function domId(prefix: string, value: string) {

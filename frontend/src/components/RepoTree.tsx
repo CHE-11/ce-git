@@ -78,6 +78,7 @@ type RepoTreeProps = {
   busy: boolean;
   removedRepos: string[];
   onOpenInEditor: (path: string, editor: FolderEditor) => void;
+  onRevealInExplorer: (path: string) => void;
   onRemoveRepo: (path: string) => void;
   onDeleteFolder: (path: string) => void;
   onRestoreRemoved: () => void;
@@ -171,6 +172,7 @@ export function RepoTree({
   busy,
   removedRepos,
   onOpenInEditor,
+  onRevealInExplorer,
   onRemoveRepo,
   onDeleteFolder,
   onRestoreRemoved,
@@ -546,6 +548,11 @@ export function RepoTree({
             const path = menu.node.path;
             setMenu(null);
             onOpenInEditor(path, editor);
+          }}
+          onReveal={() => {
+            const path = menu.node.path;
+            setMenu(null);
+            onRevealInExplorer(path);
           }}
           onRemove={() => {
             setPending({ kind: "remove", node: menu.node });

@@ -63,6 +63,7 @@ fn save_app_settings(
     color_mode: String,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
+    folder_ignore: String,
 ) -> Result<app_settings::AppSettings, String> {
     app_settings::save_app_settings(
         &app,
@@ -72,12 +73,18 @@ fn save_app_settings(
         color_mode,
         selected_prompt,
         prompts,
+        folder_ignore,
     )
 }
 
 #[tauri::command]
 fn theme_css(app: tauri::AppHandle) -> Result<String, String> {
     app_settings::theme_css(&app)
+}
+
+#[tauri::command]
+fn preview_app_settings(settings_folder: String) -> Result<app_settings::AppSettings, String> {
+    app_settings::preview_app_settings(settings_folder)
 }
 
 #[tauri::command]
@@ -232,6 +239,13 @@ async fn ignore_change(repo: String, kind: String, path: String) -> Result<(), S
 }
 
 #[tauri::command]
+async fn reveal_in_explorer(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || files::reveal_path(Path::new(&path)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn reveal_change(repo: String, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let full = git::contained_path(Path::new(&repo), &path)?;
@@ -277,6 +291,7 @@ pub fn run() {
             git_cancel_sign_in,
             app_settings,
             save_app_settings,
+            preview_app_settings,
             theme_css,
             patch_app_settings,
             openai_configured,
@@ -292,6 +307,7 @@ pub fn run() {
             batch_push,
             batch_commit,
             open_in_editor,
+            reveal_in_explorer,
             init_repo,
             delete_path,
             discard_change,

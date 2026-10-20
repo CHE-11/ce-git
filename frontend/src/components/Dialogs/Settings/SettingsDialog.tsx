@@ -20,22 +20,26 @@ import {
   gitSignIn,
   gitSignOut,
   listOpenAiModels,
+  patchAppSettings,
+  previewAppSettings,
   saveAiSettings,
   saveAppSettings,
   saveGitSettings,
 } from "../../../lib/git-client";
-import { messageOf } from "../../../lib/tree";
+import { folderIgnoreError, messageOf, pickedFolderPath } from "../../../lib/tree";
 import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, readZoom } from "../../../lib/zoom";
 import { Button } from "../../Button";
 import { Dialog } from "../Dialog";
 import { AISettingsTab } from "./AISettingsTab";
 import { AppSettingsTab } from "./AppSettingsTab";
 import { GitSettingsTab } from "./GitSettingsTab";
+import { IgnoreSettingsTab } from "./IgnoreSettingsTab";
 
 const SETTINGS_TABS = [
   { id: "app", label: "App" },
   { id: "git", label: "Git" },
   { id: "ai", label: "AI" },
+  { id: "ignore", label: "Ignore" },
 ] as const;
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
@@ -52,6 +56,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pickingFolder, setPickingFolder] = useState(false);
   const [folder, setFolder] = useState("");
   const [zoom, setZoom] = useState(readZoom);
   const openedAppearance = useRef(readAppearance());
@@ -59,6 +64,8 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const [colorMode, setColorMode] = useState<ColorMode>(openedAppearance.current.colorMode);
   const [warning, setWarning] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
+  const [folderIgnore, setFolderIgnore] = useState("");
+  const [ignoreError, setIgnoreError] = useState<string | null>(null);
 
   const [gitAvailable, setGitAvailable] = useState(true);
   const [credentialManager, setCredentialManager] = useState(false);
@@ -77,6 +84,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const signingInRef = useRef(false);
   const actionRef = useRef(false);
   const mountedRef = useRef(true);
+  const folderPreviewRef = useRef(0);
 
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
@@ -110,6 +118,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         const settings = appResult.value;
         setFolder(settings.settingsFolder);
         setWarning(settings.warning);
+        setFolderIgnore(settings.folderIgnore ?? "");
         setPrompts(withDefaultPrompts(settings.prompts));
         const appearance = settings.shared
           ? {
@@ -186,10 +195,10 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     setAutocrlf(settings.autocrlf);
   };
 
-  const busy = saving || signingIn || signingOut !== null;
+  const busy = saving || pickingFolder || signingIn || signingOut !== null;
 
   const requestClose = () => {
-    if (saving || signingOut) {
+    if (saving || pickingFolder || signingOut) {
       return;
     }
     if (signingInRef.current) {
@@ -209,8 +218,32 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     applyAppearance(theme, next);
   };
 
+  const applyFolderPreview = async (path: string) => {
+    const token = (folderPreviewRef.current += 1);
+    const preview = await previewAppSettings(path);
+    if (!mountedRef.current || token !== folderPreviewRef.current) {
+      return;
+    }
+    setFolder(preview.settingsFolder || path);
+    setWarning(preview.warning);
+    if (!preview.shared) {
+      return;
+    }
+    const appearance = {
+      theme: normalizeTheme(preview.theme),
+      colorMode: normalizeColorMode(preview.colorMode),
+    };
+    setTheme(appearance.theme);
+    setColorMode(appearance.colorMode);
+    setZoom(clampDialogZoom(preview.fontZoom));
+    setPrompts(withDefaultPrompts(preview.prompts));
+    applyAppearance(appearance.theme, appearance.colorMode);
+  };
+
   const browse = async () => {
+    folderPreviewRef.current += 1;
     setAppError(null);
+    setPickingFolder(true);
     try {
       const picked = await openFolder({
         directory: true,
@@ -218,10 +251,34 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         title: "Choose the settings folder",
         defaultPath: folder.trim() || undefined,
       });
-      if (typeof picked === "string") {
-        setFolder(picked);
-        setWarning(null);
+      const path = pickedFolderPath(picked);
+      if (!path) {
+        return;
       }
+      setFolder(path);
+      setWarning(null);
+      await applyFolderPreview(path);
+    } catch (caught) {
+      if (mountedRef.current) {
+        setAppError(messageOf(caught));
+      }
+    } finally {
+      window.setTimeout(() => {
+        if (mountedRef.current) {
+          setPickingFolder(false);
+        }
+      }, 500);
+    }
+  };
+
+  const commitFolder = async (value: string) => {
+    const path = value.trim();
+    if (!path) {
+      return;
+    }
+    setAppError(null);
+    try {
+      await applyFolderPreview(path);
     } catch (caught) {
       setAppError(messageOf(caught));
     }
@@ -238,11 +295,31 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         colorMode,
         selectedPrompt,
         prompts,
+        folderIgnore,
       });
       onSaved(saved);
       onClose();
     } catch (caught) {
       setAppError(messageOf(caught));
+      setSaving(false);
+    }
+  };
+
+  const saveIgnore = async () => {
+    const invalid = folderIgnoreError(folderIgnore);
+    if (invalid) {
+      setIgnoreError(invalid);
+      return;
+    }
+    setSaving(true);
+    setIgnoreError(null);
+    try {
+      await patchAppSettings({ folderIgnore });
+      const saved = await appSettings();
+      onSaved(saved);
+      onClose();
+    } catch (caught) {
+      setIgnoreError(messageOf(caught));
       setSaving(false);
     }
   };
@@ -447,11 +524,13 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
             setWarning(null);
             setAppError(null);
           }}
+          onFolderCommit={() => void commitFolder(folder)}
           onZoomChange={(value) => setZoom(clampDialogZoom(value))}
           onThemeChange={chooseTheme}
           onColorModeChange={chooseColorMode}
           onBrowse={() => void browse()}
           onClearFolder={() => {
+            folderPreviewRef.current += 1;
             setFolder("");
             setWarning(null);
             setAppError(null);
@@ -516,6 +595,19 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         />
       ) : null}
 
+      {!loading && tab === "ignore" ? (
+        <IgnoreSettingsTab
+          busy={busy}
+          pattern={folderIgnore}
+          error={ignoreError}
+          onPatternChange={(value) => {
+            setFolderIgnore(value);
+            setIgnoreError(null);
+          }}
+          onSubmit={() => void saveIgnore()}
+        />
+      ) : null}
+
 
       <div id="app-settings-actions" className="mt-4 flex justify-between gap-2">
         <div id="app-settings-actions-start">
@@ -527,7 +619,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           ) : null}
         </div>
         <div id="app-settings-actions-end" className="flex items-center gap-2">
-          <Button id="app-settings-cancel" variant="ghost" onClick={requestClose} disabled={saving || signingOut !== null}>
+          <Button id="app-settings-cancel" variant="ghost" onClick={requestClose} disabled={saving || pickingFolder || signingOut !== null}>
             <span id="app-settings-cancel-label">Cancel</span>
           </Button>
           {showSave ? (

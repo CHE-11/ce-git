@@ -127,4 +127,6 @@ export interface AppSettings {
   model: string;
   thinking: ThinkingMode;
   prompts: AiPrompts;
+  /** One regular expression per line. Matching folders are hidden in the repository tree. */
+  folderIgnore: string;
 }

@@ -19,6 +19,7 @@ type AppSettingsTabProps = {
   warning: string | null;
   error: string | null;
   onFolderChange: (folder: string) => void;
+  onFolderCommit: () => void;
   onZoomChange: (zoom: number) => void;
   onThemeChange: (theme: ThemeId) => void;
   onColorModeChange: (colorMode: ColorMode) => void;
@@ -36,6 +37,7 @@ export function AppSettingsTab({
   warning,
   error,
   onFolderChange,
+  onFolderCommit,
   onZoomChange,
   onThemeChange,
   onColorModeChange,
@@ -58,8 +60,9 @@ export function AppSettingsTab({
         }}
       >
         <p id="app-settings-intro" className="mt-4 text-sm text-zinc-300">
-          Point ce-git at one folder, including a shared drive. Workspace folders, hidden repositories, text size,
-          theme, color mode, and AI model, thinking, and prompts are saved there in ce-git.json. ce-git adds{" "}
+          Point ce-git at one folder, including a shared drive. Workspace folders, hidden repositories, folder ignore
+          patterns, text size, theme, color mode, and AI model, thinking, and prompts are saved there in ce-git.json.
+          ce-git adds{" "}
           {THEME_STYLESHEET_NAME} in that folder when it is missing, with the color overrides commented out, and loads
           the file on top of the theme. The OpenAI key stays in this computer's credential manager,
           and Git settings stay in Git.
@@ -77,16 +80,23 @@ export function AppSettingsTab({
               id="app-settings-folder-input"
               value={folder}
               onChange={(event) => onFolderChange(event.target.value)}
+              onBlur={(event) => {
+                const next = event.relatedTarget;
+                if (next instanceof HTMLElement && (next.id === "app-settings-browse" || next.id === "app-settings-clear")) {
+                  return;
+                }
+                onFolderCommit();
+              }}
               autoComplete="off"
               spellCheck={false}
               disabled={busy}
               placeholder="\\\\server\\share\\ce-git"
               className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50"
             />
-            <Button id="app-settings-browse" onClick={onBrowse} disabled={busy}>
+            <Button id="app-settings-browse" type="button" onClick={onBrowse} disabled={busy}>
               <span id="app-settings-browse-label">Browse</span>
             </Button>
-            <Button id="app-settings-clear" variant="ghost" onClick={onClearFolder} disabled={busy || folder.trim().length === 0}>
+            <Button id="app-settings-clear" type="button" variant="ghost" onClick={onClearFolder} disabled={busy || folder.trim().length === 0}>
               <span id="app-settings-clear-label">Clear</span>
             </Button>
           </div>

@@ -17,6 +17,7 @@ import {
   initRepo,
   openChange as openFile,
   openInEditor as openFolderInEditor,
+  revealInExplorer as revealFolderInExplorer,
   patchAppSettings,
   revealChange as revealFile,
   themeCss,
@@ -27,7 +28,7 @@ import {
   repoStatuses,
 } from "./git-client";
 import { withDefaultPrompts } from "./commit-prompts";
-import { baseName, collectRepos, containingRoot, hideRemovedRepos, messageOf, pathEquals, pathIsInside } from "./tree";
+import { baseName, collectRepos, containingRoot, hideIgnoredFolders, hideRemovedRepos, messageOf, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
 import { applyUserThemeCss, publishAppearance } from "./appearance";
 import { clampZoom, publishZoom, readZoom, ZOOM_EVENT } from "./zoom";
 
@@ -115,6 +116,8 @@ export function useWorkspace() {
   const zoomRef = useRef(readZoom());
   const rootPathsRef = useRef<string[]>([]);
   const removedRef = useRef<string[]>([]);
+  const sourceTreesRef = useRef<TreeNode[]>([]);
+  const folderIgnoreRef = useRef("");
   const anchorRef = useRef<string | null>(null);
   const repoPathsRef = useRef<string[]>([]);
   const logGeneration = useRef(0);
@@ -143,9 +146,28 @@ export function useWorkspace() {
     }
   }, []);
 
+  const applyVisibleTrees = useCallback((source: TreeNode[]) => {
+    sourceTreesRef.current = source;
+    const visible = source.flatMap((node) => {
+      const next = hideIgnoredFolders(node, folderIgnoreRef.current);
+      return next ? [next] : [];
+    });
+    const found = visible.flatMap((node) => collectRepos(node));
+    setTrees(visible);
+    setSelectedPaths((current) => current.filter((path) => found.some((repo) => pathEquals(repo.path, path))));
+    setActivePath((current) => {
+      if (current && found.some((repo) => pathEquals(repo.path, current))) {
+        return current;
+      }
+      return found[0]?.path ?? null;
+    });
+    return found.map((repo) => repo.path);
+  }, []);
+
   const reloadTrees = useCallback(
     async (roots: string[]) => {
       if (roots.length === 0) {
+        sourceTreesRef.current = [];
         setTrees([]);
         setStatuses({});
         setSelectedPaths([]);
@@ -170,16 +192,7 @@ export function useWorkspace() {
           setError(failures.join(" "));
         }
         const nextTrees = results.flatMap((result) => (result.tree ? [result.tree] : []));
-        const found = nextTrees.flatMap((node) => collectRepos(node));
-        const foundPaths = found.map((repo) => repo.path);
-        setTrees(nextTrees);
-        setSelectedPaths((current) => current.filter((path) => found.some((repo) => repo.path === path)));
-        setActivePath((current) => {
-          if (current && found.some((repo) => repo.path === current)) {
-            return current;
-          }
-          return found[0]?.path ?? null;
-        });
+        const foundPaths = applyVisibleTrees(nextTrees);
         await loadStatuses(foundPaths);
         return foundPaths;
       } catch (caught) {
@@ -189,7 +202,7 @@ export function useWorkspace() {
         setDiscovering(false);
       }
     },
-    [loadStatuses],
+    [applyVisibleTrees, loadStatuses],
   );
 
   const applyAiSettings = (settings: AiSettings) => {
@@ -225,6 +238,9 @@ export function useWorkspace() {
     async (settings: AppSettings, source: "startup" | "save" = "save") => {
       void refreshThemeCss();
       sharedRef.current = settings.shared;
+      const nextIgnore = settings.folderIgnore ?? "";
+      const ignoreChanged = nextIgnore !== folderIgnoreRef.current;
+      folderIgnoreRef.current = nextIgnore;
       const useFilePreferences = settings.shared || source === "save";
       if (useFilePreferences) {
         const prompts = withDefaultPrompts(settings.prompts);
@@ -245,11 +261,15 @@ export function useWorkspace() {
       setRootPaths(roots);
       setRemovedRepos(removed);
       if (!changed) {
+        if (ignoreChanged) {
+          const paths = applyVisibleTrees(sourceTreesRef.current);
+          await loadStatuses(paths);
+        }
         return;
       }
       await reloadTrees(roots);
     },
-    [refreshThemeCss, reloadTrees],
+    [applyVisibleTrees, loadStatuses, refreshThemeCss, reloadTrees],
   );
 
   useEffect(() => {
@@ -371,7 +391,7 @@ export function useWorkspace() {
       multiple: false,
       title,
     });
-    return typeof picked === "string" ? picked : null;
+    return pickedFolderPath(picked);
   };
 
   const persistRoots = async (paths: string[]) => {
@@ -486,6 +506,15 @@ export function useWorkspace() {
     }
   };
 
+  const revealInExplorer = async (path: string) => {
+    setError(null);
+    try {
+      await revealFolderInExplorer(path);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
   const removeRepo = async (path: string) => {
     if (trees.length === 0 || removedRef.current.some((item) => pathEquals(item, path))) {
       return;
@@ -494,16 +523,8 @@ export function useWorkspace() {
     try {
       const nextRemoved = [...removedRef.current, path];
       await persistRemoved(nextRemoved);
-      const nextTrees = trees.map((node) => hideRemovedRepos(node, nextRemoved));
-      const nextRepos = nextTrees.flatMap((node) => collectRepos(node));
-      setTrees(nextTrees);
-      setSelectedPaths((current) => current.filter((item) => nextRepos.some((repo) => pathEquals(repo.path, item))));
-      setActivePath((current) => {
-        if (current && nextRepos.some((repo) => pathEquals(repo.path, current))) {
-          return current;
-        }
-        return nextRepos[0]?.path ?? null;
-      });
+      const nextSource = sourceTreesRef.current.map((node) => hideRemovedRepos(node, nextRemoved));
+      applyVisibleTrees(nextSource);
       setStatuses((current) => {
         const next = { ...current };
         for (const key of Object.keys(next)) {
@@ -851,6 +872,7 @@ export function useWorkspace() {
     clearSelection,
     removedRepos,
     openInEditor,
+    revealInExplorer,
     removeRepo,
     restoreRemoved,
     deleteFolder,

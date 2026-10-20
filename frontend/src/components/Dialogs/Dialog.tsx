@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 
 type DialogProps = {
@@ -12,6 +12,8 @@ type DialogProps = {
 };
 
 export function Dialog({ id, title, open, onClose, children, panelClassName, bodyClassName }: DialogProps) {
+  const ignoreBackdropUntil = useRef(0);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -21,8 +23,15 @@ export function Dialog({ id, title, open, onClose, children, panelClassName, bod
         onClose();
       }
     };
+    const onFocus = () => {
+      ignoreBackdropUntil.current = Date.now() + 500;
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [open, onClose]);
 
   if (!open) {
@@ -33,7 +42,12 @@ export function Dialog({ id, title, open, onClose, children, panelClassName, bod
     <div
       id={`${id}-backdrop`}
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6"
-      onClick={onClose}
+      onClick={() => {
+        if (Date.now() < ignoreBackdropUntil.current) {
+          return;
+        }
+        onClose();
+      }}
     >
       <div
         id={id}

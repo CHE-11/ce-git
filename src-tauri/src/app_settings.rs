@@ -34,6 +34,7 @@ const THEMES: &[&str] = &[
 ];
 const THEME_CSS_FILE_NAME: &str = "ce-git.css";
 const MAX_THEME_CSS_BYTES: u64 = 256 * 1024;
+const MAX_FOLDER_IGNORE_BYTES: usize = 16 * 1024;
 const THEME_CSS_TEMPLATE: &str = "\
 /*
 ce-git loads this file on top of the selected theme.
@@ -114,6 +115,7 @@ pub struct AppSettings {
     pub model: String,
     pub thinking: String,
     pub prompts: Vec<String>,
+    pub folder_ignore: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -125,6 +127,7 @@ pub struct AppSettingsPatch {
     pub clear_selected_prompt: bool,
     pub root_paths: Option<Vec<String>>,
     pub removed_repos: Option<Vec<String>>,
+    pub folder_ignore: Option<String>,
 }
 
 impl Default for AppSettingsPatch {
@@ -136,6 +139,7 @@ impl Default for AppSettingsPatch {
             clear_selected_prompt: false,
             root_paths: None,
             removed_repos: None,
+            folder_ignore: None,
         }
     }
 }
@@ -153,6 +157,7 @@ struct PortableFile {
     model: String,
     thinking: String,
     prompts: Vec<String>,
+    folder_ignore: String,
 }
 
 impl Default for PortableFile {
@@ -168,6 +173,7 @@ impl Default for PortableFile {
             model: String::new(),
             thinking: DEFAULT_THINKING.to_string(),
             prompts: vec![String::new(); 3],
+            folder_ignore: String::new(),
         }
     }
 }
@@ -193,6 +199,10 @@ pub fn app_settings(app: &AppHandle) -> Result<AppSettings, String> {
     })
 }
 
+pub fn preview_app_settings(settings_folder: String) -> Result<AppSettings, String> {
+    with_settings_lock(|| preview_folder(&settings_folder))
+}
+
 pub fn save_app_settings(
     app: &AppHandle,
     settings_folder: String,
@@ -201,6 +211,7 @@ pub fn save_app_settings(
     color_mode: String,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
+    folder_ignore: String,
 ) -> Result<AppSettings, String> {
     with_settings_lock(|| {
         let loaded = load_locked(app)?;
@@ -222,6 +233,7 @@ pub fn save_app_settings(
         let color_mode = normalize_color_mode(&color_mode);
         let prompt = normalize_prompt(selected_prompt);
         let prompts = normalize_prompts(prompts);
+        let folder_ignore = normalize_folder_ignore(&folder_ignore)?;
         let destination_exists = !next_folder.is_empty() && settings_path(&next_folder).is_file();
         let plan = folder_plan(&loaded.folder, &next_folder, destination_exists);
 
@@ -230,6 +242,7 @@ pub fn save_app_settings(
                 let mut file = loaded.file;
                 file.prompts = prompts;
                 file.selected_prompt = prompt;
+                file.folder_ignore = folder_ignore;
                 write_local_ai(app, &file)?;
                 write_local_workspace(app, &file)?;
                 file.font_zoom = zoom;
@@ -260,6 +273,7 @@ pub fn save_app_settings(
                 file.color_mode = color_mode;
                 file.selected_prompt = prompt;
                 file.prompts = prompts;
+                file.folder_ignore = folder_ignore;
                 file.normalize_in_place();
                 let path = settings_path(&next_folder);
                 write_portable_file(&path, &file)?;
@@ -281,6 +295,9 @@ pub fn patch_app_settings(app: &AppHandle, patch: AppSettingsPatch) -> Result<()
         if folder.is_empty() {
             if patch.root_paths.is_some() || patch.removed_repos.is_some() {
                 write_local_paths(app, patch.root_paths, patch.removed_repos)?;
+            }
+            if let Some(pattern) = patch.folder_ignore {
+                write_local_folder_ignore(app, &pattern)?;
             }
             return Ok(());
         }
@@ -306,6 +323,9 @@ pub fn patch_app_settings(app: &AppHandle, patch: AppSettingsPatch) -> Result<()
             file.selected_prompt = None;
         } else if let Some(prompt) = patch.selected_prompt {
             file.selected_prompt = normalize_prompt(Some(prompt));
+        }
+        if let Some(pattern) = patch.folder_ignore {
+            file.folder_ignore = normalize_folder_ignore(&pattern)?;
         }
         write_portable_file(&path, &file)
     })
@@ -378,6 +398,37 @@ fn with_settings_lock<T>(body: impl FnOnce() -> Result<T, String>) -> Result<T, 
     body()
 }
 
+fn preview_folder(settings_folder: &str) -> Result<AppSettings, String> {
+    let folder = normalize_folder(settings_folder);
+    if folder.is_empty() {
+        return Err("Choose a folder.".into());
+    }
+    validate_folder(&folder)?;
+    let path = settings_path(&folder);
+    if !path.is_file() {
+        return Ok(view_of(&Loaded {
+            folder,
+            shared: false,
+            warning: None,
+            file: PortableFile::default(),
+        }));
+    }
+    match read_portable_file(&path) {
+        Ok(file) => Ok(view_of(&Loaded {
+            folder,
+            shared: true,
+            warning: None,
+            file: file.normalize(),
+        })),
+        Err(error) => Ok(view_of(&Loaded {
+            folder,
+            shared: false,
+            warning: Some(error),
+            file: PortableFile::default(),
+        })),
+    }
+}
+
 fn load_locked(app: &AppHandle) -> Result<Loaded, String> {
     let folder = read_pointer(app)?;
     if folder.is_empty() {
@@ -436,6 +487,7 @@ fn view_of(loaded: &Loaded) -> AppSettings {
         model: file.model.clone(),
         thinking: file.thinking.clone(),
         prompts: file.prompts.clone(),
+        folder_ignore: file.folder_ignore.clone(),
     }
 }
 
@@ -460,6 +512,7 @@ fn read_local(app: &AppHandle) -> Result<PortableFile, String> {
         prompts: PROMPT_KEYS
             .map(|key| json_string(ai.get(key)).unwrap_or_default())
             .to_vec(),
+        folder_ignore: json_string(settings.get("folderIgnore")).unwrap_or_default(),
         ..PortableFile::default()
     };
     file.normalize_in_place();
@@ -476,8 +529,25 @@ fn write_local_workspace(app: &AppHandle, file: &PortableFile) -> Result<(), Str
         json!(file.root_paths.first().cloned().unwrap_or_default()),
     );
     store.set("removedRepos", json!(file.removed_repos));
+    write_folder_ignore_value(&store, &file.folder_ignore);
     store.set(POINTER_KEY, "");
     store.save().map_err(|error| error.to_string())
+}
+
+fn write_local_folder_ignore(app: &AppHandle, value: &str) -> Result<(), String> {
+    let store = app
+        .store(POINTER_STORE)
+        .map_err(|error| error.to_string())?;
+    write_folder_ignore_value(&store, &normalize_folder_ignore(value)?);
+    store.save().map_err(|error| error.to_string())
+}
+
+fn write_folder_ignore_value(store: &tauri_plugin_store::Store<tauri::Wry>, value: &str) {
+    if value.is_empty() {
+        store.delete("folderIgnore");
+    } else {
+        store.set("folderIgnore", json!(value));
+    }
 }
 
 fn write_local_paths(
@@ -680,7 +750,20 @@ impl PortableFile {
         self.model = self.model.trim().to_string();
         self.thinking = normalize_thinking(&self.thinking);
         self.prompts = normalize_prompts(std::mem::take(&mut self.prompts));
+        self.folder_ignore = tidy_folder_ignore(&self.folder_ignore);
     }
+}
+
+fn tidy_folder_ignore(value: &str) -> String {
+    value.trim().replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn normalize_folder_ignore(value: &str) -> Result<String, String> {
+    let normalized = tidy_folder_ignore(value);
+    if normalized.len() > MAX_FOLDER_IGNORE_BYTES {
+        return Err("Folder patterns are limited to 16 KB.".into());
+    }
+    Ok(normalized)
 }
 
 fn normalize_theme(value: &str) -> String {
@@ -801,6 +884,36 @@ mod tests {
     }
 
     #[test]
+    fn preview_reads_an_existing_settings_file() {
+        let directory = std::env::temp_dir().join(format!(
+            "ce-git-preview-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("ce-git.json");
+        std::fs::write(
+            &path,
+            br#"{"rootPaths":["C:\\Repos"],"fontZoom":130,"theme":"nord","colorMode":"light"}"#,
+        )
+        .unwrap();
+
+        let preview = super::preview_folder(&directory.to_string_lossy()).unwrap();
+        assert!(preview.shared);
+        assert_eq!(preview.font_zoom, 130);
+        assert_eq!(preview.theme, "nord");
+        assert_eq!(preview.color_mode, "light");
+        assert_eq!(preview.root_paths, vec!["C:\\Repos"]);
+
+        let missing = directory.join("missing-folder");
+        assert!(super::preview_folder(&missing.to_string_lossy()).is_err());
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
     fn an_existing_file_in_a_new_folder_is_adopted() {
         assert_eq!(folder_plan("", "", false), FolderPlan::Local);
         assert_eq!(folder_plan(r"C:\Old", "", true), FolderPlan::Local);
@@ -842,17 +955,20 @@ mod tests {
         assert_eq!(loaded.prompts.len(), 3);
         assert_eq!(loaded.theme, "zinc");
         assert_eq!(loaded.color_mode, "dark");
+        assert_eq!(loaded.folder_ignore, "");
 
         let mut next = loaded;
         next.model = "gpt-test".into();
         next.theme = "nord".into();
         next.color_mode = "light".into();
+        next.folder_ignore = "node_modules\n(^|[\\\\/])vendor$".into();
         write_portable_file(&path, &next).unwrap();
         let saved: PortableFile = super::read_portable_file(&path).unwrap().normalize();
         assert_eq!(saved.model, "gpt-test");
         assert_eq!(saved.root_paths, vec![r"\\server\share\repos"]);
         assert_eq!(saved.theme, "nord");
         assert_eq!(saved.color_mode, "light");
+        assert_eq!(saved.folder_ignore, "node_modules\n(^|[\\\\/])vendor$");
 
         let mut invalid = saved;
         invalid.theme = "nope".into();

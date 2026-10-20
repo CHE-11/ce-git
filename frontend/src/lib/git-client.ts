@@ -56,8 +56,13 @@ export function saveAppSettings(settings: {
   colorMode: "dark" | "light" | "system";
   selectedPrompt: number | null;
   prompts: AiPrompts;
+  folderIgnore: string;
 }) {
   return invoke<AppSettings>("save_app_settings", settings);
+}
+
+export function previewAppSettings(settingsFolder: string) {
+  return invoke<AppSettings>("preview_app_settings", { settingsFolder });
 }
 
 export function themeCss() {
@@ -71,6 +76,7 @@ export function patchAppSettings(patch: {
   clearSelectedPrompt?: boolean;
   rootPaths?: string[];
   removedRepos?: string[];
+  folderIgnore?: string;
 }) {
   return invoke<void>("patch_app_settings", { patch });
 }
@@ -140,6 +146,10 @@ export type FolderEditor = "default" | "code" | "cursor";
 
 export function openInEditor(path: string, editor: FolderEditor = "default") {
   return invoke<void>("open_in_editor", { path, editor });
+}
+
+export function revealInExplorer(path: string) {
+  return invoke<void>("reveal_in_explorer", { path });
 }
 
 export function initRepo(path: string) {

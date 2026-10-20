@@ -15,7 +15,7 @@ pub fn init_repo(path: &std::path::Path) -> Result<(), String> {
     if !path.is_dir() {
         return Err(format!("Folder does not exist: {}", path.display()));
     }
-    if path.join(".git").exists() {
+    if discover::is_repository(path) {
         return Err("That folder is already a git repository.".to_string());
     }
     command::git(path, &["init", "-b", "main"])?;
@@ -115,6 +115,29 @@ mod tests {
             tree.children
                 .iter()
                 .any(|child| child.name == "group" && child.kind == NodeKind::Folder)
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_git_file_does_not_make_a_repository() {
+        let root = scratch("git-file");
+        let decoy = root.join("decoy");
+        fs::create_dir_all(&decoy).unwrap();
+        fs::write(decoy.join(".git"), "gitdir: /nowhere\n").unwrap();
+        let real = root.join("real");
+        init_repo(&real);
+
+        let tree = discover(&root).unwrap();
+        let paths = repo_paths(&tree);
+        assert!(
+            paths.iter().any(|path| path.ends_with("real")),
+            "{paths:?}"
+        );
+        assert!(
+            !paths.iter().any(|path| path.ends_with("decoy")),
+            "{paths:?}"
         );
 
         let _ = fs::remove_dir_all(root);

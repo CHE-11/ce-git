@@ -1,8 +1,9 @@
-import { ExternalLink, FolderMinus, Trash2, Undo2 } from "lucide-react";
+import { ExternalLink, FolderMinus, FolderSearch, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { TreeNode } from "../../../types/git";
 import type { FolderEditor } from "../lib/git-client";
+import { fileManagerLabel } from "../lib/changes";
 import { pathEquals } from "../lib/tree";
 import { cn } from "../lib/cn";
 
@@ -14,6 +15,7 @@ type TreeContextMenuProps = {
   removedCount: number;
   actionsDisabled: boolean;
   onOpen: (editor: FolderEditor) => void;
+  onReveal: () => void;
   onRemove: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -65,6 +67,7 @@ export function TreeContextMenu({
   removedCount,
   actionsDisabled,
   onOpen,
+  onReveal,
   onRemove,
   onRestore,
   onDelete,
@@ -163,6 +166,17 @@ export function TreeContextMenu({
       >
         <CursorIcon id="tree-context-open-cursor-icon" />
         <span id="tree-context-open-cursor-label">Open in Cursor</span>
+      </button>
+      <button
+        id="tree-context-reveal"
+        type="button"
+        role="menuitem"
+        className={itemClass}
+        title="Open this folder in the native file explorer"
+        onClick={onReveal}
+      >
+        <FolderSearch id="tree-context-reveal-icon" className="size-4 shrink-0 text-zinc-400" />
+        <span id="tree-context-reveal-label">{fileManagerLabel()}</span>
       </button>
       {isRepo ? (
         <button

@@ -55,7 +55,7 @@ pub fn status_of(path: &Path) -> RepoStatus {
 }
 
 fn read_status(path: &Path) -> Result<RepoStatus, String> {
-    if !path.join(".git").exists() {
+    if !super::discover::is_repository(path) {
         return Err("Not a git repository".into());
     }
 

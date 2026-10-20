@@ -48,8 +48,12 @@ pub fn discover(root: &Path) -> Result<TreeNode, String> {
     }))
 }
 
+pub(crate) fn is_repository(dir: &Path) -> bool {
+    dir.join(".git").is_dir()
+}
+
 fn walk(dir: &Path) -> Option<TreeNode> {
-    let is_repo = dir.join(".git").exists();
+    let is_repo = is_repository(dir);
     let mut children = Vec::new();
 
     let entries = match fs::read_dir(dir) {

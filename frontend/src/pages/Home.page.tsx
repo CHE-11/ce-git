@@ -91,6 +91,7 @@ export function HomePage() {
           busy={busy}
           removedRepos={workspace.removedRepos}
           onOpenInEditor={(path, editor) => void workspace.openInEditor(path, editor)}
+          onRevealInExplorer={(path) => void workspace.revealInExplorer(path)}
           onRemoveRepo={(path) => void workspace.removeRepo(path)}
           onDeleteFolder={(path) => void workspace.deleteFolder(path)}
           onRestoreRemoved={() => void workspace.restoreRemoved()}

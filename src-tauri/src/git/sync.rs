@@ -165,7 +165,7 @@ fn publish_to_github(path: &Path, branch: &str) -> Outcome {
 }
 
 fn require_repo(path: &Path) -> Result<(), String> {
-    if path.join(".git").exists() {
+    if super::discover::is_repository(path) {
         Ok(())
     } else {
         Err(format!("{} is not a git repository", dir_name(path)))

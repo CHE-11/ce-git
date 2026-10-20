@@ -130,6 +130,8 @@ export interface AppSettings {
   warning: string | null;
   rootPaths: string[];
   removedRepos: string[];
+  /** Repository opened most recently. Empty when none has been opened. */
+  lastOpenedRepo: string;
   commitVerbosity: CommitVerbosity;
   selectedPrompt: number | null;
   fontZoom: number;

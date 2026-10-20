@@ -107,6 +107,7 @@ pub struct AppSettings {
     pub warning: Option<String>,
     pub root_paths: Vec<String>,
     pub removed_repos: Vec<String>,
+    pub last_opened_repo: String,
     pub commit_verbosity: String,
     pub selected_prompt: Option<u8>,
     pub font_zoom: u32,
@@ -130,6 +131,7 @@ pub struct AppSettingsPatch {
     pub clear_selected_prompt: bool,
     pub root_paths: Option<Vec<String>>,
     pub removed_repos: Option<Vec<String>>,
+    pub last_opened_repo: Option<String>,
     pub folder_ignore: Option<String>,
 }
 
@@ -142,6 +144,7 @@ impl Default for AppSettingsPatch {
             clear_selected_prompt: false,
             root_paths: None,
             removed_repos: None,
+            last_opened_repo: None,
             folder_ignore: None,
         }
     }
@@ -152,6 +155,7 @@ impl Default for AppSettingsPatch {
 struct PortableFile {
     root_paths: Vec<String>,
     removed_repos: Vec<String>,
+    last_opened_repo: String,
     commit_verbosity: String,
     selected_prompt: Option<u8>,
     font_zoom: u32,
@@ -171,6 +175,7 @@ impl Default for PortableFile {
         Self {
             root_paths: Vec::new(),
             removed_repos: Vec::new(),
+            last_opened_repo: String::new(),
             commit_verbosity: DEFAULT_VERBOSITY.to_string(),
             selected_prompt: None,
             font_zoom: DEFAULT_ZOOM,
@@ -313,8 +318,16 @@ pub fn patch_app_settings(app: &AppHandle, patch: AppSettingsPatch) -> Result<()
     with_settings_lock(|| {
         let folder = read_pointer(app)?;
         if folder.is_empty() {
-            if patch.root_paths.is_some() || patch.removed_repos.is_some() {
-                write_local_paths(app, patch.root_paths, patch.removed_repos)?;
+            if patch.root_paths.is_some()
+                || patch.removed_repos.is_some()
+                || patch.last_opened_repo.is_some()
+            {
+                write_local_paths(
+                    app,
+                    patch.root_paths,
+                    patch.removed_repos,
+                    patch.last_opened_repo,
+                )?;
             }
             if let Some(pattern) = patch.folder_ignore {
                 write_local_folder_ignore(app, &pattern)?;
@@ -332,6 +345,9 @@ pub fn patch_app_settings(app: &AppHandle, patch: AppSettingsPatch) -> Result<()
         }
         if let Some(paths) = patch.removed_repos {
             file.removed_repos = clean_paths(paths);
+        }
+        if let Some(path) = patch.last_opened_repo {
+            file.last_opened_repo = path.trim().to_string();
         }
         if let Some(zoom) = patch.font_zoom {
             file.font_zoom = clamp_zoom(zoom);
@@ -499,6 +515,7 @@ fn view_of(loaded: &Loaded) -> AppSettings {
         warning: loaded.warning.clone(),
         root_paths: file.root_paths.clone(),
         removed_repos: file.removed_repos.clone(),
+        last_opened_repo: file.last_opened_repo.clone(),
         commit_verbosity: file.commit_verbosity.clone(),
         selected_prompt: file.selected_prompt,
         font_zoom: file.font_zoom,
@@ -530,6 +547,7 @@ fn read_local(app: &AppHandle) -> Result<PortableFile, String> {
     let mut file = PortableFile {
         root_paths,
         removed_repos: string_list(settings.get("removedRepos")),
+        last_opened_repo: json_string(settings.get("lastOpenedRepo")).unwrap_or_default(),
         model: json_string(ai.get("model")).unwrap_or_default(),
         thinking: json_string(ai.get("thinking")).unwrap_or_else(|| DEFAULT_THINKING.to_string()),
         prompts: PROMPT_KEYS
@@ -552,6 +570,7 @@ fn write_local_workspace(app: &AppHandle, file: &PortableFile) -> Result<(), Str
         json!(file.root_paths.first().cloned().unwrap_or_default()),
     );
     store.set("removedRepos", json!(file.removed_repos));
+    write_last_opened_value(&store, &file.last_opened_repo);
     write_folder_ignore_value(&store, &file.folder_ignore);
     store.set(POINTER_KEY, "");
     store.save().map_err(|error| error.to_string())
@@ -573,10 +592,20 @@ fn write_folder_ignore_value(store: &tauri_plugin_store::Store<tauri::Wry>, valu
     }
 }
 
+fn write_last_opened_value(store: &tauri_plugin_store::Store<tauri::Wry>, value: &str) {
+    let value = value.trim();
+    if value.is_empty() {
+        store.delete("lastOpenedRepo");
+    } else {
+        store.set("lastOpenedRepo", json!(value));
+    }
+}
+
 fn write_local_paths(
     app: &AppHandle,
     root_paths: Option<Vec<String>>,
     removed_repos: Option<Vec<String>>,
+    last_opened_repo: Option<String>,
 ) -> Result<(), String> {
     let store = app
         .store(POINTER_STORE)
@@ -591,6 +620,9 @@ fn write_local_paths(
     }
     if let Some(paths) = removed_repos {
         store.set("removedRepos", json!(clean_paths(paths)));
+    }
+    if let Some(path) = last_opened_repo {
+        write_last_opened_value(&store, &path);
     }
     store.save().map_err(|error| error.to_string())
 }
@@ -765,6 +797,7 @@ impl PortableFile {
     fn normalize_in_place(&mut self) {
         self.root_paths = clean_paths(std::mem::take(&mut self.root_paths));
         self.removed_repos = clean_paths(std::mem::take(&mut self.removed_repos));
+        self.last_opened_repo = self.last_opened_repo.trim().to_string();
         self.commit_verbosity = normalize_verbosity(&self.commit_verbosity);
         self.selected_prompt = normalize_prompt(self.selected_prompt);
         self.font_zoom = clamp_zoom(self.font_zoom);
@@ -956,6 +989,7 @@ mod tests {
         assert_eq!(preview.theme, "nord");
         assert_eq!(preview.color_mode, "light");
         assert_eq!(preview.root_paths, vec!["C:\\Repos"]);
+        assert_eq!(preview.last_opened_repo, "");
 
         let missing = directory.join("missing-folder");
         assert!(super::preview_folder(&missing.to_string_lossy()).is_err());
@@ -1016,6 +1050,7 @@ mod tests {
             ]
         );
         assert_eq!(loaded.folder_ignore, "");
+        assert_eq!(loaded.last_opened_repo, "");
 
         let mut next = loaded;
         next.model = "gpt-test".into();
@@ -1025,6 +1060,7 @@ mod tests {
         next.default_editor = "cursor".into();
         next.menu_editors = vec!["zed".into(), "nope".into(), "code".into(), "zed".into()];
         next.folder_ignore = "node_modules\n(^|[\\\\/])vendor$".into();
+        next.last_opened_repo = r"\\server\share\repos\app".into();
         write_portable_file(&path, &next).unwrap();
         let saved: PortableFile = super::read_portable_file(&path).unwrap().normalize();
         assert_eq!(saved.model, "gpt-test");
@@ -1038,6 +1074,7 @@ mod tests {
             vec!["code".to_string(), "zed".to_string()]
         );
         assert_eq!(saved.folder_ignore, "node_modules\n(^|[\\\\/])vendor$");
+        assert_eq!(saved.last_opened_repo, r"\\server\share\repos\app");
 
         let mut invalid = saved;
         invalid.theme = "nope".into();

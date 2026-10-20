@@ -187,6 +187,9 @@ export function useWorkspace() {
   const statusPollRef = useRef<Promise<void> | null>(null);
   const statusesRef = useRef<Record<string, RepoStatus>>({});
   const activePathRef = useRef<string | null>(null);
+  const selectedPathsRef = useRef<string[]>([]);
+  const lastOpenedRef = useRef<string | null>(null);
+  const restoreLastOpenedRef = useRef(false);
   const scanErrorRef = useRef<string | null>(null);
   const interactionEpoch = useRef(0);
   const pointerDownRef = useRef(0);
@@ -219,6 +222,18 @@ export function useWorkspace() {
 
   useEffect(() => {
     activePathRef.current = activePath;
+    selectedPathsRef.current = selectedPaths;
+  }, [activePath, selectedPaths]);
+
+  useEffect(() => {
+    if (!activePath) {
+      return;
+    }
+    if (lastOpenedRef.current && pathEquals(lastOpenedRef.current, activePath)) {
+      return;
+    }
+    lastOpenedRef.current = activePath;
+    void patchAppSettings({ lastOpenedRepo: activePath }).catch((caught) => setError(messageOf(caught)));
   }, [activePath]);
 
   useEffect(() => {
@@ -252,14 +267,28 @@ export function useWorkspace() {
       return next ? [next] : [];
     });
     const found = visible.flatMap((node) => collectRepos(node));
+    const present = (path: string | null) => (path ? (found.find((repo) => pathEquals(repo.path, path))?.path ?? null) : null);
+    const currentActive = activePathRef.current;
+    let nextActive = present(currentActive);
+    const restoring = restoreLastOpenedRef.current;
+    if (!nextActive && restoring) {
+      nextActive = present(lastOpenedRef.current);
+    }
+    restoreLastOpenedRef.current = false;
     setTrees((current) => (sameTrees(current, visible) ? current : visible));
     setSelectedPaths((current) => {
-      const next = current.filter((path) => found.some((repo) => pathEquals(repo.path, path)));
-      return next.length === current.length ? current : next;
+      const kept = current.filter((path) => found.some((repo) => pathEquals(repo.path, path)));
+      if (kept.length > 0) {
+        return kept.length === current.length ? current : kept;
+      }
+      if (restoring && nextActive) {
+        return [nextActive];
+      }
+      return kept.length === current.length ? current : kept;
     });
-    const currentActive = activePathRef.current;
-    const nextActive =
-      currentActive && found.some((repo) => pathEquals(repo.path, currentActive)) ? currentActive : (found[0]?.path ?? null);
+    if (restoring && nextActive && !present(currentActive)) {
+      anchorRef.current = nextActive;
+    }
     activePathRef.current = nextActive;
     setActivePath(nextActive);
     return found.map((repo) => repo.path);
@@ -283,6 +312,7 @@ export function useWorkspace() {
           setTrees([]);
           setStatuses({});
           setSelectedPaths([]);
+          selectedPathsRef.current = [];
           activePathRef.current = null;
           setActivePath(null);
           return [];
@@ -403,6 +433,11 @@ export function useWorkspace() {
 
       const roots = settings.rootPaths.filter((path) => path.trim().length > 0);
       const removed = settings.removedRepos.filter((path) => path.trim().length > 0);
+      if (source === "startup") {
+        const opened = settings.lastOpenedRepo.trim();
+        lastOpenedRef.current = opened || null;
+        restoreLastOpenedRef.current = true;
+      }
       const changed = source === "startup" || !samePaths(rootPathsRef.current, roots) || !samePaths(removedRef.current, removed);
       rootPathsRef.current = roots;
       removedRef.current = removed;
@@ -580,6 +615,7 @@ export function useWorkspace() {
     anchorRef.current = created;
     interactionEpoch.current += 1;
     activePathRef.current = created;
+    selectedPathsRef.current = [created];
     setActivePath(created);
     setSelectedPaths([created]);
   };
@@ -606,6 +642,7 @@ export function useWorkspace() {
     anchorRef.current = cloned;
     interactionEpoch.current += 1;
     activePathRef.current = cloned;
+    selectedPathsRef.current = [cloned];
     setActivePath(cloned);
     setSelectedPaths([cloned]);
   };
@@ -740,25 +777,32 @@ export function useWorkspace() {
 
   const selectRepo = (path: string, mode: SelectMode) => {
     interactionEpoch.current += 1;
-    activePathRef.current = path;
-    setActivePath(path);
-    setSelectedPaths((current) => {
-      if (mode === "toggle") {
-        anchorRef.current = path;
-        return current.includes(path) ? current.filter((item) => item !== path) : [...current, path];
-      }
-      if (mode === "range" && anchorRef.current) {
-        const order = repoPathsRef.current;
-        const start = order.indexOf(anchorRef.current);
-        const end = order.indexOf(path);
-        if (start >= 0 && end >= 0) {
-          const [from, to] = start < end ? [start, end] : [end, start];
-          return order.slice(from, to + 1);
-        }
-      }
+    const current = selectedPathsRef.current;
+    let next: string[];
+    if (mode === "toggle") {
       anchorRef.current = path;
-      return [path];
-    });
+      next = current.includes(path) ? current.filter((item) => item !== path) : [...current, path];
+    } else if (mode === "range" && anchorRef.current) {
+      const order = repoPathsRef.current;
+      const start = order.indexOf(anchorRef.current);
+      const end = order.indexOf(path);
+      if (start >= 0 && end >= 0) {
+        const [from, to] = start < end ? [start, end] : [end, start];
+        next = order.slice(from, to + 1);
+      } else {
+        anchorRef.current = path;
+        next = [path];
+      }
+    } else {
+      anchorRef.current = path;
+      next = [path];
+    }
+    const previous = activePathRef.current;
+    const opened = next.length === 0 ? null : next.includes(path) ? path : previous && next.includes(previous) ? previous : next[0];
+    selectedPathsRef.current = next;
+    activePathRef.current = opened;
+    setSelectedPaths(next);
+    setActivePath(opened);
   };
 
   const selectRepos = (paths: string[], selected: boolean) => {
@@ -766,28 +810,37 @@ export function useWorkspace() {
       return;
     }
     interactionEpoch.current += 1;
-    const focus = paths[0];
-    activePathRef.current = focus;
-    setActivePath(focus);
-    anchorRef.current = focus;
-    setSelectedPaths((current) => {
-      if (selected) {
-        const have = new Set(current);
-        const next = [...current];
-        for (const path of paths) {
-          if (!have.has(path)) {
-            next.push(path);
-          }
+    const current = selectedPathsRef.current;
+    let next: string[];
+    if (selected) {
+      const have = new Set(current);
+      next = [...current];
+      for (const path of paths) {
+        if (!have.has(path)) {
+          next.push(path);
         }
-        return next;
       }
+    } else {
       const remove = new Set(paths);
-      return current.filter((path) => !remove.has(path));
-    });
+      next = current.filter((path) => !remove.has(path));
+    }
+    const previous = activePathRef.current;
+    const opened = next.length === 0 ? null : selected ? paths[0] : previous && next.includes(previous) ? previous : next[0];
+    if (opened) {
+      anchorRef.current = opened;
+    }
+    selectedPathsRef.current = next;
+    activePathRef.current = opened;
+    setSelectedPaths(next);
+    setActivePath(opened);
   };
 
   const clearSelection = () => {
+    interactionEpoch.current += 1;
+    selectedPathsRef.current = [];
+    activePathRef.current = null;
     setSelectedPaths([]);
+    setActivePath(null);
   };
 
   const persistRemoved = async (paths: string[]) => {
@@ -1111,7 +1164,9 @@ export function useWorkspace() {
   const generateIntoBox = async (path: string, prompt = activePrompt()) => {
     interactionEpoch.current += 1;
     activePathRef.current = path;
+    selectedPathsRef.current = [path];
     setActivePath(path);
+    setSelectedPaths([path]);
     setGenerating(true);
     setError(null);
     try {

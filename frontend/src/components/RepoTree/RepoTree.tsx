@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { ArrowDownToLine, ArrowUpToLine, ChevronsDown, ChevronsUp, Search, X, XCircle } from "lucide-react";
+import { ChevronsDown, ChevronsUp, Search, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -66,15 +66,9 @@ type RepoTreeProps = {
   trees: TreeNode[];
   rootPaths: string[];
   statuses: Record<string, RepoStatus>;
-  selectedPaths: string[];
   activePath: string | null;
   discovering: boolean;
-  onSelect: (path: string, mode: "replace" | "toggle" | "range") => void;
-  onSelectRepos: (paths: string[], selected: boolean) => void;
-  selectedCount: number;
-  onPullSelected: () => void;
-  onPushSelected: () => void;
-  onClearSelection: () => void;
+  onOpen: (path: string) => void;
   busy: boolean;
   removedRepos: string[];
   onOpenInEditor: (path: string, editor: EditorId) => void;
@@ -85,46 +79,17 @@ type RepoTreeProps = {
   onDeleteFolder: (path: string) => void;
   onRestoreRemoved: () => void;
   onAddRoot: () => void;
-  repoCount: number;
-  pullCount: number;
-  pushCount: number;
-  onPullAll: () => void;
-  onPushAll: () => void;
   filter: RepoTreeFilter | null;
   onFilter: (filter: RepoTreeFilter | null) => void;
 };
 
 const filterEmpty: Record<RepoTreeFilter, string> = {
+  selected: "No repositories are selected.",
   dirty: "No repositories have uncommitted changes.",
   ahead: "No repositories are ahead of their upstream.",
   behind: "No repositories are behind their upstream.",
   unpublished: "Every repository already has a remote.",
-  selected: "No repositories are selected.",
 };
-
-function syncTitle(action: "pull" | "push", count: number) {
-  if (count === 0) {
-    return action === "pull" ? "No repositories are behind their upstream" : "No repositories are ahead of their upstream";
-  }
-  const repos = count === 1 ? "repository is" : "repositories are";
-  return action === "pull" ? `${count} ${repos} behind their upstream` : `${count} ${repos} ahead of their upstream`;
-}
-
-function SyncBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" }) {
-  if (count <= 0) {
-    return null;
-  }
-  return (
-    <span
-      id={id}
-      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ${
-        tone === "pull" ? "bg-sky-950 text-sky-100" : "bg-emerald-950 text-emerald-300"
-      }`}
-    >
-      {count}
-    </span>
-  );
-}
 
 function treeHasRepos(tree: TreeNode) {
   return tree.kind === "repo" || tree.children.length > 0;
@@ -190,15 +155,9 @@ export function RepoTree({
   trees,
   rootPaths,
   statuses,
-  selectedPaths,
   activePath,
   discovering,
-  onSelect,
-  onSelectRepos,
-  selectedCount,
-  onPullSelected,
-  onPushSelected,
-  onClearSelection,
+  onOpen,
   busy,
   removedRepos,
   onOpenInEditor,
@@ -208,11 +167,6 @@ export function RepoTree({
   onRemoveRepo,
   onDeleteFolder,
   onRestoreRemoved,
-  repoCount,
-  pullCount,
-  pushCount,
-  onPullAll,
-  onPushAll,
   filter,
   onFilter,
 }: RepoTreeProps) {
@@ -226,8 +180,8 @@ export function RepoTree({
   const widthRef = useRef(width);
   const moved = useRef(false);
   const visibleTrees = useMemo(
-    () => trees.map((node) => (filter ? filterRepoTree(node, statuses, selectedPaths, filter) : node)),
-    [trees, statuses, selectedPaths, filter],
+    () => trees.map((node) => (filter ? filterRepoTree(node, statuses, [], filter) : node)),
+    [trees, statuses, filter],
   );
   const statusTrees = useMemo(
     () => (filter ? visibleTrees.filter(treeHasRepos) : trees),
@@ -257,9 +211,15 @@ export function RepoTree({
   const hasRepos = trees.some(treeHasRepos);
   const folderPaths = (filter ? visibleTrees : trees).flatMap(pathsBelowRoot);
   const defaultCollapsed = !filter && !searchQuery;
+  const rootsCollapsible = rootPaths.length > 1;
   const collapsedView = defaultCollapsed
     ? { ...Object.fromEntries(folderPaths.map((path) => [path, true])), ...collapsed }
     : Object.fromEntries(folderPaths.map((path) => [path, false]));
+  if (!rootsCollapsible) {
+    for (const tree of trees) {
+      collapsedView[tree.path] = false;
+    }
+  }
   const allCollapsed = folderPaths.length > 0 && folderPaths.every((path) => collapsedView[path]);
   const removedCount = countRemovedUnder(rootPaths, removedRepos);
   const summary = summarize(statuses);
@@ -370,19 +330,6 @@ export function RepoTree({
           aria-label="Search repositories"
           className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
         />
-        {query ? (
-          <Button
-            id="repo-tree-search-clear"
-            variant="ghost"
-            size="xs"
-            className="h-6 px-1"
-            title="Clear search"
-            aria-label="Clear search"
-            onClick={() => setQuery("")}
-          >
-            <X id="repo-tree-search-clear-icon" className="size-3.5" />
-          </Button>
-        ) : null}
       </form>
 
       <div id="repo-tree-filters" className="flex flex-wrap items-center justify-between gap-0.5 border-b border-zinc-800 px-1.5 select-none h-6.75">
@@ -435,52 +382,6 @@ export function RepoTree({
 
       </div>
 
-      <div id="repo-tree-header" className="w-full flex items-center justify-center px-3 py-2 h-10 border-b border-zinc-800">
-        {selectedCount > 0 ? (
-          <div id="selection-actions" className="flex min-w-0 w-full justify-center items-center gap-1.5">
-            <Button id="pull-selected-button" variant="primary" size="xs" onClick={onPullSelected} disabled={busy}>
-              <ArrowDownToLine id="pull-selected-icon" className="size-3.5" />
-              <span id="pull-selected-label">Pull</span>
-            </Button>
-            <Button id="push-selected-button" variant="secondary" size="xs" onClick={onPushSelected} disabled={busy}>
-              <ArrowUpToLine id="push-selected-icon" className="size-3.5" />
-              <span id="push-selected-label">Push</span>
-            </Button>
-            <Button id="clear-selection-button" variant="destructive" size="xs" onClick={onClearSelection} disabled={busy}>
-              <XCircle id="clear-selection-icon" className="size-3.5" />
-              <span id="clear-selection-label">Deselect All</span>
-            </Button>
-          </div>
-        ) : (
-          <div id="repo-tree-heading" className="flex min-w-0 flex-1 justify-center items-center gap-1.5">
-            <Button
-              id="pull-all-button"
-              variant="primary"
-              size="xs"
-              onClick={onPullAll}
-              disabled={busy || repoCount === 0}
-              title={syncTitle("pull", pullCount)}
-            >
-              <ArrowDownToLine id="pull-all-icon" className="size-3.5" />
-              <span id="pull-all-label">Pull all</span>
-              <SyncBadge id="pull-all-count" count={pullCount} tone="pull" />
-            </Button>
-            <Button
-              id="push-all-button"
-              size="xs"
-              onClick={onPushAll}
-              disabled={busy || repoCount === 0}
-              title={syncTitle("push", pushCount)}
-            >
-              <ArrowUpToLine id="push-all-icon" className="size-3.5" />
-              <span id="push-all-label">Push all</span>
-              <SyncBadge id="push-all-count" count={pushCount} tone="push" />
-            </Button>
-          </div>
-        )}
-
-      </div>
-
       <div id="repo-tree-scroll" className="min-h-0 flex-1 overflow-auto pr-2 pb-3 pl-1">
         {rootPaths.length === 0 ? (
           <p id="repo-tree-empty" className="px-3 py-6 text-sm text-zinc-500">
@@ -503,19 +404,21 @@ export function RepoTree({
                   rootPath={node.path}
                   depth={0}
                   statuses={statuses}
-                  selectedPaths={selectedPaths}
                   activePath={activePath}
                   collapsed={collapsedView}
                   contextPath={menu?.node.path ?? null}
                   filter={filter}
-                  onToggle={(path) =>
+                  onToggle={(path) => {
+                    if (!rootsCollapsible && pathEquals(path, node.path)) {
+                      return;
+                    }
                     setCollapsed((current) => ({
                       ...current,
                       [path]: !(current[path] ?? defaultCollapsed),
-                    }))
-                  }
-                  onSelect={onSelect}
-                  onSelectRepos={onSelectRepos}
+                    }));
+                  }}
+                  onOpen={onOpen}
+                  allowRootCollapse={rootsCollapsible}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
                   trailing={
                     <Button

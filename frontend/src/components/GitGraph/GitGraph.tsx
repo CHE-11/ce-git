@@ -22,7 +22,7 @@ const WIDTH_KEY = "ce-git.git-graph-width";
 const LANE_COLORS = ["#38bdf8", "#c084fc", "#34d399", "#fbbf24", "#fb7185", "#22d3ee", "#a3e635", "#f472b6"];
 
 type GitGraphProps = {
-  path: string;
+  path: string | null;
   refreshToken: string;
 };
 
@@ -136,7 +136,7 @@ export function GitGraph({ path, refreshToken }: GitGraphProps) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
-  const [loadedPath, setLoadedPath] = useState(path);
+  const [loadedPath, setLoadedPath] = useState<string | null>(path);
   const dragStart = useRef<{ x: number; width: number } | null>(null);
   const widthRef = useRef(width);
   const moved = useRef(false);
@@ -152,6 +152,12 @@ export function GitGraph({ path, refreshToken }: GitGraphProps) {
   }
 
   useEffect(() => {
+    if (!path) {
+      setLoading(false);
+      setGraph(null);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     repoGraph(path, limit)
@@ -279,6 +285,7 @@ export function GitGraph({ path, refreshToken }: GitGraphProps) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search commits"
             aria-label="Search commits"
+            disabled={!path}
             className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
           />
           {query ? (
@@ -294,7 +301,11 @@ export function GitGraph({ path, refreshToken }: GitGraphProps) {
         </p>
       ) : null}
       <div id="git-graph-scroll" className="min-h-0 flex-1 overflow-auto">
-        {loading && !graph ? (
+        {!path ? (
+          <p id="git-graph-unselected" className="px-3 py-6 text-sm text-zinc-500">
+            Select a repository to see its history.
+          </p>
+        ) : loading && !graph ? (
           <p id="git-graph-loading" className="px-3 py-6 text-sm text-zinc-500">
             Loading history…
           </p>

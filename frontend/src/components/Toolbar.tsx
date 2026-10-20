@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
 
@@ -21,7 +21,36 @@ type ToolbarProps = {
   onCommitClear: () => void;
   onAdvancedSearch: () => void;
   onOpenCommands: () => void;
+  pullCount: number;
+  pushCount: number;
+  dirtyCount: number;
+  onPullAll: () => void;
+  onPushAll: () => void;
 };
+
+function syncTitle(action: "pull" | "push", count: number) {
+  if (count === 0) {
+    return action === "pull" ? "No repositories are behind their upstream" : "No repositories are ahead of their upstream";
+  }
+  const repos = count === 1 ? "repository is" : "repositories are";
+  return action === "pull" ? `${count} ${repos} behind their upstream` : `${count} ${repos} ahead of their upstream`;
+}
+
+function SyncBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" | "dirty" }) {
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <span
+      id={id}
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums ${
+        tone === "pull" ? "bg-sky-950 text-sky-100" : tone === "push" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-200"
+      }`}
+    >
+      {count}
+    </span>
+  );
+}
 
 const PROMPT_SLOTS = [1, 2, 3] as const;
 
@@ -96,20 +125,19 @@ export function Toolbar({...props}: ToolbarProps) {
         </span>
       </div>
 
-      <button
-        id="command-palette-button"
-        type="button"
-        onClick={props.onOpenCommands}
-        title="Commands"
-        className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-      >
-        <Search id="command-palette-button-icon" className="size-3.5" />
-        <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
-          Ctrl + K
-        </kbd>
-      </button>
-
-      <div id="toolbar-right" className="flex items-center gap-2">
+      <div id="toolbar-center" className="flex items-center gap-2">
+        <Button
+          id="pull-all-button"
+          variant="primary"
+          size="sm"
+          onClick={props.onPullAll}
+          disabled={props.busy || props.repoCount === 0}
+          title={syncTitle("pull", props.pullCount)}
+        >
+          <ArrowDownToLine id="pull-all-icon" className="size-3.5" />
+          <span id="pull-all-label">Pull all</span>
+          <SyncBadge id="pull-all-count" count={props.pullCount} tone="pull" />
+        </Button>
         <div id="ai-commit-menu" ref={promptMenuRef} className="relative">
           <button
             id="ai-commit-button"
@@ -121,14 +149,20 @@ export function Toolbar({...props}: ToolbarProps) {
               setPromptMenuOpen((open) => !open);
             }}
             disabled={aiDisabled}
-            className="inline-flex h-8 items-stretch overflow-hidden rounded-md border border-violet-700/80 bg-violet-950/40 text-sm font-medium text-violet-100 transition-colors hover:bg-violet-900/50 disabled:cursor-not-allowed disabled:opacity-40"
+            title={
+              props.dirtyCount === 0
+                ? "No repositories have uncommitted changes"
+                : `${props.dirtyCount} ${props.dirtyCount === 1 ? "repository has" : "repositories have"} uncommitted changes`
+            }
+            className="inline-flex h-7 items-stretch overflow-hidden rounded-md border border-violet-700/80 bg-violet-950/40 text-xs font-medium text-violet-100 transition-colors hover:bg-violet-900/50 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <span id="ai-commit-label" className="inline-flex items-center gap-1.5 px-2.5">
-              <Sparkles id="ai-commit-icon" className="size-4" />
+            <span id="ai-commit-label" className="inline-flex items-center gap-1.5 px-2">
+              <Sparkles id="ai-commit-icon" className="size-3.5" />
               AI commit
+              <SyncBadge id="ai-commit-count" count={props.dirtyCount} tone="dirty" />
             </span>
-            <span id="ai-commit-chevron-wrap" className="inline-flex items-center border-l border-violet-700/80 px-1.5">
-              <ChevronDown id="ai-commit-chevron" className={`size-4 transition-transform ${promptMenuOpen ? "rotate-180" : ""}`} />
+            <span id="ai-commit-chevron-wrap" className="inline-flex items-center border-l border-violet-700/80 px-2">
+              <ChevronDown id="ai-commit-chevron" className={`size-3.5 transition-transform ${promptMenuOpen ? "rotate-180" : ""}`} />
             </span>
           </button>
           {promptMenuOpen ? (
@@ -151,12 +185,10 @@ export function Toolbar({...props}: ToolbarProps) {
                 }}
                 className="flex w-full items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800"
               >
-                <Trash2 id="commit-clear-icon" className="size-3.5 text-red-400" />
-                <span id="commit-clear-label">Clear Commits</span>
+                <span id="commit-clear-label" className="text-red-400 font-semibold">Clear All Commits</span>
               </button>
               {filledPrompts.length > 0 ? (
-                <div id="ai-commit-menu-separator" className="mx-1 my-1 h-px bg-zinc-700" />
-              ) : null}
+                <div id="ai-commit-menu-separator" className="mx-1 my-1 h-px bg-zinc-700" /> ) : null}
               {filledPrompts.map((slot) => {
                 const active = hoveredPrompt === slot;
                 return (
@@ -197,8 +229,31 @@ export function Toolbar({...props}: ToolbarProps) {
             </div>
           ) : null}
         </div>
+        <Button
+          id="push-all-button"
+          size="sm"
+          onClick={props.onPushAll}
+          disabled={props.busy || props.repoCount === 0}
+          title={syncTitle("push", props.pushCount)}
+        >
+          <ArrowUpToLine id="push-all-icon" className="size-3.5" />
+          <span id="push-all-label">Push all</span>
+          <SyncBadge id="push-all-count" count={props.pushCount} tone="push" />
+        </Button>
       </div>
 
+      <button
+        id="command-palette-button"
+        type="button"
+        onClick={props.onOpenCommands}
+        title="Commands"
+        className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+      >
+        <Search id="command-palette-button-icon" className="size-3.5" />
+        <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+          Ctrl + K
+        </kbd>
+      </button>
 
     </header>
   );

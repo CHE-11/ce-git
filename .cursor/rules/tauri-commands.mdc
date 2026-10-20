@@ -1,0 +1,20 @@
+---
+description: Rust Tauri command, serde, and git-process conventions.
+globs: src-tauri/**/*.rs
+alwaysApply: false
+---
+
+# Tauri commands
+
+- Command names are `snake_case`. Register each one in `generate_handler!` in `src-tauri/src/lib.rs`.
+- Structs that cross the bridge use `#[serde(rename_all = "camelCase")]`.
+- Return `Result<T, String>`.
+- Git and other blocking work uses `spawn_blocking` or the `spawn_git` helper in `lib.rs`. Synchronous commands run on the webview thread.
+- Shell out to system `git`. Do not vendor a git implementation or store credentials in the app.
+
+```rust
+#[tauri::command]
+async fn repo_diff(path: String) -> Result<RepoDiff, String> {
+    spawn_git(move || read_repo_diff(Path::new(&path))).await?
+}
+```

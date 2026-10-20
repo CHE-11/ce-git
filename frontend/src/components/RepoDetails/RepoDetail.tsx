@@ -76,10 +76,17 @@ export function RepoDetail({
 
   if (!path) {
     return (
-      <section id="repo-detail" className="flex min-w-0 flex-1 items-center justify-center bg-zinc-950">
-        <p id="repo-detail-empty" className="text-sm text-zinc-500">
-          Select a repository to see its changes.
-        </p>
+      <section id="repo-detail" className="flex min-w-0 flex-1 flex-col bg-zinc-950">
+        <div id="repo-detail-empty-bar" className="border-b border-zinc-800 px-4 py-3">
+          <Badge id="badge-graph" tone={graphOpen ? "violet" : "grey"} title="Commit graph" pressed={graphOpen} onClick={onToggleGraph}>
+            <GitGraph className="size-3.5" />
+          </Badge>
+        </div>
+        <div id="repo-detail-empty-wrap" className="flex flex-1 items-center justify-center">
+          <p id="repo-detail-empty" className="text-sm text-zinc-500">
+            Select a repository to see its changes.
+          </p>
+        </div>
       </section>
     );
   }

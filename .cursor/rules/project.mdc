@@ -1,0 +1,20 @@
+---
+description: ce-git product map, stack, and the frontend-to-Rust IPC boundary.
+alwaysApply: true
+---
+
+# Project
+
+Desktop client for one folder of nested git repos. It shells out to the `git` binary on PATH. SSH keys and Git Credential Manager stay outside the app. OpenAI keys go in the OS credential manager.
+
+- Frontend: `frontend/` — React 19, TypeScript, Tailwind 4, Vite 8. The `@` alias is `frontend/src`.
+- Backend: `src-tauri/` — Rust edition 2024, Tauri 2. Commands are registered in `src-tauri/src/lib.rs`.
+- Shared IPC types: `types/git.ts`. Do not put bridge types under `frontend/src` or inside the Rust crate.
+- Frontend wrappers: `frontend/src/lib/git-client.ts`. Components call those functions, not `invoke` directly.
+
+```ts
+// frontend/src/lib/git-client.ts
+export function discoverRepos(root: string) {
+  return invoke<TreeNode>("discover_repos", { root });
+}
+```

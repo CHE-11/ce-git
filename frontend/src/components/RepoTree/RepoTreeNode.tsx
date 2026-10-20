@@ -1,22 +1,21 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { RepoStatus, TreeNode } from "../../../../types/git";
-import { collectRepos, domId, repoMatchesFilter, type RepoTreeFilter } from "../../lib/tree";
+import { domId, repoMatchesFilter, type RepoTreeFilter } from "../../lib/tree";
 import { cn } from "../../lib/cn";
 
 type RepoTreeNodeProps = {
   node: TreeNode;
   depth: number;
   statuses: Record<string, RepoStatus>;
-  selectedPaths: string[];
   activePath: string | null;
   collapsed: Record<string, boolean>;
   rootPath?: string | null;
   contextPath: string | null;
   filter: RepoTreeFilter | null;
   onToggle: (path: string) => void;
-  onSelect: (path: string, mode: "replace" | "toggle" | "range") => void;
-  onSelectRepos: (paths: string[], selected: boolean) => void;
+  onOpen: (path: string) => void;
+  allowRootCollapse?: boolean;
   onContextMenu: (node: TreeNode, x: number, y: number) => void;
   trailing?: ReactNode;
 };
@@ -25,49 +24,37 @@ export function RepoTreeNode({
   node,
   depth,
   statuses,
-  selectedPaths,
   activePath,
   collapsed,
   rootPath,
   contextPath,
   filter,
   onToggle,
-  onSelect,
-  onSelectRepos,
+  onOpen,
   onContextMenu,
   trailing,
+  allowRootCollapse = true,
 }: RepoTreeNodeProps) {
   const rowId = domId("tree-row", node.path);
   const isRepo = node.kind === "repo";
   const status = isRepo ? statuses[node.path] : undefined;
-  const selected = isRepo && selectedPaths.includes(node.path);
   const active = node.path === activePath;
-  const expanded = !collapsed[node.path];
+  const rootLockedOpen = depth === 0 && !allowRootCollapse;
+  const expanded = rootLockedOpen || !collapsed[node.path];
   const hasChildren = node.children.length > 0;
+  const canToggle = hasChildren && !rootLockedOpen;
   const showRootPath = depth === 0 && Boolean(rootPath);
   const targeted = node.path === contextPath;
-  const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, selectedPaths, filter);
-  const rootRepos = depth === 0 ? collectRepos(node) : [];
-  const rootSelectedCount = rootRepos.filter((repo) => selectedPaths.includes(repo.path)).length;
-  const rootAllChecked = rootRepos.length > 0 && rootSelectedCount === rootRepos.length;
-  const rootIndeterminate = rootSelectedCount > 0 && !rootAllChecked;
+  const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, [], filter);
 
-  const onRowClick = (event: MouseEvent<HTMLDivElement>) => {
+  const onRowClick = () => {
     if (!isRepo) {
-      if (hasChildren) {
+      if (canToggle) {
         onToggle(node.path);
       }
       return;
     }
-    if (event.shiftKey) {
-      onSelect(node.path, "range");
-      return;
-    }
-    if (event.ctrlKey || event.metaKey) {
-      onSelect(node.path, "toggle");
-      return;
-    }
-    onSelect(node.path, "replace");
+    onOpen(node.path);
   };
 
   return (
@@ -75,18 +62,13 @@ export function RepoTreeNode({
       <div
         id={rowId}
         className={cn(
-          "flex cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2 text-sm hover:bg-zinc-800/80",
+          "flex items-center gap-1.5 rounded-md py-1 pr-2 text-sm hover:bg-zinc-800/80",
+          (isRepo || canToggle) && "cursor-pointer",
           active && "bg-sky-950/70",
-          selected && !active && "bg-zinc-800",
           targeted && "ring-1 ring-inset ring-sky-800",
           dimmed && "opacity-50",
         )}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onMouseDown={(event) => {
-          if (event.shiftKey) {
-            event.preventDefault();
-          }
-        }}
         onClick={onRowClick}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -94,26 +76,7 @@ export function RepoTreeNode({
           onContextMenu(node, event.clientX, event.clientY);
         }}
       >
-        {depth === 0 && hasChildren ? (
-          <span id={domId("tree-root-check-wrap", node.path)} className="flex size-4 shrink-0 items-center justify-center">
-            <input
-              id={domId("tree-root-check", node.path)}
-              type="checkbox"
-              className="size-3.5 shrink-0 accent-sky-500"
-              checked={rootAllChecked}
-              disabled={rootRepos.length === 0}
-              ref={(element) => {
-                if (element) {
-                  element.indeterminate = rootIndeterminate;
-                }
-              }}
-              aria-label={rootAllChecked ? `Unselect all repositories in ${node.name}` : `Select all repositories in ${node.name}`}
-              title={rootAllChecked ? "Unselect all" : "Select all"}
-              onClick={(event) => event.stopPropagation()}
-              onChange={() => onSelectRepos(rootRepos.map((repo) => repo.path), !rootAllChecked)}
-            />
-          </span>
-        ) : hasChildren ? (
+        {canToggle ? (
           <button
             id={domId("tree-toggle", node.path)}
             type="button"
@@ -132,16 +95,6 @@ export function RepoTreeNode({
         ) : (
           <span id={domId("tree-spacer", node.path)} className="size-4 shrink-0" />
         )}
-        {isRepo ? (
-          <input
-            id={domId("tree-check", node.path)}
-            type="checkbox"
-            className="size-3.5 shrink-0 accent-sky-500"
-            checked={selected}
-            onClick={(event) => event.stopPropagation()}
-            onChange={() => onSelect(node.path, "toggle")}
-          />
-        ) : null}
         <span id={domId("tree-name", node.path)} className="shrink-0 text-zinc-100" title={node.path}>
           {node.name}
         </span>
@@ -205,14 +158,12 @@ export function RepoTreeNode({
               node={child}
               depth={depth + 1}
               statuses={statuses}
-              selectedPaths={selectedPaths}
               activePath={activePath}
               collapsed={collapsed}
               contextPath={contextPath}
               filter={filter}
               onToggle={onToggle}
-              onSelect={onSelect}
-              onSelectRepos={onSelectRepos}
+              onOpen={onOpen}
               onContextMenu={onContextMenu}
             />
           ))

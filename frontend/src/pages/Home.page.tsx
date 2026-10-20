@@ -38,8 +38,24 @@ export function HomePage() {
   const busy = workspace.busyAction !== null;
   const hasRoots = workspace.rootPaths.length > 0;
   const hasRepos = workspace.repos.length > 0;
-  const hasSelection = workspace.selectedPaths.length > 0;
   const hasActive = workspace.activePath !== null;
+  let pullCount = 0;
+  let pushCount = 0;
+  let dirtyCount = 0;
+  for (const status of Object.values(workspace.statuses)) {
+    if (status.dirty) {
+      dirtyCount += 1;
+    }
+    if (status.error) {
+      continue;
+    }
+    if (status.behind > 0) {
+      pullCount += 1;
+    }
+    if (status.ahead > 0) {
+      pushCount += 1;
+    }
+  }
   const commands: CommandItem[] = [
     {
       id: "open-folder",
@@ -118,20 +134,6 @@ export function HomePage() {
       group: "Git",
       disabled: busy || !hasRepos,
       run: () => workspace.requestPushAll(),
-    },
-    {
-      id: "pull-selected",
-      label: "Pull selected repositories",
-      group: "Git",
-      disabled: busy || !hasSelection,
-      run: () => workspace.requestPullSelected(),
-    },
-    {
-      id: "push-selected",
-      label: "Push selected repositories",
-      group: "Git",
-      disabled: busy || !hasSelection,
-      run: () => workspace.requestPushSelected(),
     },
     {
       id: "pull-active",
@@ -230,19 +232,6 @@ export function HomePage() {
       ];
     }),
   ];
-  let pullCount = 0;
-  let pushCount = 0;
-  for (const status of Object.values(workspace.statuses)) {
-    if (status.error) {
-      continue;
-    }
-    if (status.behind > 0) {
-      pullCount += 1;
-    }
-    if (status.ahead > 0) {
-      pushCount += 1;
-    }
-  }
 
   return (
     <div id="app-shell" className="flex h-full flex-col bg-zinc-950 text-zinc-100">
@@ -264,6 +253,11 @@ export function HomePage() {
         onCommitClear={() => setPendingAction("clear")}
         onAdvancedSearch={() => setAdvancedSearchOpen(true)}
         onOpenCommands={() => setCommandsOpen(true)}
+        pullCount={pullCount}
+        pushCount={pushCount}
+        dirtyCount={dirtyCount}
+        onPullAll={workspace.requestPullAll}
+        onPushAll={workspace.requestPushAll}
       />
       {workspace.error ? (
         <p id="app-error" className="border-b border-red-900 bg-red-950/60 px-3 py-2 text-sm text-red-300">
@@ -281,15 +275,9 @@ export function HomePage() {
           rootPaths={workspace.rootPaths}
           onAddRoot={() => void workspace.addRootFolder()}
           statuses={workspace.statuses}
-          selectedPaths={workspace.selectedPaths}
           activePath={workspace.activePath}
           discovering={workspace.discovering}
-          onSelect={workspace.selectRepo}
-          onSelectRepos={workspace.selectRepos}
-          selectedCount={workspace.selectedPaths.length}
-          onPullSelected={workspace.requestPullSelected}
-          onPushSelected={workspace.requestPushSelected}
-          onClearSelection={workspace.clearSelection}
+          onOpen={(path) => workspace.selectRepo(path, "replace")}
           busy={busy}
           removedRepos={workspace.removedRepos}
           menuEditors={workspace.menuEditors}
@@ -299,15 +287,10 @@ export function HomePage() {
           onRemoveRepo={(path) => void workspace.removeRepo(path)}
           onDeleteFolder={(path) => void workspace.deleteFolder(path)}
           onRestoreRemoved={() => setRestoreOpen(true)}
-          repoCount={workspace.repos.length}
-          pullCount={pullCount}
-          pushCount={pushCount}
-          onPullAll={workspace.requestPullAll}
-          onPushAll={workspace.requestPushAll}
           filter={treeFilter}
           onFilter={setTreeFilter}
         />
-        {graphOpen && workspace.activePath ? (
+        {graphOpen ? (
           <GitGraph
             path={workspace.activePath}
             refreshToken={

@@ -86,6 +86,7 @@ export function patchAppSettings(patch: {
   clearSelectedPrompt?: boolean;
   rootPaths?: string[];
   removedRepos?: string[];
+  lastOpenedRepo?: string;
   folderIgnore?: string;
 }) {
   return invoke<void>("patch_app_settings", { patch });

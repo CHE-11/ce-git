@@ -1,12 +1,13 @@
 {
   "name": "ce-git",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.3",
   "scripts": {
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",
-    "build:exe": "node scripts/build-exe.mjs",
-    "build:app": "pnpm tauri build --target aarch64-apple-darwin",
+    "version:bump": "node scripts/bump-version.mjs",
+    "build:exe": "node scripts/bump-version.mjs && node scripts/build-exe.mjs",
+    "build:app": "node scripts/bump-version.mjs && pnpm tauri build --target aarch64-apple-darwin",
     "tauri": "tauri"
   },
   "devDependencies": {

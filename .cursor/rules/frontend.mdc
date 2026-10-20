@@ -1,0 +1,24 @@
+---
+description: React and TypeScript conventions for the ce-git frontend.
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend
+
+- Components live in `frontend/src/components/[ComponentName].tsx`.
+- Pages live in `frontend/src/pages/[PageName].page.tsx` and set `document.title`.
+- Every HTML element gets an `id` as its first attribute.
+- Style with Tailwind. Merge classes with `cn()` from `frontend/src/lib/cn.ts`.
+
+```tsx
+export function HomePage() {
+  useEffect(() => {
+    document.title = "ce-git";
+  }, []);
+
+  return <main id="home-page">...</main>;
+}
+```
+
+A new IPC call needs three pieces: a Rust command, a camelCase type in `types/git.ts`, and a wrapper in `frontend/src/lib/git-client.ts`.

@@ -1,3 +1,5 @@
+import { FolderSearch } from "lucide-react";
+import type { ReactNode } from "react";
 import {
   COLOR_MODE_OPTIONS,
   resolveMode,
@@ -7,16 +9,21 @@ import {
   type ThemeId,
 } from "../../../lib/appearance";
 import { cn } from "../../../lib/cn";
+import { editorGroups, type EditorId } from "../../../lib/editors";
+import { fileManagerLabel } from "../../../lib/changes";
 import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP } from "../../../lib/zoom";
 import { Button } from "../../Button";
 
 type AppSettingsTabProps = {
   busy: boolean;
+  exePath: string;
   folder: string;
   zoom: number;
   theme: ThemeId;
   colorMode: ColorMode;
   toolbarLabels: boolean;
+  defaultEditor: EditorId;
+  menuEditors: readonly EditorId[];
   warning: string | null;
   error: string | null;
   onFolderChange: (folder: string) => void;
@@ -25,18 +32,24 @@ type AppSettingsTabProps = {
   onThemeChange: (theme: ThemeId) => void;
   onColorModeChange: (colorMode: ColorMode) => void;
   onToolbarLabelsChange: (toolbarLabels: boolean) => void;
+  onDefaultEditorChange: (editor: EditorId) => void;
+  onMenuEditorChange: (editor: EditorId, shown: boolean) => void;
   onBrowse: () => void;
   onClearFolder: () => void;
+  onRevealExe: () => void;
   onSubmit: () => void;
 };
 
 export function AppSettingsTab({
   busy,
+  exePath,
   folder,
   zoom,
   theme,
   colorMode,
   toolbarLabels,
+  defaultEditor,
+  menuEditors,
   warning,
   error,
   onFolderChange,
@@ -45,12 +58,17 @@ export function AppSettingsTab({
   onThemeChange,
   onColorModeChange,
   onToolbarLabelsChange,
+  onDefaultEditorChange,
+  onMenuEditorChange,
   onBrowse,
   onClearFolder,
+  onRevealExe,
   onSubmit,
 }: AppSettingsTabProps) {
   const settingsFile = settingsFilePath(folder);
   const themeStylesheet = themeStylesheetPath(folder);
+  const revealLabel = fileManagerLabel();
+  const groups = editorGroups();
 
   return (
     <>
@@ -58,25 +76,45 @@ export function AppSettingsTab({
         id="settings-panel-app"
         role="tabpanel"
         aria-labelledby="settings-tab-app"
+        className="mt-4 flex flex-col gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
         }}
       >
-        <p id="app-settings-intro" className="mt-4 text-sm text-zinc-300">
-          Point ce-git at one folder, including a shared drive. Workspace folders, hidden repositories, folder ignore
-          patterns, text size, theme, color mode, toolbar labels, and AI model, thinking, and prompts are saved there in ce-git.json.
-          ce-git adds{" "}
-          {THEME_STYLESHEET_NAME} in that folder when it is missing, with the color overrides commented out, and loads
-          the file on top of the theme. The OpenAI key stays in this computer's credential manager,
-          and Git settings stay in Git.
+        <p id="app-settings-intro" className="text-sm leading-5 text-zinc-400">
+          Save stores appearance, editors, and the settings folder. A folder keeps them in ce-git.json, including on a
+          shared drive. The OpenAI key stays in this computer's credential manager, and Git settings stay in Git.
         </p>
 
-        <section id="app-settings-location" className="mt-4">
-          <h3 id="app-settings-location-heading" className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-            Settings folder
-          </h3>
-          <label id="app-settings-folder-label" htmlFor="app-settings-folder-input" className="mt-3 mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+        <section id="app-settings-application" className="flex min-w-0 items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+          <span id="app-settings-exe-label" className="shrink-0 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+            Application
+          </span>
+          <p id="app-settings-exe" className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200 select-all" title={exePath}>
+            {exePath || "Looking up this application…"}
+          </p>
+          <Button
+            id="app-settings-exe-reveal"
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            title={revealLabel}
+            disabled={busy || exePath.length === 0}
+            onClick={onRevealExe}
+          >
+            <FolderSearch id="app-settings-exe-reveal-icon" className="size-3.5" aria-hidden="true" />
+            <span id="app-settings-exe-reveal-label">{revealLabel}</span>
+          </Button>
+        </section>
+
+        <SettingsSection
+          id="app-settings-location"
+          title="Settings folder"
+          hint="Leave this blank to keep a copy on this computer. Clear the folder to stop using a shared file without deleting it."
+        >
+          <label id="app-settings-folder-label" htmlFor="app-settings-folder-input" className="mb-1 block text-xs font-medium text-zinc-400">
             Folder
           </label>
           <div id="app-settings-folder-row" className="flex gap-2">
@@ -95,7 +133,7 @@ export function AppSettingsTab({
               spellCheck={false}
               disabled={busy}
               placeholder="\\\\server\\share\\ce-git"
-              className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50"
+              className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50"
             />
             <Button id="app-settings-browse" type="button" onClick={onBrowse} disabled={busy}>
               <span id="app-settings-browse-label">Browse</span>
@@ -104,18 +142,81 @@ export function AppSettingsTab({
               <span id="app-settings-clear-label">Clear</span>
             </Button>
           </div>
-          <p id="app-settings-folder-hint" className="mt-1 text-xs text-zinc-500">
-            {settingsFile
-              ? `Settings file: ${settingsFile}. If that file already exists, ce-git uses it. Clear the folder to keep a copy on this computer and leave the shared file in place.`
-              : "Leave this blank to keep settings on this computer."}
+          <p id="app-settings-folder-file" className="mt-2 truncate font-mono text-xs text-zinc-500" title={settingsFile || undefined}>
+            {settingsFile ? `Settings file: ${settingsFile}` : "Settings file: on this computer"}
           </p>
-        </section>
+        </SettingsSection>
 
-        <section id="app-settings-appearance" className="mt-5">
-          <h3 id="app-settings-appearance-heading" className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-            Appearance
-          </h3>
-          <label id="app-settings-zoom-label" htmlFor="app-settings-zoom" className="mt-3 mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+        <SettingsSection
+          id="app-settings-editors"
+          title="Editors"
+          hint="Choose the default used by Open in editor. Turn on Menu to list that editor in the repository and changes right-click menus."
+        >
+          <div id="app-settings-editor-groups" role="radiogroup" aria-labelledby="app-settings-editors-heading" className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {groups.map((group) => (
+              <div id={`app-settings-editor-group-${group.id}`} key={group.id} className="min-w-0">
+                <h4 id={`app-settings-editor-group-${group.id}-label`} className="mb-1.5 text-xs font-medium text-zinc-400">
+                  {group.label}
+                </h4>
+                <div id={`app-settings-editor-group-${group.id}-list`} className="flex flex-col gap-1">
+                  {group.editors.map((editor) => {
+                    const selected = defaultEditor === editor.id;
+                    const shown = menuEditors.includes(editor.id);
+                    return (
+                      <div
+                        id={`app-settings-editor-${editor.id}`}
+                        key={editor.id}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md border px-2 py-1",
+                          selected ? "border-sky-600 bg-sky-950/30" : "border-zinc-800 bg-zinc-950",
+                        )}
+                      >
+                        <input
+                          id={`app-settings-editor-${editor.id}-default`}
+                          type="radio"
+                          name="app-settings-default-editor"
+                          checked={selected}
+                          disabled={busy}
+                          onChange={() => onDefaultEditorChange(editor.id)}
+                          className="size-3.5 shrink-0 accent-sky-500 disabled:opacity-50"
+                        />
+                        <label
+                          id={`app-settings-editor-${editor.id}-name`}
+                          htmlFor={`app-settings-editor-${editor.id}-default`}
+                          className="min-w-0 flex-1 truncate text-sm text-zinc-100"
+                        >
+                          {editor.label}
+                        </label>
+                        <label
+                          id={`app-settings-editor-${editor.id}-menu-label`}
+                          htmlFor={`app-settings-editor-${editor.id}-menu`}
+                          className="flex shrink-0 items-center gap-1.5 text-xs text-zinc-400"
+                        >
+                          <input
+                            id={`app-settings-editor-${editor.id}-menu`}
+                            type="checkbox"
+                            checked={shown}
+                            disabled={busy}
+                            onChange={(event) => onMenuEditorChange(editor.id, event.target.checked)}
+                            className="size-3.5 accent-sky-500 disabled:opacity-50"
+                          />
+                          <span id={`app-settings-editor-${editor.id}-menu-text`}>Menu</span>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="app-settings-appearance"
+          title="Appearance"
+          hint="Text size, color mode, and toolbar labels apply as you change them. Save keeps the choice."
+        >
+          <label id="app-settings-zoom-label" htmlFor="app-settings-zoom" className="mb-1 block text-xs font-medium text-zinc-400">
             Text size
           </label>
           <div id="app-settings-zoom-row" className="flex items-center gap-3">
@@ -141,85 +242,35 @@ export function AppSettingsTab({
             Ctrl plus and Ctrl minus change this while you work. The status bar shows the current size.
           </p>
 
-          <label id="app-settings-theme-label" className="mt-4 mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-            Theme
-          </label>
-          <div id="app-settings-themes" className="grid grid-cols-2 gap-2" role="group" aria-labelledby="app-settings-theme-label">
-            {THEMES.map((option) => {
-              const selected = theme === option.id;
-              const swatch = option.swatch[resolveMode(colorMode)];
-              return (
-                <button
-                  id={`app-settings-theme-${option.id}`}
-                  key={option.id}
-                  type="button"
-                  aria-pressed={selected}
-                  disabled={busy}
-                  onClick={() => onThemeChange(option.id)}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md border px-3 py-2 text-left text-sm disabled:opacity-50",
-                    selected
-                      ? "border-sky-500 bg-zinc-800 text-zinc-100"
-                      : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:bg-zinc-800",
-                  )}
-                >
-                  <span
-                    id={`app-settings-theme-${option.id}-swatch`}
-                    className="relative h-8 w-12 shrink-0 overflow-hidden rounded border border-zinc-600"
-                    style={{ background: swatch.background }}
-                    aria-hidden="true"
+          <div id="app-settings-mode-block" className="mt-4">
+            <label id="app-settings-mode-label" className="mb-1 block text-xs font-medium text-zinc-400">
+              Color mode
+            </label>
+            <div id="app-settings-modes" className="flex overflow-hidden rounded-md border border-zinc-700" role="group" aria-labelledby="app-settings-mode-label">
+              {COLOR_MODE_OPTIONS.map((option) => {
+                const selected = colorMode === option.id;
+                return (
+                  <button
+                    id={`app-settings-mode-${option.id}`}
+                    key={option.id}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={busy}
+                    onClick={() => onColorModeChange(option.id)}
+                    className={cn(
+                      "h-8 flex-1 text-sm disabled:opacity-50",
+                      selected ? "bg-sky-600 text-white" : "bg-zinc-950 text-zinc-300 hover:bg-zinc-800",
+                    )}
                   >
-                    <span
-                      id={`app-settings-theme-${option.id}-swatch-surface`}
-                      className="absolute right-1 bottom-1 h-3 w-5 rounded-sm"
-                      style={{ background: swatch.surface }}
-                    />
-                    <span
-                      id={`app-settings-theme-${option.id}-swatch-accent`}
-                      className="absolute top-1 left-1 size-2 rounded-full"
-                      style={{ background: swatch.accent }}
-                    />
-                    <span
-                      id={`app-settings-theme-${option.id}-swatch-text`}
-                      className="absolute top-1 right-1 text-[8px] leading-none font-semibold"
-                      style={{ color: swatch.text }}
-                    >
-                      A
-                    </span>
-                  </span>
-                  <span id={`app-settings-theme-${option.id}-label`}>{option.label}</span>
-                </button>
-              );
-            })}
+                    <span id={`app-settings-mode-${option.id}-label`}>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p id="app-settings-mode-hint" className="mt-1 text-xs text-zinc-500">
+              Match system follows this computer's light or dark setting.
+            </p>
           </div>
-
-          <label id="app-settings-mode-label" className="mt-4 mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-            Color mode
-          </label>
-          <div id="app-settings-modes" className="flex overflow-hidden rounded-md border border-zinc-700" role="group" aria-labelledby="app-settings-mode-label">
-            {COLOR_MODE_OPTIONS.map((option) => {
-              const selected = colorMode === option.id;
-              return (
-                <button
-                  id={`app-settings-mode-${option.id}`}
-                  key={option.id}
-                  type="button"
-                  aria-pressed={selected}
-                  disabled={busy}
-                  onClick={() => onColorModeChange(option.id)}
-                  className={cn(
-                    "h-8 flex-1 text-sm disabled:opacity-50",
-                    selected ? "bg-sky-600 text-white" : "bg-zinc-950 text-zinc-300 hover:bg-zinc-800",
-                  )}
-                >
-                  <span id={`app-settings-mode-${option.id}-label`}>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <p id="app-settings-mode-hint" className="mt-1 text-xs text-zinc-500">
-            Match system follows this computer's light or dark setting.
-          </p>
 
           <label id="app-settings-toolbar-labels" className="mt-4 flex items-center gap-2 text-sm text-zinc-200">
             <input
@@ -230,17 +281,68 @@ export function AppSettingsTab({
               onChange={(event) => onToolbarLabelsChange(event.target.checked)}
               className="size-4 accent-sky-500 disabled:opacity-50"
             />
-            <span id="app-settings-toolbar-labels-text">Toolbar labels</span>
+            <span id="app-settings-toolbar-labels-text">Show names under toolbar buttons</span>
           </label>
-          <p id="app-settings-toolbar-labels-hint" className="mt-1 text-xs text-zinc-500">
-            Show a short name under each button on the left side of the toolbar.
-          </p>
-          <p id="app-settings-theme-css-hint" className="mt-3 text-xs text-zinc-500">
-            {themeStylesheet
-              ? `${themeStylesheet} is created when it is missing. The sample rules are commented out. ce-git reads the file when it starts and when this window is focused.`
-              : `Choose a settings folder and ce-git will add ${THEME_STYLESHEET_NAME} there, with the color overrides commented out.`}
-          </p>
-        </section>
+
+          <div id="app-settings-theme-block" className="mt-4">
+            <label id="app-settings-theme-label" className="mb-1 block text-xs font-medium text-zinc-400">
+              Theme
+            </label>
+            <div id="app-settings-themes" className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-labelledby="app-settings-theme-label">
+              {THEMES.map((option) => {
+                const selected = theme === option.id;
+                const swatch = option.swatch[resolveMode(colorMode)];
+                return (
+                  <button
+                    id={`app-settings-theme-${option.id}`}
+                    key={option.id}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={busy}
+                    onClick={() => onThemeChange(option.id)}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md border px-2.5 py-1.5 text-left text-sm disabled:opacity-50",
+                      selected
+                        ? "border-sky-500 bg-zinc-800 text-zinc-100"
+                        : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:bg-zinc-800",
+                    )}
+                  >
+                    <span
+                      id={`app-settings-theme-${option.id}-swatch`}
+                      className="relative h-7 w-10 shrink-0 overflow-hidden rounded border border-zinc-600"
+                      style={{ background: swatch.background }}
+                      aria-hidden="true"
+                    >
+                      <span
+                        id={`app-settings-theme-${option.id}-swatch-surface`}
+                        className="absolute right-1 bottom-1 h-2.5 w-4 rounded-sm"
+                        style={{ background: swatch.surface }}
+                      />
+                      <span
+                        id={`app-settings-theme-${option.id}-swatch-accent`}
+                        className="absolute top-1 left-1 size-1.5 rounded-full"
+                        style={{ background: swatch.accent }}
+                      />
+                      <span
+                        id={`app-settings-theme-${option.id}-swatch-text`}
+                        className="absolute top-0.5 right-1 text-[8px] leading-none font-semibold"
+                        style={{ color: swatch.text }}
+                      >
+                        A
+                      </span>
+                    </span>
+                    <span id={`app-settings-theme-${option.id}-label`}>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p id="app-settings-theme-css-hint" className="mt-2 text-xs leading-5 text-zinc-500">
+              {themeStylesheet
+                ? `${themeStylesheet} is created when it is missing. The sample rules are commented out. ce-git reads the file when it starts and when this window is focused.`
+                : `Choose a settings folder and ce-git will add ${THEME_STYLESHEET_NAME} there, with the color overrides commented out.`}
+            </p>
+          </div>
+        </SettingsSection>
       </form>
       {warning ? (
         <p id="app-settings-warning" className="mt-3 text-sm text-amber-200" role="status">
@@ -253,6 +355,24 @@ export function AppSettingsTab({
         </p>
       ) : null}
     </>
+  );
+}
+
+function SettingsSection({ id, title, hint, children }: { id: string; title: string; hint?: string; children: ReactNode }) {
+  return (
+    <section id={id} className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-3">
+      <h3 id={`${id}-heading`} className="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
+        {title}
+      </h3>
+      {hint ? (
+        <p id={`${id}-hint`} className="mt-1 text-xs leading-5 text-zinc-500">
+          {hint}
+        </p>
+      ) : null}
+      <div id={`${id}-body`} className="mt-3">
+        {children}
+      </div>
+    </section>
   );
 }
 

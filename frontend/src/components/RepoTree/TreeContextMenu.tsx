@@ -1,10 +1,10 @@
-import { ExternalLink, FolderMinus, FolderSearch, Terminal, Trash2, Undo2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { FolderMinus, FolderSearch, Terminal, Trash2, Undo2 } from "lucide-react";
 import type { TreeNode } from "../../../../types/git";
-import type { FolderEditor } from "../../lib/git-client";
 import { fileManagerLabel } from "../../lib/changes";
+import { editorTargetTitle, editorsForMenu, openInLabel, type EditorId } from "../../lib/editors";
 import { pathEquals } from "../../lib/tree";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../ContextMenu";
+import { EditorIcon } from "../EditorIcon";
 
 type TreeContextMenuProps = {
   node: TreeNode;
@@ -13,7 +13,8 @@ type TreeContextMenuProps = {
   rootPaths: string[];
   removedCount: number;
   actionsDisabled: boolean;
-  onOpen: (editor: FolderEditor) => void;
+  menuEditors: readonly string[];
+  onOpen: (editor: EditorId) => void;
   onOpenTerminal: () => void;
   onReveal: () => void;
   onRemove: () => void;
@@ -29,6 +30,7 @@ export function TreeContextMenu({
   rootPaths,
   removedCount,
   actionsDisabled,
+  menuEditors,
   onOpen,
   onOpenTerminal,
   onReveal,
@@ -40,6 +42,7 @@ export function TreeContextMenu({
   const isRepo = node.kind === "repo";
   const isRoot = rootPaths.some((root) => pathEquals(node.path, root));
   const showManage = isRepo || removedCount > 0;
+  const editors = editorsForMenu(menuEditors);
 
   return (
     <ContextMenu
@@ -50,29 +53,18 @@ export function TreeContextMenu({
       scrollParentId="repo-tree-scroll"
       onClose={onClose}
     >
-      <ContextMenuItem
-        id="tree-context-open"
-        icon={<ExternalLink id="tree-context-open-glyph" aria-hidden="true" />}
-        label="Open in default editor"
-        title="Open this folder in your default code editor"
-        onClick={() => onOpen("default")}
-      />
-      <ContextMenuItem
-        id="tree-context-open-code"
-        icon={<VsCodeIcon id="tree-context-open-code-glyph" />}
-        label="Open in VS Code"
-        title="Open this folder in Visual Studio Code"
-        onClick={() => onOpen("code")}
-      />
-      <ContextMenuItem
-        id="tree-context-open-cursor"
-        icon={<CursorIcon id="tree-context-open-cursor-glyph" />}
-        label="Open in Cursor"
-        title="Open this folder in Cursor"
-        onClick={() => onOpen("cursor")}
-      />
+      {editors.map((editor) => (
+        <ContextMenuItem
+          id={`tree-context-open-${editor.id}`}
+          key={editor.id}
+          icon={<EditorIcon id={`tree-context-open-${editor.id}-glyph`} editor={editor.id} />}
+          label={openInLabel(editor)}
+          title={editorTargetTitle(editor, "folder")}
+          onClick={() => onOpen(editor.id)}
+        />
+      ))}
 
-      <ContextMenuSeparator id="tree-context-separator-system" />
+      {editors.length > 0 ? <ContextMenuSeparator id="tree-context-separator-system" /> : null}
 
       {isRepo ? (
         <ContextMenuItem
@@ -125,30 +117,5 @@ export function TreeContextMenu({
         onClick={onDelete}
       />
     </ContextMenu>
-  );
-}
-
-function MenuGlyph({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <svg id={id} viewBox="0 0 24 24" className="size-3.5 shrink-0" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-
-function VsCodeIcon({ id }: { id: string }) {
-  return (
-    <MenuGlyph id={id}>
-      <path id={`${id}-ribbon`} fill="#23a8f2" d="M17.2 2.4 9.7 8.5 5.5 5.6 2.8 6.9v10.2l2.7 1.3 4.2-2.9 7.5 6.1 3.3-1.6V4l-3.3-1.6Zm.1 3.7v11.8l-5.6-4.5 5.6-7.3Z" />
-      <path id={`${id}-fold`} fill="#0078d4" d="M2.8 6.9 9.7 12l-6.9 5.1V6.9Z" />
-    </MenuGlyph>
-  );
-}
-
-function CursorIcon({ id }: { id: string }) {
-  return (
-    <MenuGlyph id={id}>
-      <path id={`${id}-mark`} fill="#f4f4f5" d="M5.2 3.2 19.4 12.1 11.8 13.4 9.3 20.8 5.2 3.2Z" />
-    </MenuGlyph>
   );
 }

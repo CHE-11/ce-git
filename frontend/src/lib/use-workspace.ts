@@ -25,7 +25,6 @@ import {
   revealChange as revealFile,
   themeCss,
   type ChangeOpenMode,
-  type FolderEditor,
   type IgnoreKind,
   repoDiff,
   repoStatuses,
@@ -33,6 +32,7 @@ import {
 import { withDefaultPrompts } from "./commit-prompts";
 import { baseName, collectRepos, containingRoot, hideIgnoredFolders, hideRemovedRepos, messageOf, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
 import { applyUserThemeCss, publishAppearance } from "./appearance";
+import { publishDefaultEditor, publishMenuEditors, readDefaultEditor, readMenuEditors, type EditorId } from "./editors";
 import { publishToolbarLabels, readToolbarLabels } from "./toolbar-labels";
 import { clampZoom, publishZoom, readZoom, ZOOM_EVENT } from "./zoom";
 
@@ -161,6 +161,8 @@ export function useWorkspace() {
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
   const [removedRepos, setRemovedRepos] = useState<string[]>([]);
   const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
+  const [defaultEditor, setDefaultEditor] = useState(readDefaultEditor);
+  const [menuEditors, setMenuEditors] = useState(readMenuEditors);
 
   const sharedRef = useRef(false);
   const zoomRef = useRef(readZoom());
@@ -373,6 +375,8 @@ export function useWorkspace() {
         publishZoom(settings.fontZoom);
         publishAppearance(settings.theme, settings.colorMode);
         setToolbarLabels(publishToolbarLabels(settings.toolbarLabels));
+        setDefaultEditor(publishDefaultEditor(settings.defaultEditor));
+        setMenuEditors(publishMenuEditors(settings.menuEditors));
         setSelectedPrompt(prompt);
         rememberPrompt(prompt);
         setCommitPrompts(prompts);
@@ -773,7 +777,7 @@ export function useWorkspace() {
     setRemovedRepos(paths);
   };
 
-  const openInEditor = async (path: string, editor: FolderEditor = "default") => {
+  const openInEditor = async (path: string, editor: EditorId = "default") => {
     setError(null);
     try {
       await openFolderInEditor(path, editor);
@@ -1147,6 +1151,8 @@ export function useWorkspace() {
   return {
     rootPaths,
     toolbarLabels,
+    defaultEditor,
+    menuEditors,
     trees,
     repos,
     statuses,

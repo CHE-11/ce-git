@@ -16,6 +16,7 @@ import type {
   ThinkingMode,
   TreeNode,
 } from "../../../types/git";
+import type { EditorId } from "./editors";
 
 export function gitAvailable() {
   return invoke<boolean>("git_available");
@@ -56,6 +57,8 @@ export function saveAppSettings(settings: {
   theme: string;
   colorMode: "dark" | "light" | "system";
   toolbarLabels: boolean;
+  defaultEditor: string;
+  menuEditors: string[];
   selectedPrompt: number | null;
   prompts: AiPrompts;
   folderIgnore: string;
@@ -65,6 +68,10 @@ export function saveAppSettings(settings: {
 
 export function previewAppSettings(settingsFolder: string) {
   return invoke<AppSettings>("preview_app_settings", { settingsFolder });
+}
+
+export function appExecutable() {
+  return invoke<string>("app_executable");
 }
 
 export function themeCss() {
@@ -148,7 +155,7 @@ export function batchCommit(commits: CommitRequest[]) {
   return invoke<BatchProgress[]>("batch_commit", { commits });
 }
 
-export type FolderEditor = "default" | "code" | "cursor";
+export type FolderEditor = EditorId;
 
 export function openInEditor(path: string, editor: FolderEditor = "default") {
   return invoke<void>("open_in_editor", { path, editor });
@@ -175,7 +182,7 @@ export function deleteFolder(root: string, path: string) {
 }
 
 export type IgnoreKind = "file" | "folder" | "extension";
-export type ChangeOpenMode = "editor" | "cursor" | "code" | "default";
+export type ChangeOpenMode = "editor" | "default" | Exclude<EditorId, "default">;
 
 export function discardChange(repo: string, path: string) {
   return invoke<void>("discard_change", { repo, path });

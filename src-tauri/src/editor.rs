@@ -16,12 +16,151 @@ pub fn open_file_in_editor(path: &Path, editor: &str) -> Result<(), String> {
     launch_editor(path, editor)
 }
 
+pub const DEFAULT_EDITOR: &str = "default";
+
+pub struct EditorKind {
+    pub id: &'static str,
+    pub label: &'static str,
+    /// Command names, first one preferred on Unix. Windows tries each with `where`.
+    pub commands: &'static [&'static str],
+    #[allow(dead_code)]
+    pub exe_names: &'static [&'static str],
+    #[allow(dead_code)]
+    pub folders: &'static [&'static str],
+}
+
+const KINDS: &[EditorKind] = &[
+    EditorKind {
+        id: "code",
+        label: "Visual Studio Code",
+        commands: &["code"],
+        exe_names: &["Code.exe"],
+        folders: &[],
+    },
+    EditorKind {
+        id: "code-insiders",
+        label: "VS Code Insiders",
+        commands: &["code-insiders"],
+        exe_names: &["Code - Insiders.exe"],
+        folders: &[],
+    },
+    EditorKind {
+        id: "cursor",
+        label: "Cursor",
+        commands: &["cursor"],
+        exe_names: &["Cursor.exe"],
+        folders: &[],
+    },
+    EditorKind {
+        id: "windsurf",
+        label: "Windsurf",
+        commands: &["windsurf"],
+        exe_names: &["Windsurf.exe"],
+        folders: &["Windsurf"],
+    },
+    EditorKind {
+        id: "zed",
+        label: "Zed",
+        commands: &["zed"],
+        exe_names: &["Zed.exe"],
+        folders: &["Zed"],
+    },
+    EditorKind {
+        id: "sublime",
+        label: "Sublime Text",
+        commands: &["subl", "sublime_text"],
+        exe_names: &["sublime_text.exe"],
+        folders: &["Sublime Text"],
+    },
+    EditorKind {
+        id: "idea",
+        label: "IntelliJ IDEA",
+        commands: &["idea", "idea64"],
+        exe_names: &["idea64.exe", "idea.exe"],
+        folders: &["IDEA", "IntelliJ IDEA"],
+    },
+    EditorKind {
+        id: "webstorm",
+        label: "WebStorm",
+        commands: &["webstorm", "webstorm64"],
+        exe_names: &["webstorm64.exe", "webstorm.exe"],
+        folders: &["WebStorm"],
+    },
+    EditorKind {
+        id: "pycharm",
+        label: "PyCharm",
+        commands: &["pycharm", "pycharm64"],
+        exe_names: &["pycharm64.exe", "pycharm.exe"],
+        folders: &["PyCharm"],
+    },
+    EditorKind {
+        id: "goland",
+        label: "GoLand",
+        commands: &["goland", "goland64"],
+        exe_names: &["goland64.exe", "goland.exe"],
+        folders: &["GoLand"],
+    },
+    EditorKind {
+        id: "rustrover",
+        label: "RustRover",
+        commands: &["rustrover", "rustrover64"],
+        exe_names: &["rustrover64.exe", "rustrover.exe"],
+        folders: &["RustRover"],
+    },
+    EditorKind {
+        id: "rider",
+        label: "Rider",
+        commands: &["rider", "rider64"],
+        exe_names: &["rider64.exe", "rider.exe"],
+        folders: &["Rider"],
+    },
+    EditorKind {
+        id: "clion",
+        label: "CLion",
+        commands: &["clion", "clion64"],
+        exe_names: &["clion64.exe", "clion.exe"],
+        folders: &["CLion"],
+    },
+    EditorKind {
+        id: "phpstorm",
+        label: "PhpStorm",
+        commands: &["phpstorm", "phpstorm64"],
+        exe_names: &["phpstorm64.exe", "phpstorm.exe"],
+        folders: &["PhpStorm"],
+    },
+    EditorKind {
+        id: "rubymine",
+        label: "RubyMine",
+        commands: &["rubymine", "rubymine64"],
+        exe_names: &["rubymine64.exe", "rubymine.exe"],
+        folders: &["RubyMine"],
+    },
+];
+
+pub fn is_known_editor(id: &str) -> bool {
+    id == DEFAULT_EDITOR || KINDS.iter().any(|kind| kind.id == id)
+}
+
+pub fn editor_kind(id: &str) -> Option<&'static EditorKind> {
+    KINDS.iter().find(|kind| kind.id == id)
+}
+
+pub fn editor_ids() -> impl Iterator<Item = &'static str> {
+    std::iter::once(DEFAULT_EDITOR).chain(KINDS.iter().map(|kind| kind.id))
+}
+
+pub fn default_menu_editors() -> Vec<String> {
+    ["default", "code", "cursor"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
 fn launch_editor(path: &Path, editor: &str) -> Result<(), String> {
-    let executable = match editor {
-        "cursor" => require_cursor()?,
-        "code" => require_code()?,
-        "default" | "" => resolve_editor()?,
-        other => return Err(format!("Unknown editor: {other}")),
+    let executable = if editor.is_empty() || editor == DEFAULT_EDITOR {
+        resolve_editor()?
+    } else {
+        require_named(editor)?
     };
     spawn_editor(&executable, path).map_err(|error| {
         format!(
@@ -32,25 +171,16 @@ fn launch_editor(path: &Path, editor: &str) -> Result<(), String> {
     })
 }
 
-fn require_cursor() -> Result<PathBuf, String> {
+fn require_named(id: &str) -> Result<PathBuf, String> {
+    let kind = editor_kind(id).ok_or_else(|| format!("Unknown editor: {id}"))?;
     #[cfg(windows)]
     {
-        return windows::find_cursor().ok_or_else(|| "Cursor was not found.".to_string());
+        windows::locate(kind).ok_or_else(|| format!("{} was not found.", kind.label))
     }
     #[cfg(not(windows))]
     {
-        unix_command("cursor", "Cursor")
-    }
-}
-
-fn require_code() -> Result<PathBuf, String> {
-    #[cfg(windows)]
-    {
-        return windows::find_code().ok_or_else(|| "Visual Studio Code was not found.".to_string());
-    }
-    #[cfg(not(windows))]
-    {
-        unix_command("code", "Visual Studio Code")
+        let command = kind.commands.first().copied().unwrap_or(kind.id);
+        unix_command(command, kind.label)
     }
 }
 
@@ -277,7 +407,11 @@ mod windows {
     }
 
     pub(super) fn find_code() -> Option<PathBuf> {
-        first_file(&code_candidates()).or_else(|| where_exe("code"))
+        first_file(&code_stable_candidates()).or_else(|| where_exe("code"))
+    }
+
+    fn find_code_insiders() -> Option<PathBuf> {
+        first_file(&code_insiders_candidates()).or_else(|| where_exe("code-insiders"))
     }
 
     fn first_file(paths: &[PathBuf]) -> Option<PathBuf> {
@@ -287,10 +421,147 @@ mod windows {
     fn installed_editor() -> Option<PathBuf> {
         find_cursor()
             .or_else(find_code)
-            .or_else(|| first_file(&other_editor_candidates()))
-            .or_else(|| where_exe("windsurf"))
-            .or_else(|| where_exe("zed"))
-            .or_else(|| where_exe("subl"))
+            .or_else(find_code_insiders)
+            .or_else(|| locate_id("windsurf"))
+            .or_else(|| locate_id("zed"))
+            .or_else(|| locate_id("sublime"))
+            .or_else(|| locate_id("idea"))
+            .or_else(|| locate_id("webstorm"))
+            .or_else(|| locate_id("pycharm"))
+            .or_else(|| locate_id("rider"))
+            .or_else(|| locate_id("rustrover"))
+            .or_else(|| locate_id("goland"))
+            .or_else(|| locate_id("clion"))
+            .or_else(|| locate_id("phpstorm"))
+            .or_else(|| locate_id("rubymine"))
+    }
+
+    pub(super) fn locate(kind: &super::EditorKind) -> Option<PathBuf> {
+        match kind.id {
+            "code" => return find_code(),
+            "code-insiders" => return find_code_insiders(),
+            "cursor" => return find_cursor(),
+            _ => {}
+        }
+        if !kind.folders.is_empty() {
+            if let Some(path) = newest_install(kind.folders, kind.exe_names) {
+                return Some(path);
+            }
+        }
+        where_first(kind.commands)
+    }
+
+    fn locate_id(id: &str) -> Option<PathBuf> {
+        super::editor_kind(id).and_then(locate)
+    }
+
+    fn where_first(commands: &[&str]) -> Option<PathBuf> {
+        commands.iter().find_map(|command| where_exe(command))
+    }
+
+    fn newest_install(prefixes: &[&str], exe_names: &[&str]) -> Option<PathBuf> {
+        if exe_names.is_empty() {
+            return None;
+        }
+        let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+        for root in install_roots() {
+            let Ok(entries) = std::fs::read_dir(&root) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                let matched = prefixes.iter().any(|prefix| {
+                    name.to_ascii_lowercase()
+                        .starts_with(&prefix.to_ascii_lowercase())
+                });
+                if !matched {
+                    continue;
+                }
+                consider_tree(&path, exe_names, 0, &mut best);
+            }
+        }
+        best.map(|(_, path)| path)
+    }
+
+    fn install_roots() -> Vec<PathBuf> {
+        let mut roots = Vec::new();
+        if let Some(local) = env::var_os("LOCALAPPDATA") {
+            let local = PathBuf::from(local);
+            roots.push(local.join("Programs"));
+            roots.push(local.join("JetBrains").join("Toolbox").join("apps"));
+        }
+        if let Some(program_files) = env::var_os("ProgramFiles") {
+            let program_files = PathBuf::from(program_files);
+            roots.push(program_files.join("JetBrains"));
+            roots.push(program_files);
+        }
+        if let Some(program_files) = env::var_os("ProgramFiles(x86)") {
+            let program_files = PathBuf::from(program_files);
+            roots.push(program_files.join("JetBrains"));
+            roots.push(program_files);
+        }
+        roots
+    }
+
+    fn consider_tree(
+        dir: &Path,
+        exe_names: &[&str],
+        depth: u8,
+        best: &mut Option<(std::time::SystemTime, PathBuf)>,
+    ) {
+        if depth > 5 {
+            return;
+        }
+        let mut found_here = false;
+        for exe in exe_names {
+            if consider_file(&dir.join(exe), best) {
+                found_here = true;
+            }
+            if consider_file(&dir.join("bin").join(exe), best) {
+                found_here = true;
+            }
+        }
+        if found_here || depth == 5 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            consider_tree(&path, exe_names, depth + 1, best);
+        }
+    }
+
+    fn consider_file(path: &Path, best: &mut Option<(std::time::SystemTime, PathBuf)>) -> bool {
+        if !path.is_file() {
+            return false;
+        }
+        let modified = path
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        let replace = best
+            .as_ref()
+            .map(|(time, _)| modified >= *time)
+            .unwrap_or(true);
+        if replace {
+            *best = Some((modified, path.to_path_buf()));
+        }
+        true
     }
 
     fn cursor_candidates() -> Vec<PathBuf> {
@@ -310,46 +581,42 @@ mod windows {
         paths
     }
 
-    fn code_candidates() -> Vec<PathBuf> {
+    fn code_stable_candidates() -> Vec<PathBuf> {
         let mut paths = Vec::new();
         if let Some(local) = env::var_os("LOCALAPPDATA") {
-            let local = PathBuf::from(local);
             paths.push(
-                local
+                PathBuf::from(&local)
                     .join("Programs")
                     .join("Microsoft VS Code")
                     .join("Code.exe"),
             );
-            paths.push(
-                local
-                    .join("Programs")
-                    .join("Microsoft VS Code Insiders")
-                    .join("Code - Insiders.exe"),
-            );
         }
         if let Some(program_files) = env::var_os("ProgramFiles") {
-            let program_files = PathBuf::from(program_files);
-            paths.push(program_files.join("Microsoft VS Code").join("Code.exe"));
             paths.push(
-                program_files
-                    .join("Microsoft VS Code Insiders")
-                    .join("Code - Insiders.exe"),
+                PathBuf::from(program_files)
+                    .join("Microsoft VS Code")
+                    .join("Code.exe"),
             );
         }
         paths
     }
 
-    fn other_editor_candidates() -> Vec<PathBuf> {
+    fn code_insiders_candidates() -> Vec<PathBuf> {
         let mut paths = Vec::new();
         if let Some(local) = env::var_os("LOCALAPPDATA") {
-            let local = PathBuf::from(local);
-            paths.push(local.join("Programs").join("Windsurf").join("Windsurf.exe"));
-            paths.push(local.join("Programs").join("Zed").join("Zed.exe"));
+            paths.push(
+                PathBuf::from(local)
+                    .join("Programs")
+                    .join("Microsoft VS Code Insiders")
+                    .join("Code - Insiders.exe"),
+            );
         }
         if let Some(program_files) = env::var_os("ProgramFiles") {
-            let program_files = PathBuf::from(program_files);
-            paths.push(program_files.join("Sublime Text").join("sublime_text.exe"));
-            paths.push(program_files.join("Zed").join("Zed.exe"));
+            paths.push(
+                PathBuf::from(program_files)
+                    .join("Microsoft VS Code Insiders")
+                    .join("Code - Insiders.exe"),
+            );
         }
         paths
     }
@@ -410,8 +677,26 @@ mod windows {
             "Windsurf.exe"
         } else if name.starts_with("zed") {
             "Zed.exe"
-        } else if name.starts_with("subl") {
+        } else if name.starts_with("subl") || name.starts_with("sublime") {
             "sublime_text.exe"
+        } else if name.starts_with("webstorm") {
+            "webstorm64.exe"
+        } else if name.starts_with("pycharm") {
+            "pycharm64.exe"
+        } else if name.starts_with("goland") {
+            "goland64.exe"
+        } else if name.starts_with("rustrover") {
+            "rustrover64.exe"
+        } else if name.starts_with("rider") {
+            "rider64.exe"
+        } else if name.starts_with("clion") {
+            "clion64.exe"
+        } else if name.starts_with("phpstorm") {
+            "phpstorm64.exe"
+        } else if name.starts_with("rubymine") {
+            "rubymine64.exe"
+        } else if name.starts_with("idea") {
+            "idea64.exe"
         } else {
             return None;
         };
@@ -456,6 +741,24 @@ mod tests {
         );
         let exe = exe_from_open_command(r#""%SystemRoot%\notepad.exe" "%1""#).unwrap();
         assert_eq!(exe, format!(r"{root}\notepad.exe"));
+    }
+
+    #[test]
+    fn built_in_editors_include_the_default_and_popular_apps() {
+        assert!(super::is_known_editor("default"));
+        assert!(super::is_known_editor("code"));
+        assert!(super::is_known_editor("cursor"));
+        assert!(super::is_known_editor("windsurf"));
+        assert!(super::is_known_editor("idea"));
+        assert!(!super::is_known_editor("notepad"));
+        assert_eq!(
+            super::default_menu_editors(),
+            vec![
+                "default".to_string(),
+                "code".to_string(),
+                "cursor".to_string()
+            ]
+        );
     }
 
     #[test]

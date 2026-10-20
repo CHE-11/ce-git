@@ -135,6 +135,8 @@ export interface AppSettings {
   theme: string;
   colorMode: "dark" | "light" | "system";
   toolbarLabels: boolean;
+  defaultEditor: string;
+  menuEditors: string[];
   model: string;
   thinking: ThinkingMode;
   prompts: AiPrompts;

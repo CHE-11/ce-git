@@ -13,6 +13,7 @@ import { RepoDetail } from "../components/RepoDetail";
 import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
 import { Toolbar } from "../components/Toolbar";
+import { fileOpenMode, openInLabel, editorById } from "../lib/editors";
 import { useWorkspace } from "../lib/use-workspace";
 import type { RepoTreeFilter } from "../lib/tree";
 
@@ -176,12 +177,12 @@ export function HomePage() {
     },
     {
       id: "open-editor",
-      label: "Open in editor",
+      label: openInLabel(editorById(workspace.defaultEditor)),
       group: "Active repo",
       disabled: busy || !hasActive,
       run: () => {
         if (workspace.activePath) {
-          void workspace.openInEditor(workspace.activePath, "default");
+          void workspace.openInEditor(workspace.activePath, workspace.defaultEditor);
         }
       },
     },
@@ -287,6 +288,7 @@ export function HomePage() {
           onClearSelection={workspace.clearSelection}
           busy={busy}
           removedRepos={workspace.removedRepos}
+          menuEditors={workspace.menuEditors}
           onOpenInEditor={(path, editor) => void workspace.openInEditor(path, editor)}
           onOpenInTerminal={(path) => void workspace.openInTerminal(path)}
           onRevealInExplorer={(path) => void workspace.revealInExplorer(path)}
@@ -321,6 +323,7 @@ export function HomePage() {
           onPull={workspace.requestPullActive}
           onPush={workspace.requestPushActive}
           onPublish={workspace.publishActive}
+          menuEditors={workspace.menuEditors}
           fileHandlers={{
             discard: (file) => {
               if (workspace.activePath) {
@@ -383,7 +386,7 @@ export function HomePage() {
         onClose={() => setAdvancedSearchOpen(false)}
         onOpenMatch={(repo, file) => {
           workspace.selectRepo(repo, "replace");
-          void workspace.openChange(repo, file, "editor");
+          void workspace.openChange(repo, file, fileOpenMode(workspace.defaultEditor));
         }}
       />
       <AiReviewDialog open={workspace.aiOpen} drafts={workspace.drafts} generating={workspace.generating} busy={busy} onClose={() => workspace.setAiOpen(false)} onChange={workspace.updateDraft} onToggle={workspace.toggleDraft} onCommit={() => void workspace.commitDrafts()} />

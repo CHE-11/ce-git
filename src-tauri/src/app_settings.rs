@@ -113,6 +113,8 @@ pub struct AppSettings {
     pub theme: String,
     pub color_mode: String,
     pub toolbar_labels: bool,
+    pub default_editor: String,
+    pub menu_editors: Vec<String>,
     pub model: String,
     pub thinking: String,
     pub prompts: Vec<String>,
@@ -156,6 +158,8 @@ struct PortableFile {
     theme: String,
     color_mode: String,
     toolbar_labels: bool,
+    default_editor: String,
+    menu_editors: Vec<String>,
     model: String,
     thinking: String,
     prompts: Vec<String>,
@@ -173,6 +177,8 @@ impl Default for PortableFile {
             theme: DEFAULT_THEME.to_string(),
             color_mode: DEFAULT_COLOR_MODE.to_string(),
             toolbar_labels: false,
+            default_editor: crate::editor::DEFAULT_EDITOR.to_string(),
+            menu_editors: crate::editor::default_menu_editors(),
             model: String::new(),
             thinking: DEFAULT_THINKING.to_string(),
             prompts: vec![String::new(); 3],
@@ -213,6 +219,8 @@ pub fn save_app_settings(
     theme: String,
     color_mode: String,
     toolbar_labels: bool,
+    default_editor: String,
+    menu_editors: Vec<String>,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
     folder_ignore: String,
@@ -238,6 +246,8 @@ pub fn save_app_settings(
         let prompt = normalize_prompt(selected_prompt);
         let prompts = normalize_prompts(prompts);
         let folder_ignore = normalize_folder_ignore(&folder_ignore)?;
+        let default_editor = normalize_editor(&default_editor);
+        let menu_editors = normalize_menu_editors(menu_editors);
         let destination_exists = !next_folder.is_empty() && settings_path(&next_folder).is_file();
         let plan = folder_plan(&loaded.folder, &next_folder, destination_exists);
 
@@ -253,6 +263,8 @@ pub fn save_app_settings(
                 file.theme = theme;
                 file.color_mode = color_mode;
                 file.toolbar_labels = toolbar_labels;
+                file.default_editor = default_editor;
+                file.menu_editors = menu_editors;
                 Ok(view_of(&Loaded {
                     folder: String::new(),
                     shared: false,
@@ -277,6 +289,8 @@ pub fn save_app_settings(
                 file.theme = theme;
                 file.color_mode = color_mode;
                 file.toolbar_labels = toolbar_labels;
+                file.default_editor = default_editor;
+                file.menu_editors = menu_editors;
                 file.selected_prompt = prompt;
                 file.prompts = prompts;
                 file.folder_ignore = folder_ignore;
@@ -491,6 +505,8 @@ fn view_of(loaded: &Loaded) -> AppSettings {
         theme: file.theme.clone(),
         color_mode: file.color_mode.clone(),
         toolbar_labels: file.toolbar_labels,
+        default_editor: file.default_editor.clone(),
+        menu_editors: file.menu_editors.clone(),
         model: file.model.clone(),
         thinking: file.thinking.clone(),
         prompts: file.prompts.clone(),
@@ -754,6 +770,8 @@ impl PortableFile {
         self.font_zoom = clamp_zoom(self.font_zoom);
         self.theme = normalize_theme(&self.theme);
         self.color_mode = normalize_color_mode(&self.color_mode);
+        self.default_editor = normalize_editor(&self.default_editor);
+        self.menu_editors = normalize_menu_editors(std::mem::take(&mut self.menu_editors));
         self.model = self.model.trim().to_string();
         self.thinking = normalize_thinking(&self.thinking);
         self.prompts = normalize_prompts(std::mem::take(&mut self.prompts));
@@ -780,6 +798,29 @@ fn normalize_theme(value: &str) -> String {
     } else {
         DEFAULT_THEME.to_string()
     }
+}
+
+fn normalize_editor(value: &str) -> String {
+    let value = value.trim();
+    if crate::editor::is_known_editor(value) {
+        value.to_string()
+    } else {
+        crate::editor::DEFAULT_EDITOR.to_string()
+    }
+}
+
+fn normalize_menu_editors(values: Vec<String>) -> Vec<String> {
+    let mut chosen = Vec::new();
+    for value in values {
+        let id = value.trim();
+        if crate::editor::is_known_editor(id) && !chosen.iter().any(|item: &String| item == id) {
+            chosen.push(id.to_string());
+        }
+    }
+    crate::editor::editor_ids()
+        .filter(|id| chosen.iter().any(|item| item == *id))
+        .map(str::to_string)
+        .collect()
 }
 
 fn normalize_color_mode(value: &str) -> String {
@@ -965,6 +1006,15 @@ mod tests {
         assert_eq!(loaded.theme, "zinc");
         assert_eq!(loaded.color_mode, "dark");
         assert_eq!(loaded.toolbar_labels, false);
+        assert_eq!(loaded.default_editor, "default");
+        assert_eq!(
+            loaded.menu_editors,
+            vec![
+                "default".to_string(),
+                "code".to_string(),
+                "cursor".to_string()
+            ]
+        );
         assert_eq!(loaded.folder_ignore, "");
 
         let mut next = loaded;
@@ -972,6 +1022,8 @@ mod tests {
         next.theme = "nord".into();
         next.color_mode = "light".into();
         next.toolbar_labels = true;
+        next.default_editor = "cursor".into();
+        next.menu_editors = vec!["zed".into(), "nope".into(), "code".into(), "zed".into()];
         next.folder_ignore = "node_modules\n(^|[\\\\/])vendor$".into();
         write_portable_file(&path, &next).unwrap();
         let saved: PortableFile = super::read_portable_file(&path).unwrap().normalize();
@@ -980,6 +1032,11 @@ mod tests {
         assert_eq!(saved.theme, "nord");
         assert_eq!(saved.color_mode, "light");
         assert_eq!(saved.toolbar_labels, true);
+        assert_eq!(saved.default_editor, "cursor");
+        assert_eq!(
+            saved.menu_editors,
+            vec!["code".to_string(), "zed".to_string()]
+        );
         assert_eq!(saved.folder_ignore, "node_modules\n(^|[\\\\/])vendor$");
 
         let mut invalid = saved;

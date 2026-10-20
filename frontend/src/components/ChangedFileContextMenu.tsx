@@ -1,11 +1,13 @@
-import { AppWindow, ChevronRight, Copy, FileX, Files, Folder, FolderSearch, FolderX, Link2, SquareCode, Undo2 } from "lucide-react";
+import { AppWindow, ChevronRight, Copy, FileX, Files, Folder, FolderSearch, FolderX, Link2, Undo2 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { FileChange } from "../../../types/git";
 import { absolutePath, fileExtension, fileManagerLabel, parentDirectories } from "../lib/changes";
 import { cn } from "../lib/cn";
+import { editorTargetTitle, editorsForMenu, gitignoreLabel, openInLabel, type EditorId } from "../lib/editors";
 import type { IgnoreKind } from "../lib/git-client";
 import { domId } from "../lib/tree";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, contextMenuPanelClass } from "./ContextMenu";
+import { EditorIcon } from "./EditorIcon";
 
 type ChangedFileMenuProps = {
   file: FileChange;
@@ -16,11 +18,10 @@ type ChangedFileMenuProps = {
   onDiscard: () => void;
   onIgnore: (kind: IgnoreKind, target: string) => void;
   onReveal: () => void;
-  onOpenEditor: () => void;
-  onOpenCursor: () => void;
-  onOpenGitignoreCursor: () => void;
-  onOpenGitignoreCode: () => void;
-  onOpenDefault: () => void;
+  menuEditors: readonly string[];
+  onOpenInEditor: (editor: EditorId) => void;
+  onOpenGitignore: (editor: EditorId) => void;
+  onOpenProgram: () => void;
   onCopy: (text: string) => void;
   onClose: () => void;
 };
@@ -51,7 +52,7 @@ function isInside(target: EventTarget | null, id: string) {
   return target instanceof Element && Boolean(target.closest(`#${id}`));
 }
 
-export function ChangedFileMenu({
+export function ChangedFileContextMenu({
   file,
   repoPath,
   x,
@@ -60,11 +61,10 @@ export function ChangedFileMenu({
   onDiscard,
   onIgnore,
   onReveal,
-  onOpenEditor,
-  onOpenCursor,
-  onOpenGitignoreCursor,
-  onOpenGitignoreCode,
-  onOpenDefault,
+  menuEditors,
+  onOpenInEditor,
+  onOpenGitignore,
+  onOpenProgram,
   onCopy,
   onClose,
 }: ChangedFileMenuProps) {
@@ -79,6 +79,7 @@ export function ChangedFileMenu({
   const ignoreDisabled = deleted || busy;
   const openDisabled = deleted;
   const revealLabel = fileManagerLabel();
+  const editors = editorsForMenu(menuEditors);
 
   useLayoutEffect(() => {
     if (!folderOpen || !focusFolders) {
@@ -279,41 +280,32 @@ export function ChangedFileMenu({
         onClick={() => run(onReveal)}
       />
 
-      <ContextMenuSeparator id="changed-file-menu-separator-gitignore" />
+      {editors.length > 0 ? <ContextMenuSeparator id="changed-file-menu-separator-open" /> : null}
+      {editors.map((editor) => (
+        <ContextMenuItem
+          id={`changed-file-menu-open-${editor.id}`}
+          key={`open-${editor.id}`}
+          scope="main"
+          icon={<EditorIcon id={`changed-file-menu-open-${editor.id}-glyph`} editor={editor.id} />}
+          label={openInLabel(editor)}
+          title={editorTargetTitle(editor, "file")}
+          disabled={openDisabled}
+          onClick={() => run(() => onOpenInEditor(editor.id))}
+        />
+      ))}
 
-      <ContextMenuItem
-        id="changed-file-menu-gitignore-cursor"
-        scope="main"
-        icon={<CursorIcon id="changed-file-menu-gitignore-cursor-glyph" />}
-        label="Open gitignore in Cursor"
-        onClick={() => run(onOpenGitignoreCursor)}
-      />
-      <ContextMenuItem
-        id="changed-file-menu-gitignore-code"
-        scope="main"
-        icon={<SquareCode id="changed-file-menu-gitignore-code-glyph" aria-hidden="true" />}
-        label="Open gitignore in VS Code"
-        onClick={() => run(onOpenGitignoreCode)}
-      />
-
-      <ContextMenuSeparator id="changed-file-menu-separator-open" />
-
-      <ContextMenuItem
-        id="changed-file-menu-open-editor"
-        scope="main"
-        icon={<SquareCode id="changed-file-menu-open-editor-glyph" aria-hidden="true" />}
-        label="Open Repo in VS Code editor"
-        disabled={openDisabled}
-        onClick={() => run(onOpenEditor)}
-      />
-      <ContextMenuItem
-        id="changed-file-menu-open-cursor"
-        scope="main"
-        icon={<CursorIcon id="changed-file-menu-open-cursor-glyph" />}
-        label="Open Repo in Cursor"
-        disabled={openDisabled}
-        onClick={() => run(onOpenCursor)}
-      />
+      {editors.length > 0 ? <ContextMenuSeparator id="changed-file-menu-separator-gitignore" /> : null}
+      {editors.map((editor) => (
+        <ContextMenuItem
+          id={`changed-file-menu-gitignore-${editor.id}`}
+          key={`gitignore-${editor.id}`}
+          scope="main"
+          icon={<EditorIcon id={`changed-file-menu-gitignore-${editor.id}-glyph`} editor={editor.id} />}
+          label={gitignoreLabel(editor)}
+          title={editor.id === "default" ? "Open .gitignore in the default editor" : `Open .gitignore in ${editor.label}`}
+          onClick={() => run(() => onOpenGitignore(editor.id))}
+        />
+      ))}
 
       <ContextMenuSeparator id="changed-file-menu-separator-default" />
 
@@ -323,16 +315,8 @@ export function ChangedFileMenu({
         icon={<AppWindow id="changed-file-menu-open-default-glyph" aria-hidden="true" />}
         label="Open with default program"
         disabled={openDisabled}
-        onClick={() => run(onOpenDefault)}
+        onClick={() => run(onOpenProgram)}
       />
     </ContextMenu>
-  );
-}
-
-function CursorIcon({ id }: { id: string }) {
-  return (
-    <svg id={id} viewBox="0 0 24 24" className="size-3.5 shrink-0" aria-hidden="true">
-      <path id={`${id}-mark`} fill="currentColor" d="M5.2 3.2 19.4 12.1 11.8 13.4 9.3 20.8 5.2 3.2Z" />
-    </svg>
   );
 }

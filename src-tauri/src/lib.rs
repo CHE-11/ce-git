@@ -62,6 +62,8 @@ fn save_app_settings(
     theme: String,
     color_mode: String,
     toolbar_labels: bool,
+    default_editor: String,
+    menu_editors: Vec<String>,
     selected_prompt: Option<u8>,
     prompts: Vec<String>,
     folder_ignore: String,
@@ -73,10 +75,19 @@ fn save_app_settings(
         theme,
         color_mode,
         toolbar_labels,
+        default_editor,
+        menu_editors,
         selected_prompt,
         prompts,
         folder_ignore,
     )
+}
+
+#[tauri::command]
+fn app_executable() -> Result<String, String> {
+    let path = std::env::current_exe()
+        .map_err(|error| format!("Couldn't find this application: {error}"))?;
+    Ok(files::display_path(&path).display().to_string())
 }
 
 #[tauri::command]
@@ -299,11 +310,9 @@ async fn open_change(repo: String, path: String, mode: String) -> Result<(), Str
     tauri::async_runtime::spawn_blocking(move || {
         let full = git::contained_path(Path::new(&repo), &path)?;
         match mode.as_str() {
-            "editor" => crate::editor::open_file_in_editor(&full, "default"),
-            "cursor" => crate::editor::open_file_in_editor(&full, "cursor"),
-            "code" => crate::editor::open_file_in_editor(&full, "code"),
             "default" => files::open_with_default(&full),
-            _ => Err("Unknown open mode.".into()),
+            "editor" => crate::editor::open_file_in_editor(&full, "default"),
+            other => crate::editor::open_file_in_editor(&full, other),
         }
     })
     .await
@@ -331,6 +340,7 @@ pub fn run() {
             git_cancel_sign_in,
             app_settings,
             save_app_settings,
+            app_executable,
             preview_app_settings,
             theme_css,
             patch_app_settings,

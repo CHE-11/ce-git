@@ -12,7 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import type { RepoStatus, TreeNode } from "../../../../types/git";
 import { cn } from "../../lib/cn";
-import type { FolderEditor } from "../../lib/git-client";
+import type { EditorId } from "../../lib/editors";
 import { countRemovedUnder, domId, filterRepoTree, hasNestedRepo, pathEquals, type RepoTreeFilter } from "../../lib/tree";
 import { Button } from "../Button";
 import { Dialog } from "../Dialogs/Dialog";
@@ -77,7 +77,8 @@ type RepoTreeProps = {
   onClearSelection: () => void;
   busy: boolean;
   removedRepos: string[];
-  onOpenInEditor: (path: string, editor: FolderEditor) => void;
+  onOpenInEditor: (path: string, editor: EditorId) => void;
+  menuEditors: readonly EditorId[];
   onOpenInTerminal: (path: string) => void;
   onRevealInExplorer: (path: string) => void;
   onRemoveRepo: (path: string) => void;
@@ -201,6 +202,7 @@ export function RepoTree({
   busy,
   removedRepos,
   onOpenInEditor,
+  menuEditors,
   onOpenInTerminal,
   onRevealInExplorer,
   onRemoveRepo,
@@ -608,6 +610,7 @@ export function RepoTree({
           rootPaths={rootPaths}
           removedCount={removedCount}
           actionsDisabled={busy || discovering}
+          menuEditors={menuEditors}
           onOpen={(editor) => {
             const path = menu.node.path;
             setMenu(null);

@@ -47,7 +47,7 @@
       }
     },
     {
-      "label": "Build",
+      "label": "Build Windows",
       "type": "shell",
       "command": "pnpm build:exe",
       "group": {
@@ -59,6 +59,23 @@
         "statusbar": {
           "hide": false,
           "color": "#c49816"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Build macOS",
+      "type": "shell",
+      "command": "pnpm build:app",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "statusbar": {
+          "hide": false,
+          "color": "#46c227"
         }
       },
       "problemMatcher": [],

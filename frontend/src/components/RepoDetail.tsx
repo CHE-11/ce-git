@@ -1,6 +1,7 @@
 import { ArrowDownToLine, ArrowUpToLine, Upload } from "lucide-react";
 import { useState } from "react";
 import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../types/git";
+import type { EditorId } from "../lib/editors";
 import { patchForPath } from "../lib/diff";
 import { baseName } from "../lib/tree";
 import { Badge } from "./Badge";
@@ -31,6 +32,7 @@ type RepoDetailProps = {
   onPush: () => void;
   onPublish: (options: PublishOptions) => Promise<void>;
   fileHandlers: ChangeFileHandlers;
+  menuEditors: readonly EditorId[];
 };
 
 export function RepoDetail({
@@ -54,6 +56,7 @@ export function RepoDetail({
   onPush,
   onPublish,
   fileHandlers,
+  menuEditors,
 }: RepoDetailProps) {
   const files = diff?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -171,6 +174,7 @@ export function RepoDetail({
               selectedPath={selectedFile?.path ?? null}
               busy={busy}
               handlers={fileHandlers}
+              menuEditors={menuEditors}
               onSelect={setSelectedPath}
             />
             <DiffView patch={selectedPatch.text} truncated={selectedPatch.truncated} filePath={selectedFile?.path ?? null} />

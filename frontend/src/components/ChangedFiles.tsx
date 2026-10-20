@@ -10,11 +10,12 @@ import {
 } from "react";
 import type { FileChange } from "../../../types/git";
 import { cn } from "../lib/cn";
+import { fileOpenMode, type EditorId } from "../lib/editors";
 import type { ChangeOpenMode, IgnoreKind } from "../lib/git-client";
 import { domId, messageOf } from "../lib/tree";
 import { Button } from "./Button";
 import { ActionConfirmDialog } from "./Dialogs/ActionConfirmDialog";
-import { ChangedFileMenu } from "./ChangedFileMenu";
+import { ChangedFileContextMenu } from "./ChangedFileContextMenu";
 
 export type ChangeFileHandlers = {
   discard: (file: FileChange) => void;
@@ -63,6 +64,7 @@ type ChangedFilesProps = {
   selectedPath: string | null;
   busy: boolean;
   handlers: ChangeFileHandlers;
+  menuEditors: readonly EditorId[];
   onSelect: (path: string) => void;
 };
 
@@ -104,7 +106,7 @@ function statusMark(status: string) {
   );
 }
 
-export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, onSelect }: ChangedFilesProps) {
+export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, menuEditors, onSelect }: ChangedFilesProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState<FileMenu | null>(null);
@@ -345,7 +347,7 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
         />
       </div>
       {menu ? (
-        <ChangedFileMenu
+        <ChangedFileContextMenu
           key={`${menu.file.status}-${menu.file.path}-${menu.x}-${menu.y}`}
           file={menu.file}
           repoPath={repoPath}
@@ -355,11 +357,10 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, on
           onDiscard={() => setDiscarding(menu.file)}
           onIgnore={handlers.ignore}
           onReveal={() => handlers.reveal(menu.file.path)}
-          onOpenEditor={() => handlers.open(menu.file.path, "editor")}
-          onOpenCursor={() => handlers.open(menu.file.path, "cursor")}
-          onOpenGitignoreCursor={() => handlers.open(".gitignore", "cursor")}
-          onOpenGitignoreCode={() => handlers.open(".gitignore", "code")}
-          onOpenDefault={() => handlers.open(menu.file.path, "default")}
+          menuEditors={menuEditors}
+          onOpenInEditor={(editor) => handlers.open(menu.file.path, fileOpenMode(editor))}
+          onOpenGitignore={(editor) => handlers.open(".gitignore", fileOpenMode(editor))}
+          onOpenProgram={() => handlers.open(menu.file.path, "default")}
           onCopy={(text) => {
             void navigator.clipboard.writeText(text).catch((caught) => {
               handlers.reportError(messageOf(caught));

@@ -14,6 +14,7 @@ import { cn } from "../../../lib/cn";
 import { withDefaultPrompts } from "../../../lib/commit-prompts";
 import {
   aiSettings,
+  appExecutable,
   appSettings,
   gitCancelSignIn,
   gitSettings,
@@ -22,10 +23,12 @@ import {
   listOpenAiModels,
   patchAppSettings,
   previewAppSettings,
+  revealInExplorer,
   saveAiSettings,
   saveAppSettings,
   saveGitSettings,
 } from "../../../lib/git-client";
+import { normalizeEditor, normalizeMenuEditors, readDefaultEditor, readMenuEditors, type EditorId } from "../../../lib/editors";
 import { folderIgnoreError, messageOf, pickedFolderPath } from "../../../lib/tree";
 import { readToolbarLabels } from "../../../lib/toolbar-labels";
 import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, readZoom } from "../../../lib/zoom";
@@ -64,6 +67,9 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const [theme, setTheme] = useState<ThemeId>(openedAppearance.current.theme);
   const [colorMode, setColorMode] = useState<ColorMode>(openedAppearance.current.colorMode);
   const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
+  const [defaultEditor, setDefaultEditor] = useState(readDefaultEditor);
+  const [menuEditors, setMenuEditors] = useState(readMenuEditors);
+  const [exePath, setExePath] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
   const [folderIgnore, setFolderIgnore] = useState("");
@@ -97,6 +103,24 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const [models, setModels] = useState<OpenAiModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void appExecutable()
+      .then((path) => {
+        if (!cancelled) {
+          setExePath(path);
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled && mountedRef.current) {
+          setAppError(messageOf(caught));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -134,6 +158,8 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         if (settings.shared) {
           setZoom(clampDialogZoom(settings.fontZoom));
           setToolbarLabels(settings.toolbarLabels);
+          setDefaultEditor(normalizeEditor(settings.defaultEditor));
+          setMenuEditors(normalizeMenuEditors(settings.menuEditors));
           applyAppearance(appearance.theme, appearance.colorMode);
         }
       } else {
@@ -240,6 +266,8 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     setColorMode(appearance.colorMode);
     setZoom(clampDialogZoom(preview.fontZoom));
     setToolbarLabels(preview.toolbarLabels);
+    setDefaultEditor(normalizeEditor(preview.defaultEditor));
+    setMenuEditors(normalizeMenuEditors(preview.menuEditors));
     setPrompts(withDefaultPrompts(preview.prompts));
     applyAppearance(appearance.theme, appearance.colorMode);
   };
@@ -298,6 +326,8 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         theme,
         colorMode,
         toolbarLabels,
+        defaultEditor,
+        menuEditors,
         selectedPrompt,
         prompts,
         folderIgnore,
@@ -487,8 +517,29 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
 
   const showSave = !loading && (tab !== "git" || gitAvailable);
 
+  const revealExe = async () => {
+    if (!exePath) {
+      return;
+    }
+    setAppError(null);
+    try {
+      await revealInExplorer(exePath);
+    } catch (caught) {
+      if (mountedRef.current) {
+        setAppError(messageOf(caught));
+      }
+    }
+  };
+
+  const showMenuEditor = (editor: EditorId, shown: boolean) => {
+    setMenuEditors((current) => {
+      const next = shown ? [...current, editor] : current.filter((item) => item !== editor);
+      return normalizeMenuEditors(next);
+    });
+  };
+
   return (
-    <Dialog id="app-settings-dialog" title="Settings" open onClose={requestClose}>
+    <Dialog id="app-settings-dialog" title="Settings" open onClose={requestClose} panelClassName="max-w-3xl">
       <div id="settings-tabs" className="flex overflow-hidden rounded-md border border-zinc-700" role="tablist" aria-label="Settings">
         {SETTINGS_TABS.map((item) => {
           const selected = tab === item.id;
@@ -523,6 +574,9 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           theme={theme}
           colorMode={colorMode}
           toolbarLabels={toolbarLabels}
+          defaultEditor={defaultEditor}
+          menuEditors={menuEditors}
+          exePath={exePath}
           warning={warning}
           error={appError}
           onFolderChange={(value) => {
@@ -535,6 +589,9 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           onThemeChange={chooseTheme}
           onColorModeChange={chooseColorMode}
           onToolbarLabelsChange={setToolbarLabels}
+          onDefaultEditorChange={setDefaultEditor}
+          onMenuEditorChange={showMenuEditor}
+          onRevealExe={() => void revealExe()}
           onBrowse={() => void browse()}
           onClearFolder={() => {
             folderPreviewRef.current += 1;

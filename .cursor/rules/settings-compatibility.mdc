@@ -1,0 +1,23 @@
+---
+description: Persisted app settings must keep loading after schema changes and migrations.
+alwaysApply: true
+---
+
+# Settings compatibility
+
+Users already have a settings folder. `ce-git.json` is the portable file (`PortableFile` in `src-tauri/src/app_settings.rs`). `settings.json` and `openai.json` are the local stores. A new build must open those files, keep every value the user already set, and apply defaults only for data the file does not contain.
+
+- Add a field with `#[serde(default)]` already on `PortableFile`, plus a `Default` value. An older file that omits the key must still deserialize. Mirror the field on `AppSettings` in `types/git.ts` and in the UI that reads it. Wire names stay `camelCase`.
+- Rename or move a field by still reading the old key (`#[serde(alias = "...")]` or an explicit load) and writing the new key. Do not make the user edit the file.
+- Change what a value means by mapping the old value on load. Retired or unknown values fall back to the current default. A bad value is not a reason to reject the file.
+- Removing a field must leave old files loadable. Do not add `deny_unknown_fields`.
+- Run a migration on read. The next save writes the current shape. Loading an already-current file must change nothing.
+- Keep fields you still support through a load/save round trip. A save must not drop a value the new code understands.
+
+```rust
+// Older ce-git.json has no "showStatusBar". It still loads.
+show_status_bar: bool, // Default::default() or an explicit default
+
+#[serde(alias = "commitStyle")]
+commit_verbosity: String,
+```

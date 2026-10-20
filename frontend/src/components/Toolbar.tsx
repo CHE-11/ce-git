@@ -82,20 +82,20 @@ export function Toolbar({...props}: ToolbarProps) {
         </span>
       </div>
 
-      <div id="toolbar-center" className="flex items-center gap-2">
-        <button
-          id="command-palette-button"
-          type="button"
-          onClick={props.onOpenCommands}
-          title="Commands"
-          className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-        >
-          <Search id="command-palette-button-icon" className="size-3.5" />
-          <span id="command-palette-button-label">Commands</span>
-          <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
-            Ctrl K
-          </kbd>
-        </button>
+      <button
+        id="command-palette-button"
+        type="button"
+        onClick={props.onOpenCommands}
+        title="Commands"
+        className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+      >
+        <Search id="command-palette-button-icon" className="size-3.5" />
+        <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+          Ctrl + K
+        </kbd>
+      </button>
+
+      <div id="toolbar-right" className="flex items-center gap-2">
         <div id="ai-commit-menu" ref={promptMenuRef} className="relative">
           <button
             id="ai-commit-button"

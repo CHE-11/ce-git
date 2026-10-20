@@ -63,10 +63,11 @@ export interface PublishOptions {
   visibility: RepoVisibility;
   homepage: string;
 }
-export type BatchStatus = "running" | "ok" | "skipped" | "failed";
+export type BatchStatus = "running" | "ok" | "skipped" | "failed" | "conflict";
 
 export interface BatchProgress {
   repo: string;
+  path: string;
   action: BatchAction;
   status: BatchStatus;
   message: string;

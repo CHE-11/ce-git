@@ -161,6 +161,18 @@ export function openInEditor(path: string, editor: FolderEditor = "default") {
   return invoke<void>("open_in_editor", { path, editor });
 }
 
+export function openMergeInEditor(path: string, editor: FolderEditor = "default") {
+  return invoke<void>("open_merge_in_editor", { path, editor });
+}
+
+export function finishMerge(path: string) {
+  return invoke<string>("finish_merge", { path });
+}
+
+export function abortMerge(path: string) {
+  return invoke<string>("abort_merge", { path });
+}
+
 export function revealInExplorer(path: string) {
   return invoke<void>("reveal_in_explorer", { path });
 }

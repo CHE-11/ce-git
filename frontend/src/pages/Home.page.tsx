@@ -122,7 +122,7 @@ export function HomePage() {
       label: "Pull selected repositories",
       group: "Git",
       disabled: busy || !hasSelection,
-      run: () => void workspace.pullSelected(),
+      run: () => workspace.requestPullSelected(),
     },
     {
       id: "push-selected",
@@ -285,7 +285,7 @@ export function HomePage() {
           onSelect={workspace.selectRepo}
           onSelectRepos={workspace.selectRepos}
           selectedCount={workspace.selectedPaths.length}
-          onPullSelected={() => void workspace.pullSelected()}
+          onPullSelected={workspace.requestPullSelected}
           onPushSelected={workspace.requestPushSelected}
           onClearSelection={workspace.clearSelection}
           busy={busy}
@@ -396,8 +396,12 @@ export function HomePage() {
         pullPaths={workspace.pullPaths}
         logs={workspace.logs}
         error={workspace.error}
+        editor={workspace.defaultEditor}
         onClose={() => workspace.setPullPaths(null)}
         onConfirm={workspace.confirmPull}
+        onOpenConflict={(path) => void workspace.openMergeInEditor(path)}
+        onFinishMerge={(path) => void workspace.finishMerge(path)}
+        onAbortMerge={(path) => void workspace.abortMerge(path)}
       />
       <GitPushConfirmationDialog
         pushPaths={workspace.pushPaths}

@@ -9,6 +9,7 @@ const statusClass: Record<BatchStatus, string> = {
   ok: "text-emerald-400",
   skipped: "text-amber-400",
   failed: "text-red-400",
+  conflict: "text-violet-300",
 };
 
 const logFilters: { status: BatchStatus; label: string; idleClass: string; activeClass: string }[] = [
@@ -29,6 +30,12 @@ const logFilters: { status: BatchStatus; label: string; idleClass: string; activ
     label: "failed",
     idleClass: "text-red-400",
     activeClass: "border-red-500/70 bg-red-500/15 text-red-300",
+  },
+  {
+    status: "conflict",
+    label: "conflicts",
+    idleClass: "text-violet-300",
+    activeClass: "border-violet-500/70 bg-violet-500/15 text-violet-200",
   },
   {
     status: "running",
@@ -56,11 +63,12 @@ export function GitSyncProgress({ id, label, total, logs, running, error }: GitS
     ok: finished.filter((entry) => entry.status === "ok").length,
     skipped: finished.filter((entry) => entry.status === "skipped").length,
     failed: finished.filter((entry) => entry.status === "failed").length,
+    conflict: finished.filter((entry) => entry.status === "conflict").length,
     running: active.length,
   };
   const visibleLogs = activeFilters.length === 0 ? logs : logs.filter((entry) => activeFilters.includes(entry.status));
   const percent = total === 0 ? 0 : Math.min(100, Math.round((finished.length / total) * 100));
-  const barClass = running ? "bg-sky-500" : counts.failed > 0 ? "bg-red-500" : "bg-emerald-500";
+  const barClass = running ? "bg-sky-500" : counts.failed > 0 ? "bg-red-500" : counts.conflict > 0 ? "bg-violet-500" : "bg-emerald-500";
   const logSignature = visibleLogs.map((entry) => `${entry.repo}:${entry.status}:${entry.message}`).join("|");
 
   function toggleFilter(status: BatchStatus) {

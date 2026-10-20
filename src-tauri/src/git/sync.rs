@@ -5,8 +5,8 @@ use serde::Deserialize;
 
 use super::command::{dir_name, git};
 use super::status::{
-    ahead_behind, current_branch, is_dirty, is_github_url, origin_url, resolve_default_branch,
-    CurrentBranch,
+    CurrentBranch, ahead_behind, current_branch, is_dirty, is_github_url, origin_url,
+    resolve_default_branch,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -23,11 +23,37 @@ pub enum Outcome {
     Ok(String),
     Skipped(String),
     Failed(String),
+    /// A merge is in progress and conflicted files still need a resolution.
+    Conflict(String),
+}
+
+enum LocalUpdate {
+    Updated,
+    Unchanged,
+    Diverged,
+}
+
+#[derive(Clone, Copy)]
+enum LocalRelation {
+    Missing,
+    Unchanged,
+    Diverged,
+    Behind,
 }
 
 pub fn pull_default(path: &Path) -> Outcome {
     if let Err(error) = require_repo(path) {
         return Outcome::Failed(error);
+    }
+
+    // A pull that already stopped on conflicts should come back to the same choice
+    // instead of being reported as an ordinary dirty tree.
+    if merge_in_progress(path) {
+        let branch = resolve_default_branch(path).unwrap_or_else(|_| "main".into());
+        let head = current_branch(path)
+            .map(|current| current.name)
+            .unwrap_or_else(|_| "HEAD".into());
+        return conflict_outcome(path, &head, &branch);
     }
 
     match is_dirty(path) {
@@ -44,21 +70,305 @@ pub fn pull_default(path: &Path) -> Outcome {
         Ok(current) => current,
         Err(error) => return Outcome::Failed(error),
     };
-    let before = tip(path, &branch);
 
-    // A checked-out branch cannot be updated with a refspec fetch, so pull it in place.
-    // Any other branch is fast-forwarded without switching the working tree.
-    let result = if !head.detached && head.name == branch {
-        git(path, &["pull", "--ff-only", "origin", &branch])
-    } else {
-        let spec = format!("{branch}:{branch}");
-        git(path, &["fetch", "origin", &spec])
+    if let Err(error) = git(path, &["fetch", "origin", &branch]) {
+        return Outcome::Failed(error);
+    }
+    let remote = format!("origin/{branch}");
+
+    if !head.detached && head.name == branch {
+        return integrate_remote(path, &head.name, &branch, &remote);
+    }
+
+    let relation = match local_relation(path, &branch, &remote) {
+        Ok(relation) => relation,
+        Err(error) => return Outcome::Failed(error),
     };
 
-    match result {
-        Ok(_) => pull_outcome(path, &branch, &head, before),
-        Err(error) => Outcome::Failed(error),
+    // The checked-out branch has its own commits and main also moved.
+    // Merge main in place so the local commits are kept. Local main moves only
+    // after that merge commits, so aborting a conflict restores the pull.
+    if !head.detached {
+        match divergence(path, "HEAD", &remote) {
+            Ok((ahead, behind)) if ahead > 0 && behind > 0 => {
+                let merged = merge_remote(path, &head.name, &branch, &remote, ahead, behind);
+                if !matches!(merged, Outcome::Ok(_)) {
+                    return if matches!(relation, LocalRelation::Diverged) {
+                        note_local_default(merged, &branch, LocalUpdate::Diverged)
+                    } else {
+                        merged
+                    };
+                }
+                if let Err(error) = apply_local_update(path, &branch, &remote, relation) {
+                    return Outcome::Failed(error);
+                }
+                return note_local_default(merged, &branch, relation_as_update(relation));
+            }
+            Ok(_) => {}
+            Err(error) => return Outcome::Failed(error),
+        }
     }
+
+    let before = tip(path, &branch);
+    if let Err(error) = apply_local_update(path, &branch, &remote, relation) {
+        return Outcome::Failed(error);
+    }
+    match relation_as_update(relation) {
+        LocalUpdate::Updated => pull_outcome(path, &branch, &head, before),
+        LocalUpdate::Diverged => Outcome::Skipped(format!(
+            "{branch} has local commits and is not checked out, so it was left unchanged"
+        )),
+        LocalUpdate::Unchanged => Outcome::Skipped(format!("{branch} is already up to date")),
+    }
+}
+
+fn integrate_remote(path: &Path, head: &str, branch: &str, remote: &str) -> Outcome {
+    let before = tip(path, branch);
+    let (ahead, behind) = match divergence(path, "HEAD", remote) {
+        Ok(counts) => counts,
+        Err(error) => return Outcome::Failed(error),
+    };
+    if behind == 0 {
+        return Outcome::Skipped(format!("{branch} is already up to date"));
+    }
+    if ahead == 0 {
+        return match git(path, &["merge", "--ff-only", "--no-edit", remote]) {
+            Ok(_) => pull_outcome(
+                path,
+                branch,
+                &CurrentBranch {
+                    name: head.to_string(),
+                    detached: false,
+                    has_commits: true,
+                },
+                before,
+            ),
+            Err(error) => Outcome::Failed(error),
+        };
+    }
+    merge_remote(path, head, branch, remote, ahead, behind)
+}
+
+fn merge_remote(
+    path: &Path,
+    head: &str,
+    branch: &str,
+    remote: &str,
+    ahead: u32,
+    behind: u32,
+) -> Outcome {
+    // `--ff` overrides merge.ff=only so a branch that is ahead can still take the remote commits.
+    match git(path, &["merge", "--ff", "--no-edit", remote]) {
+        Ok(_) => Outcome::Ok(format!(
+            "Merged {behind} commit(s) from {remote} into {head} ({ahead} local commit(s) kept)"
+        )),
+        Err(error) => {
+            if !unmerged_files(path).is_empty() {
+                return conflict_outcome(path, head, branch);
+            }
+            if merge_in_progress(path) {
+                return Outcome::Failed(format!(
+                    "{error} The merge is ready to finish once Git can create the commit."
+                ));
+            }
+            Outcome::Failed(error)
+        }
+    }
+}
+
+fn note_local_default(outcome: Outcome, branch: &str, updated: LocalUpdate) -> Outcome {
+    let note = match updated {
+        LocalUpdate::Updated => format!("Updated {branch}. "),
+        LocalUpdate::Diverged => format!("{branch} has local commits and was left unchanged. "),
+        LocalUpdate::Unchanged => String::new(),
+    };
+    if note.is_empty() {
+        return outcome;
+    }
+    match outcome {
+        Outcome::Ok(message) => Outcome::Ok(format!("{note}{message}")),
+        Outcome::Conflict(message) => Outcome::Conflict(format!("{note}{message}")),
+        Outcome::Skipped(message) => Outcome::Skipped(format!("{note}{message}")),
+        Outcome::Failed(message) => Outcome::Failed(format!("{note}{message}")),
+    }
+}
+
+fn local_relation(path: &Path, branch: &str, remote: &str) -> Result<LocalRelation, String> {
+    let local = format!("refs/heads/{branch}");
+    if git(path, &["show-ref", "--verify", "--quiet", &local]).is_err() {
+        return Ok(LocalRelation::Missing);
+    }
+    let (ahead, behind) = divergence(path, branch, remote)?;
+    if behind == 0 {
+        return Ok(LocalRelation::Unchanged);
+    }
+    if ahead > 0 {
+        return Ok(LocalRelation::Diverged);
+    }
+    Ok(LocalRelation::Behind)
+}
+
+fn apply_local_update(
+    path: &Path,
+    branch: &str,
+    remote: &str,
+    relation: LocalRelation,
+) -> Result<(), String> {
+    match relation {
+        LocalRelation::Missing => git(path, &["branch", branch, remote]).map(|_| ()),
+        LocalRelation::Behind => git(path, &["branch", "-f", branch, remote]).map(|_| ()),
+        LocalRelation::Unchanged | LocalRelation::Diverged => Ok(()),
+    }
+}
+
+fn relation_as_update(relation: LocalRelation) -> LocalUpdate {
+    match relation {
+        LocalRelation::Missing | LocalRelation::Behind => LocalUpdate::Updated,
+        LocalRelation::Unchanged => LocalUpdate::Unchanged,
+        LocalRelation::Diverged => LocalUpdate::Diverged,
+    }
+}
+
+fn divergence(path: &Path, left: &str, right: &str) -> Result<(u32, u32), String> {
+    let range = format!("{left}...{right}");
+    let output = git(path, &["rev-list", "--left-right", "--count", &range])?;
+    let mut parts = output.split_whitespace();
+    let ahead = parts
+        .next()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let behind = parts
+        .next()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    Ok((ahead, behind))
+}
+
+pub fn conflict_files(path: &Path) -> Vec<String> {
+    unmerged_files(path)
+}
+
+pub fn continue_merge(path: &Path) -> Result<String, String> {
+    if let Err(error) = require_repo(path) {
+        return Err(error);
+    }
+    if !merge_in_progress(path) {
+        return Err("No merge is in progress.".into());
+    }
+
+    let mut markers = Vec::new();
+    let mut binary = Vec::new();
+    for file in unmerged_files(path) {
+        match file_resolution(path, &file) {
+            FileResolution::Clean | FileResolution::Missing => {
+                git(path, &["add", "--", &file])?;
+            }
+            FileResolution::Markers => markers.push(file),
+            FileResolution::Binary => binary.push(file),
+        }
+    }
+    if !markers.is_empty() || !binary.is_empty() {
+        return Err(unresolved_message(&markers, &binary));
+    }
+    if !unmerged_files(path).is_empty() {
+        return Err("Merge is not finished. Some files are still unmerged.".into());
+    }
+
+    git(path, &["commit", "--no-edit"])?;
+    let subject =
+        git(path, &["log", "-1", "--pretty=%s"]).unwrap_or_else(|_| "Merge committed".into());
+    Ok(format!("Committed: {}", subject.trim()))
+}
+
+pub fn abort_merge(path: &Path) -> Result<String, String> {
+    if let Err(error) = require_repo(path) {
+        return Err(error);
+    }
+    if !merge_in_progress(path) {
+        return Err("No merge is in progress.".into());
+    }
+    git(path, &["merge", "--abort"])?;
+    Ok("Merge aborted".into())
+}
+
+enum FileResolution {
+    Clean,
+    Markers,
+    Binary,
+    Missing,
+}
+
+fn file_resolution(repo: &Path, relative: &str) -> FileResolution {
+    let full = repo.join(relative);
+    if !full.exists() {
+        return FileResolution::Missing;
+    }
+    let Ok(bytes) = std::fs::read(&full) else {
+        return FileResolution::Binary;
+    };
+    if bytes.contains(&0) {
+        return FileResolution::Binary;
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    if text.lines().any(|line| line.starts_with("<<<<<<<")) {
+        FileResolution::Markers
+    } else {
+        FileResolution::Clean
+    }
+}
+
+fn unresolved_message(markers: &[String], binary: &[String]) -> String {
+    let mut parts = Vec::new();
+    if !markers.is_empty() {
+        parts.push(format!(
+            "still have conflict markers: {}",
+            summarize_files(markers)
+        ));
+    }
+    if !binary.is_empty() {
+        parts.push(format!(
+            "binary conflicts need a choice: {}",
+            summarize_files(binary)
+        ));
+    }
+    format!("Merge is not finished. {}", parts.join(" "))
+}
+
+fn conflict_outcome(path: &Path, head: &str, branch: &str) -> Outcome {
+    let files = unmerged_files(path);
+    if files.is_empty() {
+        return Outcome::Conflict(format!(
+            "A merge into {head} from origin/{branch} is ready to finish."
+        ));
+    }
+    Outcome::Conflict(format!(
+        "Merge conflicts in {head} from origin/{branch}: {}. Resolve them, then finish the merge.",
+        summarize_files(&files)
+    ))
+}
+
+fn summarize_files(files: &[String]) -> String {
+    if files.is_empty() {
+        return "unmerged files".into();
+    }
+    const MAX: usize = 4;
+    if files.len() <= MAX {
+        return files.join(", ");
+    }
+    format!("{} and {} more", files[..MAX].join(", "), files.len() - MAX)
+}
+
+fn unmerged_files(path: &Path) -> Vec<String> {
+    git(path, &["diff", "--name-only", "--diff-filter=U"])
+        .unwrap_or_default()
+        .lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn merge_in_progress(path: &Path) -> bool {
+    git(path, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_ok()
 }
 
 fn pull_outcome(
@@ -340,10 +650,9 @@ fn run_gh(path: &Path, args: &[String]) -> Result<(), String> {
     match command.output() {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(gh_failure(&output)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(format!(
-            "GitHub CLI was not found at {}",
-            program.display()
-        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(format!("GitHub CLI was not found at {}", program.display()))
+        }
         Err(error) => Err(format!("Failed to start GitHub CLI: {error}")),
     }
 }

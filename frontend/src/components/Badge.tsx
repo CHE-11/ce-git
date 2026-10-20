@@ -4,7 +4,8 @@ import { cn } from "../lib/cn";
 type BadgeProps = {
   id: string;
   children: ReactNode;
-  tone?: "neutral" | "green" | "blue" | "amber" | "red" | "violet";
+  tone?: "neutral" | "green" | "blue" | "amber" | "red" | "violet" | "grey";
+  onClick?: () => void;
 };
 
 const tones = {
@@ -14,11 +15,13 @@ const tones = {
   amber: "bg-amber-950 text-amber-300",
   red: "bg-red-950 text-red-300",
   violet: "bg-violet-950 text-violet-300",
+  grey: "bg-zinc-800 text-zinc-300",
+  clickable: "cursor-pointer hover:bg-zinc-700 hover:text-zinc-200",
 };
 
-export function Badge({ id, children, tone = "neutral" }: BadgeProps) {
+export function Badge({ id, children, tone = "neutral", onClick }: BadgeProps) {
   return (
-    <span id={id} className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium", tones[tone])}>
+    <span id={id} className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium", tones[tone], onClick ? tones.clickable : "")} onClick={onClick}>
       {children}
     </span>
   );

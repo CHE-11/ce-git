@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, FileChange, PublishOptions, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
+import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, PublishOptions, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
 import {
   aiSettings,
   appSettings,
@@ -18,7 +18,10 @@ import {
   cloneRepo as cloneRepository,
   initRepo,
   openChange as openFile,
+  abortMerge as abortMergeRequest,
+  finishMerge as finishMergeRequest,
   openInEditor as openFolderInEditor,
+  openMergeInEditor as openMergeRequest,
   openInTerminal as openFolderInTerminal,
   revealInExplorer as revealFolderInExplorer,
   patchAppSettings,
@@ -1004,6 +1007,43 @@ export function useWorkspace() {
     await runBatch("pull", pullPaths ?? []);
   };
 
+  const replacePullLog = (path: string, status: BatchStatus, message: string) => {
+    setLogs((current) =>
+      current.map((entry) => (entry.action === "pull" && entry.path === path ? { ...entry, status, message } : entry)),
+    );
+  };
+
+  const openMergeInEditor = async (path: string) => {
+    setError(null);
+    try {
+      await openMergeRequest(path, defaultEditor);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
+  const finishMerge = async (path: string) => {
+    setError(null);
+    try {
+      const message = await finishMergeRequest(path);
+      replacePullLog(path, "ok", message);
+      await refreshRepo(path);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
+  const abortMerge = async (path: string) => {
+    setError(null);
+    try {
+      const message = await abortMergeRequest(path);
+      replacePullLog(path, "skipped", message);
+      await refreshRepo(path);
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  };
+
   const requestPush = (paths: string[]) => {
     if (paths.length === 0) {
       setError("No repositories to push.");
@@ -1246,6 +1286,10 @@ export function useWorkspace() {
     pullAll: () => runBatch("pull", repoPaths),
     pullSelected: () => runBatch("pull", selectedPaths),
     requestPullAll: () => requestPull(repoPaths),
+    requestPullSelected: () => requestPull(selectedPaths),
+    openMergeInEditor,
+    finishMerge,
+    abortMerge,
     requestPullActive: () => {
       if (activePath) {
         requestPull([activePath]);

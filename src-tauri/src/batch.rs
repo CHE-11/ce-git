@@ -5,12 +5,13 @@ use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::git::{Outcome, PublishOptions, commit_repo, pull_default, publish_repo, push_repo};
+use crate::git::{Outcome, PublishOptions, commit_repo, publish_repo, pull_default, push_repo};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchProgress {
     pub repo: String,
+    pub path: String,
     pub action: String,
     pub status: String,
     pub message: String,
@@ -29,6 +30,7 @@ pub async fn batch_pull(app: AppHandle, paths: Vec<String>) -> Vec<BatchProgress
         "pull",
         paths,
         |path| base_name(path),
+        |path| path.clone(),
         |path| pull_default(Path::new(&path)),
     )
     .await
@@ -40,35 +42,45 @@ pub async fn batch_push(app: AppHandle, paths: Vec<String>) -> Vec<BatchProgress
         "push",
         paths,
         |path| base_name(path),
+        |path| path.clone(),
         |path| push_repo(Path::new(&path)),
     )
     .await
 }
 
-pub async fn run_publish(app: AppHandle, path: String, options: PublishOptions) -> Result<(), String> {
+pub async fn run_publish(
+    app: AppHandle,
+    path: String,
+    options: PublishOptions,
+) -> Result<(), String> {
     let repo = base_name(&path);
+    let repo_path = path.clone();
     let _ = app.emit(
         "batch-progress",
         BatchProgress {
             repo: repo.clone(),
+            path: path.clone(),
             action: "publish".into(),
             status: "running".into(),
             message: "Working…".into(),
         },
     );
 
-    let outcome = tauri::async_runtime::spawn_blocking(move || publish_repo(Path::new(&path), &options))
-        .await
-        .unwrap_or_else(|error| Outcome::Failed(error.to_string()));
+    let outcome =
+        tauri::async_runtime::spawn_blocking(move || publish_repo(Path::new(&path), &options))
+            .await
+            .unwrap_or_else(|error| Outcome::Failed(error.to_string()));
     let (status, message, failed) = match &outcome {
         Outcome::Ok(message) => ("ok", message.clone(), false),
         Outcome::Skipped(message) => ("skipped", message.clone(), true),
+        Outcome::Conflict(message) => ("conflict", message.clone(), true),
         Outcome::Failed(message) => ("failed", message.clone(), true),
     };
     let _ = app.emit(
         "batch-progress",
         BatchProgress {
             repo,
+            path: repo_path,
             action: "publish".into(),
             status: status.into(),
             message: message.clone(),
@@ -83,6 +95,7 @@ pub async fn batch_commit(app: AppHandle, commits: Vec<CommitRequest>) -> Vec<Ba
         "commit",
         commits,
         |commit| base_name(&commit.path),
+        |commit| commit.path.clone(),
         |commit| match commit_repo(Path::new(&commit.path), &commit.message) {
             Ok(()) => {
                 let subject = commit
@@ -99,33 +112,39 @@ pub async fn batch_commit(app: AppHandle, commits: Vec<CommitRequest>) -> Vec<Ba
     .await
 }
 
-async fn run_batch<T, F, L>(
+async fn run_batch<T, F, L, P>(
     app: AppHandle,
     action: &str,
     items: Vec<T>,
     label: L,
+    path_of: P,
     work: F,
 ) -> Vec<BatchProgress>
 where
     T: Send + 'static,
     F: Fn(T) -> Outcome + Send + Sync + 'static,
     L: Fn(&T) -> String + Send + Sync + 'static,
+    P: Fn(&T) -> String + Send + Sync + 'static,
 {
     let work = Arc::new(work);
     let label = Arc::new(label);
+    let path_of = Arc::new(path_of);
     let action = action.to_string();
 
     let mut results = stream::iter(items.into_iter().map(|item| {
         let app = app.clone();
         let work = work.clone();
         let label = label.clone();
+        let path_of = path_of.clone();
         let action = action.clone();
         async move {
             let repo = label(&item);
+            let path = path_of(&item);
             let _ = app.emit(
                 "batch-progress",
                 BatchProgress {
                     repo: repo.clone(),
+                    path: path.clone(),
                     action: action.clone(),
                     status: "running".into(),
                     message: "Working…".into(),
@@ -138,10 +157,12 @@ where
             let (status, message) = match outcome {
                 Outcome::Ok(message) => ("ok", message),
                 Outcome::Skipped(message) => ("skipped", message),
+                Outcome::Conflict(message) => ("conflict", message),
                 Outcome::Failed(message) => ("failed", message),
             };
             let progress = BatchProgress {
                 repo,
+                path,
                 action,
                 status: status.into(),
                 message,

@@ -71,6 +71,7 @@ const statusClass: Record<BatchProgress["status"], string> = {
   ok: "text-emerald-400",
   skipped: "text-amber-400",
   failed: "text-red-400",
+  conflict: "text-violet-300",
 };
 
 export function ActivityLog({ logs, onClear }: Props) {

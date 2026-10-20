@@ -5,7 +5,7 @@ mod editor;
 mod files;
 mod git;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tauri::Manager;
 
@@ -259,6 +259,36 @@ async fn open_in_editor(path: String, editor: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn open_merge_in_editor(path: String, editor: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo = PathBuf::from(&path);
+        let files = git::conflict_files(&repo)
+            .into_iter()
+            .map(|relative| repo.join(relative))
+            .filter(|file| file.is_file())
+            .take(12)
+            .collect::<Vec<_>>();
+        crate::editor::open_in_editor_with_files(&repo, &files, &editor)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn finish_merge(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || git::continue_merge(Path::new(&path)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn abort_merge(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || git::abort_merge(Path::new(&path)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn delete_path(root: String, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         files::delete_folder(Path::new(&root), Path::new(&path))
@@ -358,6 +388,9 @@ pub fn run() {
             batch_commit,
             publish_repo,
             open_in_editor,
+            open_merge_in_editor,
+            finish_merge,
+            abort_merge,
             open_in_terminal,
             reveal_in_explorer,
             init_repo,

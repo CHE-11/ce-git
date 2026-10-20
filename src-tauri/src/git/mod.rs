@@ -45,13 +45,16 @@ pub fn clone_repo(url: &str, destination: &std::path::Path) -> Result<(), String
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .ok_or_else(|| "Enter a folder name.".to_string())?;
-    if name == "." || name == ".." || name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+    if name == "." || name == ".." || name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|'])
+    {
         return Err("Folder name contains invalid characters.".to_string());
     }
 
     let destination = parent.join(name);
     if destination.exists() {
-        return Err(format!("A folder named {name} already exists in that location."));
+        return Err(format!(
+            "A folder named {name} already exists in that location."
+        ));
     }
 
     command::git(parent, &["clone", "--", url, name])?;
@@ -61,15 +64,18 @@ pub fn clone_repo(url: &str, destination: &std::path::Path) -> Result<(), String
     Ok(())
 }
 pub use commit::commit_repo;
-pub use diff::{collect_ai_context, repo_diff, RepoDiff};
-pub use discover::{discover, TreeNode};
-pub use search::{search_repos, RepoSearchResult};
+pub use diff::{RepoDiff, collect_ai_context, repo_diff};
+pub use discover::{TreeNode, discover};
+pub use search::{RepoSearchResult, search_repos};
 pub use settings::{
-    git_cancel_sign_in, git_sign_in, git_sign_out, read_git_settings, save_git_settings,
-    GitSettings,
+    GitSettings, git_cancel_sign_in, git_sign_in, git_sign_out, read_git_settings,
+    save_git_settings,
 };
-pub use status::{status_of, RepoStatus};
-pub use sync::{publish_repo, pull_default, push_repo, Outcome, PublishOptions};
+pub use status::{RepoStatus, status_of};
+pub use sync::{
+    Outcome, PublishOptions, abort_merge, conflict_files, continue_merge, publish_repo,
+    pull_default, push_repo,
+};
 
 #[cfg(test)]
 mod tests {
@@ -78,10 +84,12 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::command::git;
-    use super::discover::{discover, NodeKind};
+    use super::discover::{NodeKind, discover};
     use super::status::{is_github_url, status_of};
-    use super::sync::{publish_repo, pull_default, push_repo, Outcome, PublishOptions};
-    use super::{commit_repo, TreeNode};
+    use super::sync::{
+        Outcome, PublishOptions, abort_merge, continue_merge, publish_repo, pull_default, push_repo,
+    };
+    use super::{TreeNode, commit_repo};
 
     fn scratch(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -150,10 +158,11 @@ mod tests {
             !paths.iter().any(|path| path.contains("node_modules")),
             "{paths:?}"
         );
-        assert!(tree
-            .children
-            .iter()
-            .any(|child| child.name == "group" && child.kind == NodeKind::Folder));
+        assert!(
+            tree.children
+                .iter()
+                .any(|child| child.name == "group" && child.kind == NodeKind::Folder)
+        );
 
         let _ = fs::remove_dir_all(root);
     }
@@ -226,7 +235,8 @@ mod tests {
             "{again:?}"
         );
 
-        let missing_parent = super::clone_repo(origin.to_str().unwrap(), &tmp.join("missing").join("copy"));
+        let missing_parent =
+            super::clone_repo(origin.to_str().unwrap(), &tmp.join("missing").join("copy"));
         assert!(
             matches!(missing_parent, Err(ref message) if message.contains("does not exist")),
             "{missing_parent:?}"
@@ -340,6 +350,158 @@ mod tests {
         let _ = fs::remove_dir_all(tmp);
     }
 
+    fn tracking_clone(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let tmp = scratch(name);
+        let bare = tmp.join("origin.git");
+        let seed = tmp.join("seed");
+        let clone = tmp.join("clone");
+        run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
+        init_repo(&seed);
+        fs::write(seed.join("README.md"), "one\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "initial"]);
+        run_git(&seed, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        run_git(&seed, &["push", "-u", "origin", "HEAD"]);
+        run_git(
+            &tmp,
+            &[
+                "-c",
+                "core.autocrlf=false",
+                "clone",
+                bare.to_str().unwrap(),
+                "clone",
+            ],
+        );
+        configure(&clone);
+        (tmp, seed, clone)
+    }
+
+    #[test]
+    fn pull_merges_when_the_checked_out_branch_is_ahead() {
+        let (tmp, seed, clone) = tracking_clone("pull-ahead");
+        fs::write(clone.join("LOCAL.md"), "local\n").unwrap();
+        run_git(&clone, &["add", "."]);
+        run_git(&clone, &["commit", "-m", "local"]);
+
+        fs::write(seed.join("REMOTE.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(
+            matches!(outcome, Outcome::Ok(ref message) if message.contains("Merged") && message.contains("main")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(clone.join("LOCAL.md")).unwrap(),
+            "local\n"
+        );
+        assert_eq!(
+            fs::read_to_string(clone.join("REMOTE.md")).unwrap(),
+            "remote\n"
+        );
+        let parents = git(&clone, &["rev-list", "--parents", "-n", "1", "HEAD"]).unwrap();
+        assert_eq!(parents.split_whitespace().count(), 3, "{parents}");
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn pull_merges_main_into_an_ahead_feature_branch() {
+        let (tmp, seed, clone) = tracking_clone("pull-feature");
+        run_git(&clone, &["checkout", "-b", "feature"]);
+        fs::write(clone.join("FEATURE.md"), "feature\n").unwrap();
+        run_git(&clone, &["add", "."]);
+        run_git(&clone, &["commit", "-m", "feature"]);
+
+        fs::write(seed.join("REMOTE.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(
+            matches!(outcome, Outcome::Ok(ref message) if message.contains("Merged") && message.contains("feature")),
+            "{outcome:?}"
+        );
+        let head = git(&clone, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
+        assert_eq!(head.trim(), "feature");
+        let local_main = git(&clone, &["rev-parse", "main"]).unwrap();
+        let seed_main = git(&seed, &["rev-parse", "main"]).unwrap();
+        assert_eq!(local_main.trim(), seed_main.trim());
+        assert!(clone.join("FEATURE.md").is_file());
+        assert!(clone.join("REMOTE.md").is_file());
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn pull_conflict_can_be_finished_after_the_markers_are_gone() {
+        let (tmp, seed, clone) = tracking_clone("pull-conflict");
+        fs::write(clone.join("README.md"), "local\n").unwrap();
+        run_git(&clone, &["add", "."]);
+        run_git(&clone, &["commit", "-m", "local"]);
+        fs::write(seed.join("README.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(
+            matches!(outcome, Outcome::Conflict(ref message) if message.contains("README.md")),
+            "{outcome:?}"
+        );
+        let again = pull_default(&clone);
+        assert!(matches!(again, Outcome::Conflict(_)), "{again:?}");
+
+        let unfinished = continue_merge(&clone);
+        assert!(
+            matches!(unfinished, Err(ref message) if message.contains("conflict markers")),
+            "{unfinished:?}"
+        );
+
+        fs::write(clone.join("README.md"), "resolved\n").unwrap();
+        let finished = continue_merge(&clone).unwrap();
+        assert!(finished.contains("Committed"), "{finished}");
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).unwrap(),
+            "resolved\n"
+        );
+        assert!(git(&clone, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_err());
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn pull_conflict_can_be_aborted() {
+        let (tmp, seed, clone) = tracking_clone("pull-abort");
+        fs::write(clone.join("README.md"), "local\n").unwrap();
+        run_git(&clone, &["add", "."]);
+        run_git(&clone, &["commit", "-m", "local"]);
+        fs::write(seed.join("README.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(matches!(outcome, Outcome::Conflict(_)), "{outcome:?}");
+        let aborted = abort_merge(&clone).unwrap();
+        assert!(aborted.contains("aborted"), "{aborted}");
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).unwrap(),
+            "local\n"
+        );
+        assert!(git(&clone, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_err());
+        let missing = abort_merge(&clone);
+        assert!(
+            matches!(missing, Err(ref message) if message.contains("No merge")),
+            "{missing:?}"
+        );
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
     #[test]
     fn unpublished_repos_push_only_to_github() {
         assert!(is_github_url("https://github.com/acme/widget.git"));
@@ -381,7 +543,10 @@ mod tests {
     #[test]
     fn publish_rejects_invalid_repos_before_calling_github() {
         let tmp = scratch("publish");
-        let missing = publish_repo(&tmp.join("missing"), &publish_options("widget", "private", ""));
+        let missing = publish_repo(
+            &tmp.join("missing"),
+            &publish_options("widget", "private", ""),
+        );
         assert!(
             matches!(missing, Outcome::Failed(ref message) if message.contains("not a git repository")),
             "{missing:?}"
@@ -417,10 +582,7 @@ mod tests {
 
         let bare = tmp.join("origin.git");
         run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
-        run_git(
-            &local,
-            &["remote", "add", "origin", bare.to_str().unwrap()],
-        );
+        run_git(&local, &["remote", "add", "origin", bare.to_str().unwrap()]);
         let exists = publish_repo(&local, &publish_options("widget", "private", ""));
         assert!(
             matches!(exists, Outcome::Failed(ref message) if message.contains("origin")),

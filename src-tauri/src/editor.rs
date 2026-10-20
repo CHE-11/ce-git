@@ -162,7 +162,7 @@ fn launch_editor(path: &Path, editor: &str) -> Result<(), String> {
     } else {
         require_named(editor)?
     };
-    spawn_editor(&executable, path).map_err(|error| {
+    spawn_editor(&executable, path, &[]).map_err(|error| {
         format!(
             "Could not open {} in {}: {error}",
             path.display(),
@@ -195,10 +195,33 @@ fn resolve_editor() -> Result<PathBuf, String> {
     }
 }
 
-fn spawn_editor(editor: &Path, folder: &Path) -> std::io::Result<()> {
+pub fn open_in_editor_with_files(
+    folder: &Path,
+    files: &[PathBuf],
+    editor: &str,
+) -> Result<(), String> {
+    if !folder.is_dir() {
+        return Err(format!("Folder does not exist: {}", folder.display()));
+    }
+    let executable = if editor.is_empty() || editor == DEFAULT_EDITOR {
+        resolve_editor()?
+    } else {
+        require_named(editor)?
+    };
+    spawn_editor(&executable, folder, files).map_err(|error| {
+        format!(
+            "Could not open {} in {}: {error}",
+            folder.display(),
+            executable.display()
+        )
+    })
+}
+
+fn spawn_editor(editor: &Path, folder: &Path, files: &[PathBuf]) -> std::io::Result<()> {
     let mut command = Command::new(editor);
     command
         .arg(folder)
+        .args(files)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

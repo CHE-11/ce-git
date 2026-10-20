@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, GitGraph, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, Upload } from "lucide-react";
 import { useState } from "react";
 import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
@@ -128,9 +128,6 @@ export function RepoDetail({
           {path}
         </p>
         <div id="repo-detail-badges" className="mt-2 flex flex-wrap gap-1.5">
-          <Badge id="badge-branch" tone="grey" onClick={() => {}}>
-            <GitGraph className="size-3.5" />
-          </Badge>
           <Badge id="badge-branch" tone="blue">
             {status?.branch ?? "…"}
           </Badge>

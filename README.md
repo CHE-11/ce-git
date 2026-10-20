@@ -36,13 +36,8 @@ Open **AI settings** to save an OpenAI key, pick a model, and choose how much th
 
 ## Run it
 
-From the project folder:
+To install dependencies, run `pnpm install` in the project root.
+To run in development mode, run `pnpm dev` in the project root.
+To build the Windows exe, run `pnpm build:exe` in the project root.
+To build the macOS app, run `pnpm build:app` in the project root.
 
-```powershell
-pnpm install
-pnpm tauri dev
-```
-
-**Install**, **Run**, and **Build** are also VS Code tasks. Build produces the Windows exe at `src-tauri/target/release/ce-git.exe` with `pnpm build:exe`.
-
-Choose the folder once. ce-git remembers it the next time you open the window.

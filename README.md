@@ -1,5 +1,8 @@
+![ce-git logo](frontend/public/ce-git-logo.png)
 
-
+<video src="docs/demo.mp4" controls width="720">
+  <a href="docs/demo.mp4">Watch the ce-git demo</a>
+</video>
 
 # One folder, a lot of repos
 

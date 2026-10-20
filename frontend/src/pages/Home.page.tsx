@@ -9,7 +9,8 @@ import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
 import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
-import { RepoDetail } from "../components/RepoDetail";
+import { RestoreDialog } from "../components/Dialogs/RestoreDialog";
+import { RepoDetail } from "../components/RepoDetails/RepoDetail";
 import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
 import { Toolbar } from "../components/Toolbar";
@@ -26,6 +27,7 @@ export function HomePage() {
   const [treeFilter, setTreeFilter] = useState<RepoTreeFilter | null>(null);
   const [pendingAction, setPendingAction] = useState<"clear" | null>(null);
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   useEffect(() => {
     document.title = "ce-git";
@@ -95,11 +97,11 @@ export function HomePage() {
     },
     {
       id: "restore-removed",
-      label: "Restore removed repositories",
+      label: "Restore hidden folders and repositories",
       group: "Workspace",
-      keywords: "undo hide",
-      disabled: busy || workspace.removedRepos.length === 0,
-      run: () => void workspace.restoreRemoved(),
+      keywords: "undo hide folder",
+      disabled: busy || workspace.hiddenItems.length === 0,
+      run: () => setRestoreOpen(true),
     },
     {
       id: "pull-all",
@@ -294,7 +296,7 @@ export function HomePage() {
           onRevealInExplorer={(path) => void workspace.revealInExplorer(path)}
           onRemoveRepo={(path) => void workspace.removeRepo(path)}
           onDeleteFolder={(path) => void workspace.deleteFolder(path)}
-          onRestoreRemoved={() => void workspace.restoreRemoved()}
+          onRestoreRemoved={() => setRestoreOpen(true)}
           repoCount={workspace.repos.length}
           pullCount={pullCount}
           pushCount={pushCount}
@@ -403,6 +405,12 @@ export function HomePage() {
         error={workspace.error}
         onClose={() => workspace.setPushPaths(null)}
         onConfirm={workspace.confirmPush}
+      />
+      <RestoreDialog
+        open={restoreOpen}
+        items={workspace.hiddenItems}
+        onClose={() => setRestoreOpen(false)}
+        onRestore={workspace.restoreRemoved}
       />
       <CommandPalette open={commandsOpen} commands={commands} onOpenChange={setCommandsOpen} />
       <ActionConfirmDialog

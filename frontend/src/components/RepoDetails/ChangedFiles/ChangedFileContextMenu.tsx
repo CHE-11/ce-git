@@ -1,13 +1,13 @@
 import { AppWindow, ChevronRight, Copy, FileX, Files, Folder, FolderSearch, FolderX, Link2, Undo2 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { FileChange } from "../../../types/git";
-import { absolutePath, fileExtension, fileManagerLabel, parentDirectories } from "../lib/changes";
-import { cn } from "../lib/cn";
-import { editorTargetTitle, editorsForMenu, gitignoreLabel, openInLabel, type EditorId } from "../lib/editors";
-import type { IgnoreKind } from "../lib/git-client";
-import { domId } from "../lib/tree";
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator, contextMenuPanelClass } from "./ContextMenu";
-import { EditorIcon } from "./EditorIcon";
+import type { FileChange } from "../../../../../types/git";
+import { absolutePath, fileExtension, fileManagerLabel, parentDirectories } from "../../../lib/changes";
+import { cn } from "../../../lib/cn";
+import { editorTargetTitle, editorsForMenu, gitignoreLabel, openInLabel, type EditorId } from "../../../lib/editors";
+import type { IgnoreKind } from "../../../lib/git-client";
+import { domId } from "../../../lib/tree";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator, contextMenuPanelClass } from "../../ContextMenu";
+import { EditorIcon } from "../../EditorIcon";
 
 type ChangedFileMenuProps = {
   file: FileChange;

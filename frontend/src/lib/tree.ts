@@ -128,6 +128,10 @@ export function hideRemovedRepos(tree: TreeNode, removed: readonly string[]): Tr
 }
 
 function pruneRemoved(node: TreeNode, hidden: ReadonlySet<string>): TreeNode | null {
+  if (node.kind === "folder" && hidden.has(normalizePath(node.path))) {
+    return null;
+  }
+
   let childrenChanged = false;
   const children: TreeNode[] = [];
   for (const child of node.children) {
@@ -220,6 +224,39 @@ function pruneToFilter(
     return node;
   }
   return { name: node.name, path: node.path, kind: node.kind, children };
+}
+
+export function findTreeNode(nodes: readonly TreeNode[], path: string): TreeNode | null {
+  for (const node of nodes) {
+    if (pathEquals(node.path, path)) {
+      return node;
+    }
+    const nested = findTreeNode(node.children, path);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+export type HiddenTreeItem = {
+  path: string;
+  name: string;
+  kind: TreeNode["kind"] | null;
+};
+
+export function hiddenTreeItems(trees: readonly TreeNode[], removed: readonly string[], roots: readonly string[]): HiddenTreeItem[] {
+  return removed
+    .filter((path) => containingRoot(roots, path))
+    .map((path) => {
+      const node = findTreeNode(trees, path);
+      return {
+        path,
+        name: node?.name ?? baseName(path),
+        kind: node?.kind ?? null,
+      };
+    })
+    .sort((left, right) => left.path.localeCompare(right.path, undefined, { sensitivity: "base" }));
 }
 
 export function baseName(path: string) {

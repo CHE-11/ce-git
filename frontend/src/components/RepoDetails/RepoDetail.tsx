@@ -1,15 +1,15 @@
 import { ArrowDownToLine, ArrowUpToLine, Upload } from "lucide-react";
 import { useState } from "react";
-import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../types/git";
-import type { EditorId } from "../lib/editors";
-import { patchForPath } from "../lib/diff";
-import { baseName } from "../lib/tree";
-import { Badge } from "./Badge";
-import { Button } from "./Button";
-import { ChangedFiles, type ChangeFileHandlers } from "./ChangedFiles";
+import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../../types/git";
+import type { EditorId } from "../../lib/editors";
+import { patchForPath } from "../../lib/diff";
+import { baseName } from "../../lib/tree";
+import { Badge } from "../Badge";
+import { Button } from "../Button";
+import { ChangedFiles, type ChangeFileHandlers } from "./ChangedFiles/ChangedFiles";
 import { CommitBox } from "./CommitBox";
-import { PublishDialog } from "./Dialogs/PublishDialog";
-import { DiffView } from "./DiffView";
+import { PublishDialog } from "../Dialogs/PublishDialog";
+import { DiffView } from "../DiffView";
 
 type RepoDetailProps = {
   path: string | null;

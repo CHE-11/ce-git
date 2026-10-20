@@ -256,7 +256,11 @@ export function RepoTree({
   const shownTrees = searchedTrees;
   const hasRepos = trees.some(treeHasRepos);
   const folderPaths = (filter ? visibleTrees : trees).flatMap(pathsBelowRoot);
-  const allCollapsed = folderPaths.length > 0 && folderPaths.every((path) => collapsed[path]);
+  const defaultCollapsed = !filter && !searchQuery;
+  const collapsedView = defaultCollapsed
+    ? { ...Object.fromEntries(folderPaths.map((path) => [path, true])), ...collapsed }
+    : Object.fromEntries(folderPaths.map((path) => [path, false]));
+  const allCollapsed = folderPaths.length > 0 && folderPaths.every((path) => collapsedView[path]);
   const removedCount = countRemovedUnder(rootPaths, removedRepos);
   const summary = summarize(statuses);
 
@@ -269,13 +273,6 @@ export function RepoTree({
   useEffect(() => {
     setMenu(null);
   }, [trees, rootPaths, filter]);
-
-  useEffect(() => {
-    if (!filter && !searchQuery) {
-      return;
-    }
-    setCollapsed({});
-  }, [filter, searchQuery, rootPaths]);
 
   useEffect(() => {
     function onResize() {
@@ -331,8 +328,8 @@ export function RepoTree({
 
   function toggleFolders() {
     if (folderPaths.length === 0) return;
-    const collapsedNow = folderPaths.every((path) => collapsed[path]);
-    setCollapsed(collapsedNow ? {} : Object.fromEntries(folderPaths.map((path) => [path, true])));
+    const collapsedNow = folderPaths.every((path) => collapsedView[path]);
+    setCollapsed(Object.fromEntries(folderPaths.map((path) => [path, !collapsedNow])));
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -508,10 +505,15 @@ export function RepoTree({
                   statuses={statuses}
                   selectedPaths={selectedPaths}
                   activePath={activePath}
-                  collapsed={collapsed}
+                  collapsed={collapsedView}
                   contextPath={menu?.node.path ?? null}
                   filter={filter}
-                  onToggle={(path) => setCollapsed((current) => ({ ...current, [path]: !current[path] }))}
+                  onToggle={(path) =>
+                    setCollapsed((current) => ({
+                      ...current,
+                      [path]: !(current[path] ?? defaultCollapsed),
+                    }))
+                  }
                   onSelect={onSelect}
                   onSelectRepos={onSelectRepos}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
@@ -566,7 +568,7 @@ export function RepoTree({
                 onClick={onRestoreRemoved}
                 disabled={busy}
               >
-                <span id="restore-removed-button-label">Restore removed repos ({removedCount})</span>
+                <span id="restore-removed-button-label">Restore hidden items ({removedCount})</span>
               </Button>
             ) : null}
           </div>
@@ -647,8 +649,20 @@ export function RepoTree({
       {pending
         ? createPortal(
             <Dialog
-              id={pending.kind === "delete" ? "delete-folder-dialog" : "remove-repo-dialog"}
-              title={pending.kind === "delete" ? `Delete ${pending.node.name}` : `Remove ${pending.node.name}`}
+              id={
+                pending.kind === "delete"
+                  ? "delete-folder-dialog"
+                  : pending.node.kind === "folder"
+                    ? "hide-folder-dialog"
+                    : "remove-repo-dialog"
+              }
+              title={
+                pending.kind === "delete"
+                  ? `Delete ${pending.node.name}`
+                  : pending.node.kind === "folder"
+                    ? `Hide ${pending.node.name}`
+                    : `Remove ${pending.node.name}`
+              }
               open
               onClose={() => setPending(null)}
             >
@@ -679,6 +693,35 @@ export function RepoTree({
                     </Button>
                   </div>
                 </>
+              ) : pending.node.kind === "folder" ? (
+                <>
+                  <p id="hide-folder-copy" className="text-sm text-zinc-300">
+                    Hide this folder from the list, including every folder and repository inside it. Nothing is deleted.
+                  </p>
+                  <p id="hide-folder-restore" className="mt-2 text-sm text-zinc-400">
+                    Right-click the tree and choose Restore hidden items to show it again.
+                  </p>
+                  <p id="hide-folder-path" className="mt-2 break-all font-mono text-xs text-zinc-500">
+                    {pending.node.path}
+                  </p>
+                  <div id="hide-folder-actions" className="mt-4 flex justify-end gap-2">
+                    <Button id="hide-folder-cancel" variant="ghost" onClick={() => setPending(null)}>
+                      <span id="hide-folder-cancel-label">Cancel</span>
+                    </Button>
+                    <Button
+                      id="hide-folder-confirm"
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() => {
+                        const path = pending.node.path;
+                        setPending(null);
+                        onRemoveRepo(path);
+                      }}
+                    >
+                      <span id="hide-folder-confirm-label">Hide folder</span>
+                    </Button>
+                  </div>
+                </>
               ) : (
                 <>
                   <p id="remove-repo-copy" className="text-sm text-zinc-300">
@@ -690,7 +733,7 @@ export function RepoTree({
                     </p>
                   ) : null}
                   <p id="remove-repo-restore" className="mt-2 text-sm text-zinc-400">
-                    Right-click the tree and choose Restore removed repos to show it again.
+                    Right-click the tree and choose Restore hidden items to show it again.
                   </p>
                   <p id="remove-repo-path" className="mt-2 break-all font-mono text-xs text-zinc-500">
                     {pending.node.path}

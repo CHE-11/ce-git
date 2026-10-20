@@ -1,4 +1,4 @@
-import { FolderMinus, FolderSearch, Terminal, Trash2, Undo2 } from "lucide-react";
+import { EyeOff, FolderMinus, FolderSearch, Terminal, Trash2, Undo2 } from "lucide-react";
 import type { TreeNode } from "../../../../types/git";
 import { fileManagerLabel } from "../../lib/changes";
 import { editorTargetTitle, editorsForMenu, openInLabel, type EditorId } from "../../lib/editors";
@@ -41,7 +41,8 @@ export function TreeContextMenu({
 }: TreeContextMenuProps) {
   const isRepo = node.kind === "repo";
   const isRoot = rootPaths.some((root) => pathEquals(node.path, root));
-  const showManage = isRepo || removedCount > 0;
+  const canHideFolder = !isRepo && !isRoot;
+  const showManage = isRepo || canHideFolder || removedCount > 0;
   const editors = editorsForMenu(menuEditors);
 
   return (
@@ -94,12 +95,22 @@ export function TreeContextMenu({
           onClick={onRemove}
         />
       ) : null}
+      {canHideFolder ? (
+        <ContextMenuItem
+          id="tree-context-hide-folder"
+          icon={<EyeOff id="tree-context-hide-folder-glyph" aria-hidden="true" />}
+          label="Hide folder"
+          title="Hide this folder and everything inside it. Files stay on disk."
+          disabled={actionsDisabled}
+          onClick={onRemove}
+        />
+      ) : null}
       {removedCount > 0 ? (
         <ContextMenuItem
           id="tree-context-restore"
           icon={<Undo2 id="tree-context-restore-glyph" aria-hidden="true" />}
-          label={`Restore removed repos (${removedCount})`}
-          title="Show repositories removed from this folder"
+          label={`Restore hidden items (${removedCount})`}
+          title="Choose hidden folders and repositories to show again"
           disabled={actionsDisabled}
           onClick={onRestore}
         />

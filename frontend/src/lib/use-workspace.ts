@@ -30,7 +30,7 @@ import {
   repoStatuses,
 } from "./git-client";
 import { withDefaultPrompts } from "./commit-prompts";
-import { baseName, collectRepos, containingRoot, hideIgnoredFolders, hideRemovedRepos, messageOf, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
+import { baseName, collectRepos, containingRoot, findTreeNode, hiddenTreeItems, hideIgnoredFolders, hideRemovedRepos, messageOf, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
 import { applyUserThemeCss, publishAppearance } from "./appearance";
 import { publishDefaultEditor, publishMenuEditors, readDefaultEditor, readMenuEditors, type EditorId } from "./editors";
 import { publishToolbarLabels, readToolbarLabels } from "./toolbar-labels";
@@ -169,6 +169,9 @@ export function useWorkspace() {
   const rootPathsRef = useRef<string[]>([]);
   const removedRef = useRef<string[]>([]);
   const sourceTreesRef = useRef<TreeNode[]>([]);
+  const discoveredTreesRef = useRef<TreeNode[]>([]);
+  const discoveredKeyRef = useRef("");
+  const [discoveredToken, setDiscoveredToken] = useState(0);
   const folderIgnoreRef = useRef("");
   const anchorRef = useRef<string | null>(null);
   const repoPathsRef = useRef<string[]>([]);
@@ -186,6 +189,10 @@ export function useWorkspace() {
   const pointerDownRef = useRef(0);
 
   const repos = useMemo(() => trees.flatMap((node) => collectRepos(node)), [trees]);
+  const hiddenItems = useMemo(
+    () => hiddenTreeItems(discoveredTreesRef.current, removedRepos, rootPaths),
+    [removedRepos, rootPaths, trees, discoveredToken],
+  );
   const repoPaths = useMemo(() => repos.map((repo) => repo.path), [repos]);
 
   useEffect(() => {
@@ -267,6 +274,8 @@ export function useWorkspace() {
       const run = (async () => {
         interactionEpoch.current += 1;
         if (roots.length === 0) {
+          discoveredTreesRef.current = [];
+          discoveredKeyRef.current = "";
           sourceTreesRef.current = [];
           setTrees([]);
           setStatuses({});
@@ -286,7 +295,7 @@ export function useWorkspace() {
             roots.map(async (root) => {
               try {
                 const discovered = await discoverRepos(root);
-                return { tree: hideRemovedRepos(discovered, removedRef.current), error: null as string | null };
+                return { tree: discovered, error: null as string | null };
               } catch (caught) {
                 return { tree: null, error: messageOf(caught) };
               }
@@ -302,7 +311,14 @@ export function useWorkspace() {
             scanErrorRef.current = null;
             setError((current) => (current === previous ? null : current));
           }
-          const nextTrees = results.flatMap((result) => (result.tree ? [result.tree] : []));
+          const discovered = results.flatMap((result) => (result.tree ? [result.tree] : []));
+          discoveredTreesRef.current = discovered;
+          const discoveredKey = discovered.map(treeKey).join("\u0002");
+          if (discoveredKey !== discoveredKeyRef.current) {
+            discoveredKeyRef.current = discoveredKey;
+            setDiscoveredToken((token) => token + 1);
+          }
+          const nextTrees = discovered.map((node) => hideRemovedRepos(node, removedRef.current));
           const foundPaths = quiet && sameTrees(sourceTreesRef.current, nextTrees) ? repoPathsRef.current : applyVisibleTrees(nextTrees);
           await loadStatuses(foundPaths, quiet);
           return foundPaths;
@@ -808,6 +824,11 @@ export function useWorkspace() {
     if (trees.length === 0 || removedRef.current.some((item) => pathEquals(item, path))) {
       return;
     }
+    const node = findTreeNode(sourceTreesRef.current, path);
+    const hideContents = node?.kind === "folder";
+    if (hideContents && rootPathsRef.current.some((root) => pathEquals(root, path))) {
+      return;
+    }
     setError(null);
     try {
       const nextRemoved = [...removedRef.current, path];
@@ -816,30 +837,34 @@ export function useWorkspace() {
       applyVisibleTrees(nextSource);
       setStatuses((current) => {
         const next = { ...current };
+        let changed = false;
         for (const key of Object.keys(next)) {
-          if (pathEquals(key, path)) {
+          if (pathEquals(key, path) || (hideContents && pathIsInside(path, key))) {
             delete next[key];
+            changed = true;
           }
         }
-        return next;
+        return changed ? next : current;
       });
     } catch (caught) {
       setError(messageOf(caught));
     }
   };
 
-  const restoreRemoved = async () => {
+  const restoreRemoved = async (paths: string[]) => {
     const roots = rootPathsRef.current;
-    if (roots.length === 0) {
-      return;
+    if (roots.length === 0 || paths.length === 0) {
+      return false;
     }
     setError(null);
     try {
-      const next = removedRef.current.filter((path) => !containingRoot(roots, path));
+      const next = removedRef.current.filter((path) => !paths.some((item) => pathEquals(item, path)));
       await persistRemoved(next);
       await reloadTrees(roots);
+      return true;
     } catch (caught) {
       setError(messageOf(caught));
+      return false;
     }
   };
 
@@ -1206,6 +1231,7 @@ export function useWorkspace() {
     selectRepos,
     clearSelection,
     removedRepos,
+    hiddenItems,
     openInEditor,
     openInTerminal,
     revealInExplorer,

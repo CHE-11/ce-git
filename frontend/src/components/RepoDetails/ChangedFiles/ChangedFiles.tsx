@@ -8,13 +8,13 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { FileChange } from "../../../types/git";
-import { cn } from "../lib/cn";
-import { fileOpenMode, type EditorId } from "../lib/editors";
-import type { ChangeOpenMode, IgnoreKind } from "../lib/git-client";
-import { domId, messageOf } from "../lib/tree";
-import { Button } from "./Button";
-import { ActionConfirmDialog } from "./Dialogs/ActionConfirmDialog";
+import type { FileChange } from "../../../../../types/git";
+import { cn } from "../../../lib/cn";
+import { fileOpenMode, type EditorId } from "../../../lib/editors";
+import type { ChangeOpenMode, IgnoreKind } from "../../../lib/git-client";
+import { domId, messageOf } from "../../../lib/tree";
+import { Button } from "../../Button";
+import { ActionConfirmDialog } from "../../Dialogs/ActionConfirmDialog";
 import { ChangedFileContextMenu } from "./ChangedFileContextMenu";
 
 export type ChangeFileHandlers = {

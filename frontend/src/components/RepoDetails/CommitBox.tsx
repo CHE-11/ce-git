@@ -1,7 +1,7 @@
 import { ChevronDown, Sparkles } from "lucide-react";
 import { useState } from "react";
-import type { AiPrompts } from "../../../types/git";
-import { Button } from "./Button";
+import { Button } from "../Button";
+import { AiPrompts } from "../../../../types/git";
 
 type CommitBoxProps = {
   message: string;

@@ -1,3 +1,6 @@
+
+
+
 # One folder, a lot of repos
 
 GitHub Desktop is a fine client when you live in one repository. It gets awkward when your work is a single directory that contains dozens of them. Some of those folders are repos. Some are just folders. A few of the repos contain other repos. The useful picture is a tree, and the useful action is updating all of them without opening each one.
@@ -40,4 +43,3 @@ To install dependencies, run `pnpm install` in the project root.
 To run in development mode, run `pnpm dev` in the project root.
 To build the Windows exe, run `pnpm build:exe` in the project root.
 To build the macOS app, run `pnpm build:app` in the project root.
-

@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, GitGraph, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, GitGraph, Loader2, RefreshCw, Upload } from "lucide-react";
 import { useState } from "react";
 import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
@@ -48,6 +48,8 @@ type RepoDetailProps = {
   onSelectedPrompt: (slot: number) => void;
   onGenerate: () => void;
   onCommit: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
   onPull: () => void;
   onPush: () => void;
   onPublish: (options: PublishOptions) => Promise<void>;
@@ -74,6 +76,8 @@ export function RepoDetail({
   onSelectedPrompt,
   onGenerate,
   onCommit,
+  onRefresh,
+  refreshing,
   onPull,
   onPush,
   onPublish,
@@ -134,6 +138,23 @@ export function RepoDetail({
             {name}
           </h2>
           <div id="repo-detail-actions" className="flex shrink-0 items-center gap-1.5">
+            <Button
+              id="repo-refresh-button"
+              variant="secondary"
+              size="sm"
+              className={refreshing ? "size-7 px-0 disabled:opacity-100" : "size-7 px-0"}
+              onClick={onRefresh}
+              disabled={busy || refreshing}
+              aria-busy={refreshing}
+              aria-label="Refresh this repository"
+              title="Refresh this repository"
+            >
+              {refreshing ? (
+                <Loader2 id="repo-refresh-spinner" className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw id="repo-refresh-icon" className="size-3.5" />
+              )}
+            </Button>
             {unpublished ? (
               <span id="repo-publish-wrap" className="inline-flex" title={publishTitle}>
                 <Button

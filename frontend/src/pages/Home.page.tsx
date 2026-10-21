@@ -318,6 +318,8 @@ export function HomePage() {
           onSelectedPrompt={workspace.setSelectedPrompt}
           onGenerate={workspace.generateForActive}
           onCommit={() => void workspace.commitActive()}
+          onRefresh={() => void workspace.refreshActive()}
+          refreshing={workspace.refreshingActive}
           onPull={workspace.requestPullActive}
           onPush={workspace.requestPushActive}
           onPublish={workspace.publishActive}

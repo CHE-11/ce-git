@@ -171,6 +171,7 @@ export function useWorkspace() {
   const [discovering, setDiscovering] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [refreshingPath, setRefreshingPath] = useState<string | null>(null);
   const [detailToken, setDetailToken] = useState(0);
   const [gitReady, setGitReady] = useState(true);
   const [openaiReady, setOpenaiReady] = useState<boolean | null>(null);
@@ -1018,6 +1019,41 @@ export function useWorkspace() {
     setDetailToken((token) => token + 1);
   };
 
+  const refreshActive = async () => {
+    const repo = activePathRef.current;
+    if (!repo) {
+      return;
+    }
+    setRefreshingPath(repo);
+    setError(null);
+    interactionEpoch.current += 1;
+    const epoch = interactionEpoch.current;
+    try {
+      const [statusResult, diffResult] = await Promise.allSettled([repoStatuses([repo]), repoDiff(repo)]);
+      if (interactionEpoch.current !== epoch || !activePathRef.current || !pathEquals(activePathRef.current, repo)) {
+        return;
+      }
+      if (statusResult.status === "fulfilled") {
+        setStatuses((current) => {
+          const next = { ...current };
+          for (const row of statusResult.value) {
+            next[row.path] = row;
+          }
+          return next;
+        });
+      }
+      if (diffResult.status === "fulfilled") {
+        setDiff(diffResult.value);
+      }
+      const failure = statusResult.status === "rejected" ? statusResult.reason : diffResult.status === "rejected" ? diffResult.reason : null;
+      if (failure) {
+        setError(messageOf(failure));
+      }
+    } finally {
+      setRefreshingPath((current) => (current !== null && pathEquals(current, repo) ? null : current));
+    }
+  };
+
   const discardChange = async (repo: string, file: FileChange) => {
     if (!repo) {
       return;
@@ -1470,6 +1506,8 @@ export function useWorkspace() {
     createNewRepo,
     cloneRepo,
     refresh,
+    refreshActive,
+    refreshingActive: refreshingPath !== null && activePath !== null && pathEquals(refreshingPath, activePath),
     selectRepo,
     selectRepos,
     clearSelection,

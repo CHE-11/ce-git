@@ -3,31 +3,44 @@ import { domId } from "../../lib/tree";
 import { Button } from "../Button";
 import { Dialog } from "./Dialog";
 
-type AiReviewDialogProps = {
+type Props = {
   open: boolean;
   drafts: AiCommitDraft[];
   generating: boolean;
   busy: boolean;
+  aiAction: "commit" | "push" | null;
+  error: string | null;
   onClose: () => void;
   onChange: (path: string, patch: { message?: string; description?: string }) => void;
   onToggle: (path: string) => void;
+  onSave: () => void;
   onCommit: () => void;
+  onCommitAndPush: () => void;
 };
 
-export function AiReviewDialog({
+export function AiCommitDialog({
   open,
   drafts,
   generating,
   busy,
+  aiAction,
+  error,
   onClose,
   onChange,
   onToggle,
+  onSave,
   onCommit,
-}: AiReviewDialogProps) {
+  onCommitAndPush,
+}: Props) {
+  const ready = drafts.some((draft) => draft.include && !draft.error && draft.message.trim().length > 0);
+  const locked = busy || generating || !ready;
+
   return (
     <Dialog id="ai-review-dialog" title="Review AI commit messages" open={open} onClose={onClose}>
       <p id="ai-review-note" className="mb-3 text-sm text-zinc-400">
-        {generating ? "Generating messages…" : "Edit any message, then commit the selected repositories."}
+        {generating
+          ? "Generating messages…"
+          : "Edit any message. Uncheck a repository to leave it out, then save or commit."}
       </p>
       <div id="ai-review-list" className="flex flex-col gap-3">
         {drafts.map((draft) => (
@@ -78,12 +91,23 @@ export function AiReviewDialog({
           </article>
         ))}
       </div>
-      <div id="ai-review-actions" className="mt-4 flex justify-end gap-2">
+      {error ? (
+        <p id="ai-review-error" className="mt-3 text-sm text-red-400">
+          {error}
+        </p>
+      ) : null}
+      <div id="ai-review-actions" className="sticky bottom-0 -mx-4 mt-4 -mb-3 flex flex-wrap justify-end gap-2 border-t border-zinc-800 bg-zinc-900 px-4 py-3">
         <Button id="ai-review-cancel" variant="ghost" onClick={onClose} disabled={busy}>
           <span id="ai-review-cancel-label">Cancel</span>
         </Button>
-        <Button id="ai-review-commit" variant="primary" onClick={onCommit} disabled={busy || generating} className="bg-emerald-600 hover:bg-emerald-500">
-          <span id="ai-review-commit-label">{busy ? "Committing…" : "Commit selected"}</span>
+        <Button id="ai-review-save" variant="secondary" onClick={onSave} disabled={locked}>
+          <span id="ai-review-save-label">Save but Don't Commit</span>
+        </Button>
+        <Button id="ai-review-commit" variant="primary" onClick={onCommit} disabled={locked} className="bg-emerald-600 hover:bg-emerald-500">
+          <span id="ai-review-commit-label">{aiAction === "commit" ? "Committing…" : "Commit All"}</span>
+        </Button>
+        <Button id="ai-review-commit-push" variant="primary" onClick={onCommitAndPush} disabled={locked} className="bg-emerald-600 hover:bg-emerald-500">
+          <span id="ai-review-commit-push-label">{aiAction === "push" ? "Committing and pushing…" : "Commit All and Push"}</span>
         </Button>
       </div>
     </Dialog>

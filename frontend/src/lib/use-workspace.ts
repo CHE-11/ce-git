@@ -33,7 +33,7 @@ import {
   repoStatuses,
 } from "./git-client";
 import { withDefaultPrompts } from "./commit-prompts";
-import { baseName, collectRepos, containingRoot, findTreeNode, hiddenTreeItems, hideIgnoredFolders, hideRemovedRepos, messageOf, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
+import { baseName, collectRepos, containingRoot, findTreeNode, hiddenTreeItems, hideIgnoredFolders, hideRemovedRepos, messageOf, normalizePath, pathEquals, pathIsInside, pickedFolderPath } from "./tree";
 import { applyUserThemeCss, publishAppearance } from "./appearance";
 import { publishDefaultEditor, publishMenuEditors, readDefaultEditor, readMenuEditors, type EditorId } from "./editors";
 import { publishToolbarLabels, readToolbarLabels } from "./toolbar-labels";
@@ -67,6 +67,23 @@ function joinCommit(subject: string, description: string) {
     return summary;
   }
   return `${summary}\n\n${detail}`;
+}
+
+type SavedCommit = { message: string; description: string };
+
+function commitKey(path: string) {
+  return normalizePath(path);
+}
+
+function batchFailure(results: BatchProgress[]) {
+  const failed = results.filter((row) => row.status === "failed");
+  if (failed.length === 0) {
+    return null;
+  }
+  if (failed.length === 1) {
+    return `${failed[0].repo}: ${failed[0].message}`;
+  }
+  return failed.map((row) => `${row.repo}: ${row.message}`).join(" ");
 }
 
 function samePaths(left: readonly string[], right: readonly string[]) {
@@ -159,6 +176,8 @@ export function useWorkspace() {
   const [openaiReady, setOpenaiReady] = useState<boolean | null>(null);
   const [generating, setGenerating] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiAction, setAiAction] = useState<"commit" | "push" | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<AiCommitDraft[]>([]);
   const [pullPaths, setPullPaths] = useState<string[] | null>(null);
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
@@ -193,6 +212,8 @@ export function useWorkspace() {
   const scanErrorRef = useRef<string | null>(null);
   const interactionEpoch = useRef(0);
   const pointerDownRef = useRef(0);
+  const savedCommitsRef = useRef<Record<string, SavedCommit>>({});
+  const aiRunRef = useRef(0);
 
   const repos = useMemo(() => trees.flatMap((node) => collectRepos(node)), [trees]);
   const hiddenItems = useMemo(
@@ -534,9 +555,42 @@ export function useWorkspace() {
     };
   }, []);
 
+  const readSaved = (path: string) => savedCommitsRef.current[commitKey(path)] ?? null;
+
+  const writeSaved = (path: string, message: string, description: string) => {
+    const key = commitKey(path);
+    if (!message.trim() && !description.trim()) {
+      if (!(key in savedCommitsRef.current)) {
+        return;
+      }
+      const next = { ...savedCommitsRef.current };
+      delete next[key];
+      savedCommitsRef.current = next;
+      return;
+    }
+    savedCommitsRef.current = {
+      ...savedCommitsRef.current,
+      [key]: { message, description },
+    };
+  };
+
+  const forgetSaved = (path: string) => {
+    writeSaved(path, "", "");
+  };
+
+  const showSaved = (path: string | null) => {
+    if (!path) {
+      setCommitMessage("");
+      setCommitDescription("");
+      return;
+    }
+    const saved = readSaved(path);
+    setCommitMessage(saved?.message ?? "");
+    setCommitDescription(saved?.description ?? "");
+  };
+
   useEffect(() => {
-    setCommitMessage("");
-    setCommitDescription("");
+    showSaved(activePath);
   }, [activePath]);
 
   useEffect(() => {
@@ -1146,6 +1200,7 @@ export function useWorkspace() {
     setError(null);
     try {
       await batchCommit([{ path: activePath, message }]);
+      forgetSaved(activePath);
       setCommitMessage("");
       setCommitDescription("");
       await finishBatch();
@@ -1171,6 +1226,7 @@ export function useWorkspace() {
     setError(null);
     try {
       const generated = await generateCommitMessage(path, prompt);
+      writeSaved(path, generated.subject, generated.description);
       setCommitMessage(generated.subject);
       setCommitDescription(generated.description);
     } catch (caught) {
@@ -1185,11 +1241,10 @@ export function useWorkspace() {
       setError("No repositories with changes.");
       return;
     }
-    if (paths.length === 1) {
-      await generateIntoBox(paths[0], prompt);
-      return;
-    }
 
+    const run = aiRunRef.current + 1;
+    aiRunRef.current = run;
+    setReviewError(null);
     setDrafts(
       paths.map((path) => ({
         path,
@@ -1206,12 +1261,18 @@ export function useWorkspace() {
     const queue = [...paths];
     const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
       while (queue.length > 0) {
+        if (aiRunRef.current !== run) {
+          return;
+        }
         const path = queue.shift();
         if (!path) {
           return;
         }
         try {
           const generated = await generateCommitMessage(path, prompt);
+          if (aiRunRef.current !== run) {
+            return;
+          }
           setDrafts((current) =>
             current.map((draft) =>
               draft.path === path
@@ -1220,6 +1281,9 @@ export function useWorkspace() {
             ),
           );
         } catch (caught) {
+          if (aiRunRef.current !== run) {
+            return;
+          }
           setDrafts((current) =>
             current.map((draft) =>
               draft.path === path ? { ...draft, error: messageOf(caught), include: false } : draft,
@@ -1229,39 +1293,101 @@ export function useWorkspace() {
       }
     });
     await Promise.all(workers);
-    setGenerating(false);
+    if (aiRunRef.current === run) {
+      setGenerating(false);
+    }
   };
 
-  const commitDrafts = async () => {
-    const items = drafts
-      .filter((draft) => draft.include && draft.message.trim().length > 0)
-      .map((draft) => ({ path: draft.path, message: joinCommit(draft.message, draft.description) }));
+  const cancelAiReview = () => {
+    if (busyRef.current) {
+      return;
+    }
+    aiRunRef.current += 1;
+    setGenerating(false);
+    setAiAction(null);
+    setReviewError(null);
+    setDrafts([]);
+    setAiOpen(false);
+  };
+
+  const saveDrafts = () => {
+    const chosen = drafts.filter((draft) => draft.include && !draft.error && draft.message.trim().length > 0);
+    if (chosen.length === 0) {
+      setReviewError("No commit messages to save.");
+      return;
+    }
+    for (const draft of chosen) {
+      writeSaved(draft.path, draft.message, draft.description);
+    }
+    const path = activePathRef.current;
+    if (path && chosen.some((draft) => pathEquals(draft.path, path))) {
+      const saved = readSaved(path);
+      setCommitMessage(saved?.message ?? "");
+      setCommitDescription(saved?.description ?? "");
+    }
+    setReviewError(null);
+    setDrafts([]);
+    setAiOpen(false);
+  };
+
+  const commitDrafts = async (andPush: boolean) => {
+    const chosen = drafts.filter((draft) => draft.include && !draft.error && draft.message.trim().length > 0);
+    const items = chosen.map((draft) => ({ path: draft.path, message: joinCommit(draft.message, draft.description) }));
     if (items.length === 0) {
-      setError("No commit messages to apply.");
+      setReviewError("No commit messages to apply.");
       return;
     }
     logGeneration.current += 1;
-    beginWork("commit");
+    setAiAction(andPush ? "push" : "commit");
+    beginWork(andPush ? "push" : "commit");
+    setReviewError(null);
     setError(null);
     try {
-      await batchCommit(items);
+      const committed = await batchCommit(items);
+      const okPaths = committed.filter((row) => row.status === "ok").map((row) => row.path);
+      const committedKeys = new Set(okPaths.map((path) => commitKey(path)));
+      for (const draft of chosen) {
+        if (committedKeys.has(commitKey(draft.path))) {
+          forgetSaved(draft.path);
+        } else {
+          writeSaved(draft.path, draft.message, draft.description);
+        }
+      }
+      const commitError = batchFailure(committed);
+      if (okPaths.length === 0) {
+        setReviewError(commitError ?? "No repositories were committed.");
+        showSaved(activePathRef.current);
+        return;
+      }
+      let pushError: string | null = null;
+      if (andPush) {
+        const pushed = await batchPush(okPaths);
+        pushError = batchFailure(pushed);
+      }
+      const failure = [commitError, pushError].filter((item) => item !== null).join(" ");
+      if (failure) {
+        setError(failure);
+      }
+      showSaved(activePathRef.current);
       setAiOpen(false);
       setDrafts([]);
-      if (activePath && items.some((item) => item.path === activePath)) {
-        setCommitMessage("");
-        setCommitDescription("");
-      }
       await finishBatch();
     } catch (caught) {
-      setError(messageOf(caught));
+      setReviewError(messageOf(caught));
     } finally {
+      setAiAction(null);
       endWork();
     }
   };
 
   const clearCommitDrafts = () => {
+    aiRunRef.current += 1;
+    savedCommitsRef.current = {};
     setCommitMessage("");
     setCommitDescription("");
+    setGenerating(false);
+    setAiAction(null);
+    setReviewError(null);
     setDrafts([]);
     setAiOpen(false);
   };
@@ -1281,9 +1407,23 @@ export function useWorkspace() {
     activeStatus,
     diff,
     commitMessage,
-    setCommitMessage,
+    setCommitMessage: (message: string) => {
+      setCommitMessage(message);
+      const path = activePathRef.current;
+      if (!path) {
+        return;
+      }
+      writeSaved(path, message, readSaved(path)?.description ?? "");
+    },
     commitDescription,
-    setCommitDescription,
+    setCommitDescription: (description: string) => {
+      setCommitDescription(description);
+      const path = activePathRef.current;
+      if (!path) {
+        return;
+      }
+      writeSaved(path, readSaved(path)?.message ?? "", description);
+    },
     commitPrompts,
     selectedPrompt,
     setSelectedPrompt: (value: number) => {
@@ -1310,6 +1450,8 @@ export function useWorkspace() {
     },
     generating,
     aiOpen,
+    aiAction,
+    reviewError,
     setAiOpen,
     drafts,
     setDrafts,
@@ -1382,6 +1524,8 @@ export function useWorkspace() {
       const paths = repoPaths.filter((path) => statuses[path]?.dirty);
       void startAiCommit(paths, prompt);
     },
+    cancelAiReview,
+    saveDrafts,
     commitDrafts,
     clearCommitDrafts,
     updateDraft: (path: string, patch: Partial<Pick<AiCommitDraft, "message" | "description">>) => {

@@ -47,7 +47,28 @@
       }
     },
     {
-      "label": "Build Windows",
+      "label": "Bump + Build",
+      "type": "shell",
+      "command": "pnpm bump && pnpm build:exe",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "statusbar": {
+          "hide": false,
+          "color": "#c49816"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Build",
       "type": "shell",
       "command": "pnpm build:exe",
       "group": {
@@ -58,7 +79,7 @@
         "cwd": "${workspaceFolder}",
         "statusbar": {
           "hide": false,
-          "color": "#c49816"
+          "color": "#35f835"
         }
       },
       "problemMatcher": [],

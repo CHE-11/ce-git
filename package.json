@@ -6,8 +6,8 @@
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",
     "version:bump": "node scripts/bump-version.mjs",
-    "build:exe": "node scripts/bump-version.mjs && node scripts/build-exe.mjs",
-    "build:app": "node scripts/bump-version.mjs && pnpm tauri build --target aarch64-apple-darwin",
+    "build:exe": "node scripts/build-exe.mjs",
+    "build:app": "node scripts/build-macos.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {

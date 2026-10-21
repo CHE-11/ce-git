@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CommandPalette, type CommandItem } from "../components/CommandPalette";
 import { ActionConfirmDialog } from "../components/Dialogs/ActionConfirmDialog";
 import { AdvancedSearchDialog } from "../components/Dialogs/AdvancedSearchDialog";
-import { AiReviewDialog } from "../components/Dialogs/AiReviewDialog";
+import { AiCommitDialog } from "../components/Dialogs/AiCommitDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
 import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
@@ -357,6 +357,7 @@ export function HomePage() {
         gitReady={workspace.gitReady}
       />
 
+      {/* Dialogs */}
 
       {settingsTab ? (
         <SettingsDialog
@@ -369,9 +370,14 @@ export function HomePage() {
           onAiSaved={() => void workspace.refreshAi()}
         />
       ) : null}
+
       {createRepoOpen ? (
-        <CreateRepoDialog onClose={() => setCreateRepoOpen(false)} onCreate={workspace.createNewRepo} />
+        <CreateRepoDialog 
+          onClose={() => setCreateRepoOpen(false)} 
+          onCreate={workspace.createNewRepo} 
+        />
       ) : null}
+
       {cloneRepoOpen ? (
         <CloneRepoDialog
           defaultParent={workspace.rootPaths[0] ?? ""}
@@ -379,6 +385,7 @@ export function HomePage() {
           onClone={workspace.cloneRepo}
         />
       ) : null}
+
       <AdvancedSearchDialog
         open={advancedSearchOpen}
         trees={workspace.trees}
@@ -389,7 +396,22 @@ export function HomePage() {
           void workspace.openChange(repo, file, fileOpenMode(workspace.defaultEditor));
         }}
       />
-      <AiReviewDialog open={workspace.aiOpen} drafts={workspace.drafts} generating={workspace.generating} busy={busy} onClose={() => workspace.setAiOpen(false)} onChange={workspace.updateDraft} onToggle={workspace.toggleDraft} onCommit={() => void workspace.commitDrafts()} />
+
+      <AiCommitDialog
+        open={workspace.aiOpen}
+        drafts={workspace.drafts}
+        generating={workspace.generating}
+        busy={busy}
+        aiAction={workspace.aiAction}
+        error={workspace.reviewError}
+        onClose={workspace.cancelAiReview}
+        onChange={workspace.updateDraft}
+        onToggle={workspace.toggleDraft}
+        onSave={workspace.saveDrafts}
+        onCommit={() => void workspace.commitDrafts(false)}
+        onCommitAndPush={() => void workspace.commitDrafts(true)}
+      />
+
       <GitPullConfirmationDialog
         pullPaths={workspace.pullPaths}
         logs={workspace.logs}
@@ -401,6 +423,7 @@ export function HomePage() {
         onFinishMerge={(path) => void workspace.finishMerge(path)}
         onAbortMerge={(path) => void workspace.abortMerge(path)}
       />
+
       <GitPushConfirmationDialog
         pushPaths={workspace.pushPaths}
         logs={workspace.logs}
@@ -408,13 +431,14 @@ export function HomePage() {
         onClose={() => workspace.setPushPaths(null)}
         onConfirm={workspace.confirmPush}
       />
+
       <RestoreDialog
         open={restoreOpen}
         items={workspace.hiddenItems}
         onClose={() => setRestoreOpen(false)}
         onRestore={workspace.restoreRemoved}
       />
-      <CommandPalette open={commandsOpen} commands={commands} onOpenChange={setCommandsOpen} />
+      
       <ActionConfirmDialog
         id="clear-commits-dialog"
         title="Clear commit messages"
@@ -427,6 +451,13 @@ export function HomePage() {
           workspace.clearCommitDrafts();
         }}
       />
+
+      <CommandPalette 
+        open={commandsOpen} 
+        commands={commands} 
+        onOpenChange={setCommandsOpen} 
+      />
+
     </div>
   );
 }

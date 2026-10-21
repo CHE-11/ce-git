@@ -39,4 +39,26 @@ const next = `${major}.${minor}.${patch}`;
 pkg.version = next;
 const newline = source.endsWith("\n") ? "\n" : "";
 writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}${newline}`);
+setJsonVersion(join(root, "src-tauri", "tauri.conf.json"), next);
+setCargoPackageVersion(join(root, "src-tauri", "Cargo.toml"), next);
 console.log(`${pkg.name} ${current} → ${next}`);
+
+function setJsonVersion(path, version) {
+  const source = readFileSync(path, "utf8");
+  const updated = source.replace(/("version"\s*:\s*")[^"]+(")/, `$1${version}$2`);
+  if (updated === source) {
+    console.error(`Could not update version in ${path}`);
+    process.exit(1);
+  }
+  writeFileSync(path, updated);
+}
+
+function setCargoPackageVersion(path, version) {
+  const source = readFileSync(path, "utf8");
+  const updated = source.replace(/^version = "[^"]+"/m, `version = "${version}"`);
+  if (updated === source) {
+    console.error(`Could not update version in ${path}`);
+    process.exit(1);
+  }
+  writeFileSync(path, updated);
+}

@@ -305,6 +305,7 @@ export function HomePage() {
           removedRepos={workspace.removedRepos}
           menuEditors={workspace.menuEditors}
           onOpenInEditor={(path, editor) => void workspace.openInEditor(path, editor)}
+          onOpenGitignore={(path, editor) => void workspace.openChange(path, ".gitignore", fileOpenMode(editor))}
           onOpenInTerminal={(path) => void workspace.openInTerminal(path)}
           onRevealInExplorer={(path) => void workspace.revealInExplorer(path)}
           onRemoveRepo={(path) => void workspace.removeRepo(path)}

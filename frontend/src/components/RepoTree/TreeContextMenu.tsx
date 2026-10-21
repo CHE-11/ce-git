@@ -1,7 +1,7 @@
 import { Copy, EyeOff, FolderMinus, FolderSearch, FolderTree, Terminal, Text, Trash2, Undo2 } from "lucide-react";
 import type { TreeNode } from "../../../../types/git";
 import { fileManagerLabel } from "../../lib/changes";
-import { editorTargetTitle, editorsForMenu, openInLabel, type EditorId } from "../../lib/editors";
+import { editorTargetTitle, editorsForMenu, gitignoreLabel, openInLabel, type EditorId } from "../../lib/editors";
 import { pathEquals } from "../../lib/tree";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../ContextMenu";
 import { EditorIcon } from "../EditorIcon";
@@ -15,6 +15,7 @@ type TreeContextMenuProps = {
   actionsDisabled: boolean;
   menuEditors: readonly string[];
   onOpen: (editor: EditorId) => void;
+  onOpenGitignore: (editor: EditorId) => void;
   onViewRepo: () => void;
   onOpenTerminal: () => void;
   onReveal: () => void;
@@ -33,6 +34,7 @@ export function TreeContextMenu({
   actionsDisabled,
   menuEditors,
   onOpen,
+  onOpenGitignore,
   onViewRepo,
   onOpenTerminal,
   onReveal,
@@ -72,13 +74,27 @@ export function TreeContextMenu({
         />
       ))}
 
+      {isRepo && editors.length > 0 ? <ContextMenuSeparator id="tree-context-separator-gitignore" /> : null}
+      {isRepo
+        ? editors.map((editor) => (
+            <ContextMenuItem
+              id={`tree-context-gitignore-${editor.id}`}
+              key={`gitignore-${editor.id}`}
+              icon={<EditorIcon id={`tree-context-gitignore-${editor.id}-glyph`} editor={editor.id} />}
+              label={gitignoreLabel(editor)}
+              title={editor.id === "default" ? "Open .gitignore in the default editor" : `Open .gitignore in ${editor.label}`}
+              onClick={() => onOpenGitignore(editor.id)}
+            />
+          ))
+        : null}
+
       {editors.length > 0 ? <ContextMenuSeparator id="tree-context-separator-system" /> : null}
 
       {isRepo ? (
         <ContextMenuItem
           id="tree-context-view-repo"
           icon={<FolderTree id="tree-context-view-repo-glyph" aria-hidden="true" />}
-          label="View repo"
+          label="Open"
           title="Browse this repository's files"
           onClick={onViewRepo}
         />

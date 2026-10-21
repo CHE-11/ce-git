@@ -10,6 +10,7 @@ import { ActivityLog } from "../components/ActivityLog";
 import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RestoreDialog } from "../components/Dialogs/RestoreDialog";
+import { FileExplorer } from "../components/FileExplorer/FileExplorer";
 import { GitGraph } from "../components/GitGraph/GitGraph";
 import { RepoDetail } from "../components/RepoDetails/RepoDetail";
 import { RepoTree } from "../components/RepoTree/RepoTree";
@@ -17,7 +18,7 @@ import { StatusBar } from "../components/StatusBar";
 import { Toolbar } from "../components/Toolbar";
 import { fileOpenMode, openInLabel, editorById } from "../lib/editors";
 import { useWorkspace } from "../lib/use-workspace";
-import type { RepoTreeFilter } from "../lib/tree";
+import { pathEquals, type RepoTreeFilter } from "../lib/tree";
 
 export function HomePage() {
   const workspace = useWorkspace();
@@ -30,10 +31,25 @@ export function HomePage() {
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [explorerPath, setExplorerPath] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "ce-git";
   }, []);
+
+  useEffect(() => {
+    if (!explorerPath) {
+      return;
+    }
+    const match = workspace.repos.find((repo) => pathEquals(repo.path, explorerPath));
+    if (!match) {
+      setExplorerPath(null);
+      return;
+    }
+    if (match.path !== explorerPath) {
+      setExplorerPath(match.path);
+    }
+  }, [explorerPath, workspace.repos]);
 
   const busy = workspace.busyAction !== null;
   const hasRoots = workspace.rootPaths.length > 0;
@@ -277,7 +293,14 @@ export function HomePage() {
           statuses={workspace.statuses}
           activePath={workspace.activePath}
           discovering={workspace.discovering}
-          onOpen={(path) => workspace.selectRepo(path, "replace")}
+          onOpen={(path) => {
+            setExplorerPath(null);
+            workspace.selectRepo(path, "replace");
+          }}
+          onViewRepo={(path) => {
+            workspace.selectRepo(path, "replace");
+            setExplorerPath(path);
+          }}
           busy={busy}
           removedRepos={workspace.removedRepos}
           menuEditors={workspace.menuEditors}
@@ -290,7 +313,7 @@ export function HomePage() {
           filter={treeFilter}
           onFilter={setTreeFilter}
         />
-        {graphOpen ? (
+        {graphOpen && explorerPath === null ? (
           <GitGraph
             path={workspace.activePath}
             refreshToken={
@@ -301,6 +324,19 @@ export function HomePage() {
             onClose={() => setGraphOpen(false)}
           />
         ) : null}
+        {explorerPath ? (
+          <FileExplorer
+            key={explorerPath}
+            repoPath={explorerPath}
+            menuEditors={workspace.menuEditors}
+            defaultEditor={workspace.defaultEditor}
+            onClose={() => setExplorerPath(null)}
+            onOpenInEditor={(path, editor) => void workspace.openInEditor(path, editor)}
+            onOpenInTerminal={(path) => void workspace.openInTerminal(path)}
+            onRevealInExplorer={(path) => void workspace.revealInExplorer(path)}
+            onOpenFile={(relativePath, mode) => void workspace.openChange(explorerPath, relativePath, mode)}
+          />
+        ) : (
         <RepoDetail
           path={workspace.activePath}
           status={workspace.activeStatus}
@@ -350,6 +386,7 @@ export function HomePage() {
             reportError: workspace.reportError,
           }}
         />
+        )}
       </div>
       <ActivityLog logs={workspace.logs} onClear={workspace.clearLogs} />
       <StatusBar

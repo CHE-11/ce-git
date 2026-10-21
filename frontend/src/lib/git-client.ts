@@ -6,6 +6,8 @@ import type {
   BatchProgress,
   CommitRequest,
   CommitVerbosity,
+  DirEntry,
+  DirSearch,
   GeneratedCommit,
   GitSettings,
   OpenAiModel,
@@ -181,6 +183,14 @@ export function abortMerge(path: string) {
 
 export function revealInExplorer(path: string) {
   return invoke<void>("reveal_in_explorer", { path });
+}
+
+export function listDirectory(repo: string, path: string) {
+  return invoke<DirEntry[]>("list_directory", { repo, path });
+}
+
+export function searchDirectory(repo: string, query: string) {
+  return invoke<DirSearch>("search_directory", { repo, query });
 }
 
 export function openInTerminal(path: string) {

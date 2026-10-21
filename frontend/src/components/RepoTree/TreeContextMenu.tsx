@@ -1,4 +1,4 @@
-import { Copy, EyeOff, FolderMinus, FolderSearch, Terminal, Text, Trash2, Undo2 } from "lucide-react";
+import { Copy, EyeOff, FolderMinus, FolderSearch, FolderTree, Terminal, Text, Trash2, Undo2 } from "lucide-react";
 import type { TreeNode } from "../../../../types/git";
 import { fileManagerLabel } from "../../lib/changes";
 import { editorTargetTitle, editorsForMenu, openInLabel, type EditorId } from "../../lib/editors";
@@ -15,6 +15,7 @@ type TreeContextMenuProps = {
   actionsDisabled: boolean;
   menuEditors: readonly string[];
   onOpen: (editor: EditorId) => void;
+  onViewRepo: () => void;
   onOpenTerminal: () => void;
   onReveal: () => void;
   onRemove: () => void;
@@ -32,6 +33,7 @@ export function TreeContextMenu({
   actionsDisabled,
   menuEditors,
   onOpen,
+  onViewRepo,
   onOpenTerminal,
   onReveal,
   onRemove,
@@ -72,6 +74,15 @@ export function TreeContextMenu({
 
       {editors.length > 0 ? <ContextMenuSeparator id="tree-context-separator-system" /> : null}
 
+      {isRepo ? (
+        <ContextMenuItem
+          id="tree-context-view-repo"
+          icon={<FolderTree id="tree-context-view-repo-glyph" aria-hidden="true" />}
+          label="View repo"
+          title="Browse this repository's files"
+          onClick={onViewRepo}
+        />
+      ) : null}
       {isRepo ? (
         <ContextMenuItem
           id="tree-context-terminal"

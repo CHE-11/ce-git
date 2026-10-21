@@ -341,6 +341,20 @@ async fn reveal_change(repo: String, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn list_directory(repo: String, path: String) -> Result<Vec<files::DirEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || files::list_directory(Path::new(&repo), &path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn search_directory(repo: String, query: String) -> Result<files::DirSearch, String> {
+    tauri::async_runtime::spawn_blocking(move || files::search_directory(Path::new(&repo), &query))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn open_change(repo: String, path: String, mode: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let full = git::contained_path(Path::new(&repo), &path)?;
@@ -405,7 +419,9 @@ pub fn run() {
             discard_change,
             ignore_change,
             reveal_change,
-            open_change
+            open_change,
+            list_directory,
+            search_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

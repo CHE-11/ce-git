@@ -69,6 +69,7 @@ type RepoTreeProps = {
   activePath: string | null;
   discovering: boolean;
   onOpen: (path: string) => void;
+  onViewRepo: (path: string) => void;
   busy: boolean;
   removedRepos: string[];
   onOpenInEditor: (path: string, editor: EditorId) => void;
@@ -158,6 +159,7 @@ export function RepoTree({
   activePath,
   discovering,
   onOpen,
+  onViewRepo,
   busy,
   removedRepos,
   onOpenInEditor,
@@ -520,6 +522,11 @@ export function RepoTree({
             const path = menu.node.path;
             setMenu(null);
             onOpenInEditor(path, editor);
+          }}
+          onViewRepo={() => {
+            const path = menu.node.path;
+            setMenu(null);
+            onViewRepo(path);
           }}
           onOpenTerminal={() => {
             const path = menu.node.path;

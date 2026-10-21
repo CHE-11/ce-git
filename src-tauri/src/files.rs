@@ -1,4 +1,121 @@
+use std::collections::HashSet;
+use std::fs;
 use std::path::{Component, Path, PathBuf};
+
+use serde::Serialize;
+
+const SEARCH_MATCH_LIMIT: usize = 300;
+const SEARCH_VISIT_LIMIT: usize = 50_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DirKind {
+    File,
+    Folder,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirEntry {
+    pub name: String,
+    pub relative_path: String,
+    pub kind: DirKind,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirSearch {
+    pub entries: Vec<DirEntry>,
+    pub truncated: bool,
+}
+
+pub fn list_directory(repo: &Path, relative: &str) -> Result<Vec<DirEntry>, String> {
+    let relative = normalize_relative(relative)?;
+    let dir = directory_in_repo(repo, &relative)?;
+    let read = fs::read_dir(&dir)
+        .map_err(|error| format!("Could not read {}: {error}", display_path(&dir).display()))?;
+    let mut entries = Vec::new();
+    for item in read {
+        let Ok(item) = item else {
+            continue;
+        };
+        let name = item.file_name().to_string_lossy().into_owned();
+        if name.is_empty() || name == "." || name == ".." {
+            continue;
+        }
+        let relative_path = if relative.is_empty() {
+            name.clone()
+        } else {
+            format!("{relative}/{name}")
+        };
+        entries.push(DirEntry {
+            name,
+            relative_path,
+            kind: entry_kind(&item.path()),
+        });
+    }
+    sort_entries(&mut entries);
+    Ok(entries)
+}
+
+pub fn search_directory(repo: &Path, query: &str) -> Result<DirSearch, String> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Err("Enter a name to search for.".into());
+    }
+    if !repo.is_dir() {
+        return Err(format!("Folder does not exist: {}", repo.display()));
+    }
+    let root = repo
+        .canonicalize()
+        .map_err(|error| format!("Could not open {}: {error}", repo.display()))?;
+    let mut entries = Vec::new();
+    let mut seen = HashSet::new();
+    seen.insert(root.clone());
+    let mut stack = vec![(root.clone(), String::new())];
+    let mut visited = 0usize;
+
+    while let Some((dir, relative)) = stack.pop() {
+        let Ok(read) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for item in read {
+            let Ok(item) = item else {
+                continue;
+            };
+            visited += 1;
+            if visited > SEARCH_VISIT_LIMIT {
+                return Ok(finish_search(entries, true));
+            }
+            let name = item.file_name().to_string_lossy().into_owned();
+            if name.is_empty() || name.eq_ignore_ascii_case(".git") {
+                continue;
+            }
+            let path = item.path();
+            let relative_path = if relative.is_empty() {
+                name.clone()
+            } else {
+                format!("{relative}/{name}")
+            };
+            let kind = entry_kind(&path);
+            if name.to_lowercase().contains(&needle) {
+                if entries.len() >= SEARCH_MATCH_LIMIT {
+                    return Ok(finish_search(entries, true));
+                }
+                entries.push(DirEntry {
+                    name: name.clone(),
+                    relative_path: relative_path.clone(),
+                    kind,
+                });
+            }
+            if kind == DirKind::Folder && descend_into(&path, &root, &mut seen) {
+                stack.push((path, relative_path));
+            }
+        }
+    }
+
+    Ok(finish_search(entries, false))
+}
 
 pub fn delete_folder(root: &Path, target: &Path) -> Result<(), String> {
     let target = child_directory(root, target)?;
@@ -265,13 +382,113 @@ fn is_strict_child(root: &Path, target: &Path) -> bool {
     }
 }
 
+/// `git::contained_path` rejects the repository root and `.git`. The explorer
+/// still opens both, so this repeats that canonical-prefix guard without those refusals.
+fn directory_in_repo(repo: &Path, relative: &str) -> Result<PathBuf, String> {
+    if !repo.is_dir() {
+        return Err(format!("Folder does not exist: {}", repo.display()));
+    }
+    let root = repo
+        .canonicalize()
+        .map_err(|error| format!("Could not open {}: {error}", repo.display()))?;
+    let relative = normalize_relative(relative)?;
+    let full = if relative.is_empty() {
+        root.clone()
+    } else {
+        root.join(relative)
+    };
+    let canonical = full
+        .canonicalize()
+        .map_err(|_| format!("Folder does not exist: {}", display_path(&full).display()))?;
+    if !is_same_path(&root, &canonical) && !is_strict_child(&root, &canonical) {
+        return Err("That path is outside the repository.".into());
+    }
+    if !canonical.is_dir() {
+        return Err(format!(
+            "Folder does not exist: {}",
+            display_path(&canonical).display()
+        ));
+    }
+    Ok(canonical)
+}
+
+fn normalize_relative(value: &str) -> Result<String, String> {
+    let relative = value.trim().replace('\\', "/");
+    if relative.is_empty() {
+        return Ok(String::new());
+    }
+    if relative.starts_with('/')
+        || relative.starts_with('~')
+        || relative.chars().any(|ch| ch == '\0' || ch == ':')
+    {
+        return Err("That path is outside the repository.".into());
+    }
+    if relative
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("That path is outside the repository.".into());
+    }
+    Ok(relative)
+}
+
+fn entry_kind(path: &Path) -> DirKind {
+    match path.metadata() {
+        Ok(meta) if meta.is_dir() => DirKind::Folder,
+        _ => DirKind::File,
+    }
+}
+
+fn sort_entries(entries: &mut [DirEntry]) {
+    entries.sort_by(|left, right| {
+        kind_rank(left.kind)
+            .cmp(&kind_rank(right.kind))
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+}
+
+fn kind_rank(kind: DirKind) -> u8 {
+    match kind {
+        DirKind::Folder => 0,
+        DirKind::File => 1,
+    }
+}
+
+fn finish_search(mut entries: Vec<DirEntry>, truncated: bool) -> DirSearch {
+    sort_entries(&mut entries);
+    DirSearch { entries, truncated }
+}
+
+fn descend_into(path: &Path, root: &Path, seen: &mut HashSet<PathBuf>) -> bool {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    let file_type = meta.file_type();
+    if !file_type.is_dir() && !file_type.is_symlink() {
+        return false;
+    }
+    let Ok(canonical) = path.canonicalize() else {
+        return false;
+    };
+    if !canonical.is_dir() {
+        return false;
+    }
+    if !is_same_path(root, &canonical) && !is_strict_child(root, &canonical) {
+        return false;
+    }
+    seen.insert(canonical)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{child_directory, display_path, is_strict_child};
+    use super::{
+        DirKind, child_directory, display_path, is_strict_child, list_directory, search_directory,
+    };
 
     fn scratch(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -321,5 +538,104 @@ mod tests {
             Path::new(r"C:\Work\Repos-other\app")
         ));
         assert!(!is_strict_child(root, Path::new(r"C:\Work")));
+    }
+
+    #[test]
+    fn list_directory_sorts_folders_and_stays_inside() {
+        let root = scratch("list");
+        fs::create_dir_all(root.join("src").join("lib")).unwrap();
+        fs::write(root.join("readme.txt"), "hi").unwrap();
+        fs::write(root.join("src").join("main.ts"), "x").unwrap();
+        fs::create_dir_all(root.join(".git").join("objects")).unwrap();
+        fs::write(root.join(".git").join("config"), "").unwrap();
+        fs::write(
+            root.join(".git").join("objects").join("secret-name.txt"),
+            "",
+        )
+        .unwrap();
+
+        let entries = list_directory(&root, "").unwrap();
+        let src = entries.iter().find(|entry| entry.name == "src").unwrap();
+        let readme = entries
+            .iter()
+            .find(|entry| entry.name == "readme.txt")
+            .unwrap();
+        assert_eq!(src.kind, DirKind::Folder);
+        assert_eq!(readme.kind, DirKind::File);
+        assert!(
+            entries
+                .iter()
+                .position(|entry| entry.name == "src")
+                .unwrap()
+                < entries
+                    .iter()
+                    .position(|entry| entry.name == "readme.txt")
+                    .unwrap()
+        );
+
+        let nested = list_directory(&root, "src").unwrap();
+        assert!(
+            nested.iter().any(|entry| {
+                entry.relative_path == "src/main.ts" && entry.kind == DirKind::File
+            })
+        );
+        assert!(
+            nested
+                .iter()
+                .any(|entry| { entry.name == "lib" && entry.kind == DirKind::Folder })
+        );
+        assert!(list_directory(&root, "..").is_err());
+        assert!(list_directory(&root, "src/../../secret").is_err());
+        assert!(list_directory(&root, ".git").is_ok());
+
+        let found = search_directory(&root, "main").unwrap();
+        assert!(
+            found
+                .entries
+                .iter()
+                .any(|entry| entry.relative_path == "src/main.ts")
+        );
+        let hidden = search_directory(&root, "secret-name").unwrap();
+        assert!(hidden.entries.is_empty());
+        assert!(search_directory(&root, "   ").is_err());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn search_does_not_follow_a_link_outside_the_repo() {
+        let root = scratch("link");
+        let outside = scratch("link-out");
+        fs::write(outside.join("secret.txt"), "nope").unwrap();
+        fs::create_dir_all(root.join("nested")).unwrap();
+        let link = root.join("nested").join("escape");
+        if link_dir(&outside, &link).is_err() {
+            let _ = fs::remove_dir_all(&root);
+            let _ = fs::remove_dir_all(&outside);
+            return;
+        }
+
+        let listed = list_directory(&root, "nested").unwrap();
+        assert!(
+            listed
+                .iter()
+                .any(|entry| entry.name == "escape" && entry.kind == DirKind::Folder)
+        );
+        assert!(list_directory(&root, "nested/escape").is_err());
+        let found = search_directory(&root, "secret").unwrap();
+        assert!(found.entries.is_empty());
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[cfg(windows)]
+    fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_dir(target, link)
+    }
+
+    #[cfg(unix)]
+    fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
     }
 }

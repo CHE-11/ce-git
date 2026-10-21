@@ -7,6 +7,19 @@ export interface TreeNode {
   children: TreeNode[];
 }
 
+export type DirKind = "file" | "folder";
+
+export interface DirEntry {
+  name: string;
+  relativePath: string;
+  kind: DirKind;
+}
+
+export interface DirSearch {
+  entries: DirEntry[];
+  truncated: boolean;
+}
+
 export interface RepoStatus {
   path: string;
   name: string;

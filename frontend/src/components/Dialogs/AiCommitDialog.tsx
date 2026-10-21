@@ -8,7 +8,7 @@ type Props = {
   drafts: AiCommitDraft[];
   generating: boolean;
   busy: boolean;
-  aiAction: "commit" | "push" | null;
+  aiAction: "commit" | "push" | "refresh" | null;
   error: string | null;
   onClose: () => void;
   onChange: (path: string, patch: { message?: string; description?: string }) => void;
@@ -107,7 +107,9 @@ export function AiCommitDialog({
           <span id="ai-review-commit-label">{aiAction === "commit" ? "Committing…" : "Commit All"}</span>
         </Button>
         <Button id="ai-review-commit-push" variant="primary" onClick={onCommitAndPush} disabled={locked} className="bg-emerald-600 hover:bg-emerald-500">
-          <span id="ai-review-commit-push-label">{aiAction === "push" ? "Committing and pushing…" : "Commit All and Push"}</span>
+          <span id="ai-review-commit-push-label">
+            {aiAction === "refresh" ? "Refreshing…" : aiAction === "push" ? "Committing and pushing…" : "Commit All and Push"}
+          </span>
         </Button>
       </div>
     </Dialog>

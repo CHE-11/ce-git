@@ -176,7 +176,7 @@ export function useWorkspace() {
   const [openaiReady, setOpenaiReady] = useState<boolean | null>(null);
   const [generating, setGenerating] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiAction, setAiAction] = useState<"commit" | "push" | null>(null);
+  const [aiAction, setAiAction] = useState<"commit" | "push" | "refresh" | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<AiCommitDraft[]>([]);
   const [pullPaths, setPullPaths] = useState<string[] | null>(null);
@@ -1369,9 +1369,15 @@ export function useWorkspace() {
         setError(failure);
       }
       showSaved(activePathRef.current);
+      if (andPush) {
+        setAiAction("refresh");
+        await finishBatch();
+      }
       setAiOpen(false);
       setDrafts([]);
-      await finishBatch();
+      if (!andPush) {
+        await finishBatch();
+      }
     } catch (caught) {
       setReviewError(messageOf(caught));
     } finally {

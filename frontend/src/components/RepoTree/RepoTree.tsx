@@ -479,7 +479,7 @@ export function RepoTree({
             No repositories match “{searchQuery}”.
           </p>
         ) : filter && hasRepos ? (
-          <p id="repo-tree-filter-empty" className="px-3 py-6 text-sm text-zinc-500">
+          <p id="repo-tree-filter-empty" className="w-full px-3 py-6 text-sm text-center text-zinc-500">
             {filterEmpty[filter]}
           </p>
         ) : (

@@ -217,6 +217,57 @@ mod tests {
     }
 
     #[test]
+    fn status_reports_branch_ahead_and_behind() {
+        let (tmp, seed, clone) = tracking_clone("status-ahead-behind");
+        fs::write(clone.join("LOCAL.md"), "local\n").unwrap();
+        run_git(&clone, &["add", "."]);
+        run_git(&clone, &["commit", "-m", "local"]);
+
+        fs::write(seed.join("REMOTE.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+        run_git(&clone, &["fetch"]);
+
+        let status = status_of(&clone);
+        assert!(status.error.is_none(), "{:?}", status.error);
+        assert_eq!(status.branch, "main");
+        assert!(!status.detached);
+        assert!(status.has_commits);
+        assert_eq!(status.upstream.as_deref(), Some("origin/main"));
+        assert_eq!(status.ahead, 1);
+        assert_eq!(status.behind, 1);
+        assert_eq!(status.default_branch.as_deref(), Some("main"));
+        assert_eq!(status.github, Some(false));
+        assert!(!status.dirty);
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn status_counts_an_untracked_directory_once() {
+        let root = scratch("untracked-dir");
+        let repo = root.join("repo");
+        init_repo(&repo);
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["add", "."]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        let nested = repo.join("scratch");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("a.txt"), "a\n").unwrap();
+        fs::write(nested.join("b.txt"), "b\n").unwrap();
+
+        let status = status_of(&repo);
+        assert!(status.error.is_none(), "{:?}", status.error);
+        assert!(status.dirty);
+        assert_eq!(status.untracked, 1);
+        assert_eq!(status.staged, 0);
+        assert_eq!(status.unstaged, 0);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn clone_repo_copies_a_local_repository() {
         let tmp = scratch("clone");
         let origin = tmp.join("origin");

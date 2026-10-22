@@ -212,6 +212,7 @@ export function useWorkspace() {
   const restoreLastOpenedRef = useRef(false);
   const scanErrorRef = useRef<string | null>(null);
   const interactionEpoch = useRef(0);
+  const diffRequestRef = useRef(0);
   const pointerDownRef = useRef(0);
   const savedCommitsRef = useRef<Record<string, SavedCommit>>({});
   const aiRunRef = useRef(0);
@@ -310,6 +311,11 @@ export function useWorkspace() {
     });
     if (restoring && nextActive && !present(currentActive)) {
       anchorRef.current = nextActive;
+    }
+    if (currentActive === null ? nextActive !== null : nextActive === null || !pathEquals(currentActive, nextActive)) {
+      diffRequestRef.current += 1;
+      setDiff(null);
+      setDiffLoading(nextActive !== null);
     }
     activePathRef.current = nextActive;
     setActivePath(nextActive);
@@ -596,25 +602,33 @@ export function useWorkspace() {
 
   useEffect(() => {
     if (!activePath) {
+      diffRequestRef.current += 1;
       setDiff(null);
+      setDiffLoading(false);
       return;
     }
+    const request = diffRequestRef.current + 1;
+    diffRequestRef.current = request;
+    const requested = activePath;
     let cancelled = false;
+    setDiff(null);
     setDiffLoading(true);
-    void repoDiff(activePath)
+    void repoDiff(requested)
       .then((next) => {
-        if (!cancelled) {
-          setDiff(next);
+        if (cancelled || diffRequestRef.current !== request || !pathEquals(activePathRef.current ?? "", requested)) {
+          return;
         }
+        setDiff(next);
       })
       .catch((caught) => {
-        if (!cancelled) {
-          setDiff(null);
-          setError(messageOf(caught));
+        if (cancelled || diffRequestRef.current !== request) {
+          return;
         }
+        setDiff(null);
+        setError(messageOf(caught));
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!cancelled && diffRequestRef.current === request) {
           setDiffLoading(false);
         }
       });
@@ -752,6 +766,7 @@ export function useWorkspace() {
     }
     const epoch = interactionEpoch.current;
     const activeAtStart = activePathRef.current;
+    const diffRequestAtStart = diffRequestRef.current;
 
     const run = (async () => {
       let rows: RepoStatus[];
@@ -771,7 +786,12 @@ export function useWorkspace() {
       }
       try {
         const next = await repoDiff(active);
-        if (!pollStillCurrent(epoch, paths) || !activePathRef.current || !pathEquals(activePathRef.current, active)) {
+        if (
+          diffRequestRef.current !== diffRequestAtStart ||
+          !pollStillCurrent(epoch, paths) ||
+          !activePathRef.current ||
+          !pathEquals(activePathRef.current, active)
+        ) {
           return;
         }
         setDiff((current) => (diffKey(current) === diffKey(next) ? current : next));
@@ -854,6 +874,11 @@ export function useWorkspace() {
     }
     const previous = activePathRef.current;
     const opened = next.length === 0 ? null : next.includes(path) ? path : previous && next.includes(previous) ? previous : next[0];
+    if (previous === null ? opened !== null : opened === null || !pathEquals(previous, opened)) {
+      diffRequestRef.current += 1;
+      setDiff(null);
+      setDiffLoading(opened !== null);
+    }
     selectedPathsRef.current = next;
     activePathRef.current = opened;
     setSelectedPaths(next);
@@ -884,6 +909,11 @@ export function useWorkspace() {
     if (opened) {
       anchorRef.current = opened;
     }
+    if (previous === null ? opened !== null : opened === null || !pathEquals(previous, opened)) {
+      diffRequestRef.current += 1;
+      setDiff(null);
+      setDiffLoading(opened !== null);
+    }
     selectedPathsRef.current = next;
     activePathRef.current = opened;
     setSelectedPaths(next);
@@ -892,10 +922,13 @@ export function useWorkspace() {
 
   const clearSelection = () => {
     interactionEpoch.current += 1;
+    diffRequestRef.current += 1;
     selectedPathsRef.current = [];
     activePathRef.current = null;
     setSelectedPaths([]);
     setActivePath(null);
+    setDiff(null);
+    setDiffLoading(false);
   };
 
   const persistRemoved = async (paths: string[]) => {

@@ -169,10 +169,18 @@ async fn spawn_git<T: Send + 'static>(
         .map_err(|error| error.to_string())
 }
 
+fn status_concurrency(count: usize) -> usize {
+    let cpus = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(8);
+    cpus.clamp(8, 32).min(count.max(1))
+}
+
 fn repo_statuses_blocking(paths: Vec<String>) -> Vec<RepoStatus> {
+    let width = status_concurrency(paths.len());
     std::thread::scope(|scope| {
         let mut statuses = Vec::with_capacity(paths.len());
-        for chunk in paths.chunks(8) {
+        for chunk in paths.chunks(width) {
             let handles: Vec<_> = chunk
                 .iter()
                 .map(|path| {

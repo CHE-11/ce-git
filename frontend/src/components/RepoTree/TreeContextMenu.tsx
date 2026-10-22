@@ -63,6 +63,20 @@ export function TreeContextMenu({
       scrollParentId="repo-tree-scroll"
       onClose={onClose}
     >
+
+      {isRepo ? (
+        <>
+          <ContextMenuItem
+            id="tree-context-view-repo"
+            icon={<FolderTree id="tree-context-view-repo-glyph" aria-hidden="true" />}
+            label="Open"
+            title="Browse this repository's files"
+            onClick={onViewRepo}
+          />
+          <ContextMenuSeparator id="tree-context-separator-view-repo" />
+        </>
+      ) : null}
+
       {editors.map((editor) => (
         <ContextMenuItem
           id={`tree-context-open-${editor.id}`}
@@ -90,15 +104,6 @@ export function TreeContextMenu({
 
       {editors.length > 0 ? <ContextMenuSeparator id="tree-context-separator-system" /> : null}
 
-      {isRepo ? (
-        <ContextMenuItem
-          id="tree-context-view-repo"
-          icon={<FolderTree id="tree-context-view-repo-glyph" aria-hidden="true" />}
-          label="Open"
-          title="Browse this repository's files"
-          onClick={onViewRepo}
-        />
-      ) : null}
       {isRepo ? (
         <ContextMenuItem
           id="tree-context-terminal"

@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Install",
+      "label": "Install Deps",
       "type": "shell",
       "command": "pnpm install",
       "options": {
@@ -19,7 +19,7 @@
       }
     },
     {
-      "label": "Run",
+      "label": "Run Dev",
       "type": "shell",
       "command": "pnpm tauri dev",
       "options": {
@@ -80,6 +80,27 @@
         "statusbar": {
           "hide": false,
           "color": "#35f835"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Install/Run App",
+      "type": "process",
+      "command": "${workspaceFolder}/src-tauri/target/release/ce-git.exe",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/src-tauri/target/release",
+        "statusbar": {
+          "hide": false,
+          "color": "#1afbff"
         }
       },
       "problemMatcher": [],

@@ -405,6 +405,20 @@ function ExplorerEntry({
     onActivate(entry);
   };
 
+  const onClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    onSelect(entry);
+    if (folder && showChildren && event.detail === 1) {
+      onToggle(entry);
+    }
+  };
+
+  const onDoubleClick = () => {
+    if (folder && showChildren) {
+      return;
+    }
+    onActivate(entry);
+  };
+
   const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -426,8 +440,8 @@ function ExplorerEntry({
           targeted && "ring-1 ring-inset ring-sky-800",
         )}
         style={{ paddingLeft }}
-        onClick={() => onSelect(entry)}
-        onDoubleClick={() => onActivate(entry)}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
       >

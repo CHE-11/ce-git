@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { ChevronsDown, ChevronsUp, Search } from "lucide-react";
+import { ChevronsDown, ChevronsUp, Search, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -174,6 +174,8 @@ export function RepoTree({
   filter,
   onFilter,
 }: RepoTreeProps) {
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<TreeMenu | null>(null);
   const [pending, setPending] = useState<TreeAction | null>(null);
@@ -313,6 +315,16 @@ export function RepoTree({
     }
   }
 
+  function handleClearSearch() {
+    setQuery("");
+    if (filter) onFilter(filter); // if there is a filter, run the filters again
+    searchInputRef.current?.focus();
+  }
+
+  function handleClearFilter() {
+    onFilter(null);
+  }
+
   return (
     <aside
       id="repo-tree-panel"
@@ -321,19 +333,30 @@ export function RepoTree({
     >
       <form
         id="repo-tree-search"
+        autoComplete="off"
         className="flex items-center gap-1.5 border-b border-zinc-800 px-2 py-1.5"
         onSubmit={(event) => event.preventDefault()}
       >
         <Search id="repo-tree-search-icon" className="size-3.5 shrink-0 text-zinc-500" />
         <input
+          ref={searchInputRef}
           id="repo-tree-search-input"
           type="input"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search repositories"
           aria-label="Search repositories"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
         />
+        {query ? (
+          <Button id="clear-filter-button" variant="ghost" size="sm" onClick={handleClearSearch}>
+            <X size={20} className="shrink-0 text-zinc-500" />
+          </Button>
+        ) : null}
       </form>
 
       <div id="repo-tree-filters" className="flex flex-wrap items-center justify-between gap-0.5 border-b border-zinc-800 px-1.5 select-none h-6.75">
@@ -375,11 +398,8 @@ export function RepoTree({
             onClick={() => toggleFilter("unpublished")}
           />
         </div>
-        {(filter || query) ? (
-          <Button id="clear-filter-button" variant="destructive" size="xs" onClick={() => {
-            onFilter(null);
-            setQuery("");
-          }}>
+        {filter ? (
+          <Button id="clear-filter-button" variant="destructive" size="xs" onClick={handleClearFilter}>
             <span id="clear-filter-label">Clear</span>
           </Button>
         ) : null}

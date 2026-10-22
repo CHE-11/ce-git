@@ -106,7 +106,8 @@
       "problemMatcher": [],
       "presentation": {
         "panel": "dedicated",
-        "reveal": "always"
+        "reveal": "always",
+        "close": true
       }
     },
     // macOS build is disabled for now as I use windows only for development
@@ -121,7 +122,7 @@
     //       "color": "#46c227"
     //     }
     //   },
-    //   "problemMatcher": [],
+    //   "problemMatcher": []
     //   "presentation": {
     //     "panel": "dedicated",
     //     "reveal": "always"

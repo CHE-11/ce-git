@@ -49,7 +49,7 @@
     {
       "label": "Bump + Build",
       "type": "shell",
-      "command": "pnpm version:bump; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; pnpm build:exe",
+      "command": "pnpm build:bump",
       "group": {
         "kind": "build",
         "isDefault": true

@@ -7,6 +7,7 @@
     "build": "pnpm --dir frontend build",
     "version:bump": "node scripts/bump-version.mjs",
     "build:exe": "node scripts/build-exe.mjs",
+    "build:bump": "node scripts/bump-version.mjs && node scripts/build-exe.mjs",
     "build:app": "node scripts/build-macos.mjs",
     "tauri": "tauri"
   },

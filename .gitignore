@@ -27,3 +27,14 @@ dist-ssr
 .env.test.local
 .env.production.local
 .env.*
+
+# Tauri
+*/target/*
+*/gen/schemas
+
+# Allow the release executable to be synced.
+# Git will not re-include a file inside a directory ignored with a trailing slash,
+# so the release directory stays visible and only this binary is kept.
+!src-tauri/target/release/
+src-tauri/target/release/*
+!src-tauri/target/release/ce-git.exe

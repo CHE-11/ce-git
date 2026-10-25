@@ -136,7 +136,7 @@ fn child_directory(root: &Path, target: &Path) -> Result<PathBuf, String> {
         ));
     }
     if !target.exists() {
-        return Err(format!("Folder does not exist: {}", target.display()));
+        return Err(format!("Path does not exist: {}", target.display()));
     }
 
     let root = root
@@ -150,10 +150,7 @@ fn child_directory(root: &Path, target: &Path) -> Result<PathBuf, String> {
         return Err("The workspace folder cannot be deleted.".into());
     }
     if !is_strict_child(&root, &target) {
-        return Err("That folder is outside the workspace.".into());
-    }
-    if !target.is_dir() {
-        return Err("Only folders in the repository tree can be deleted.".into());
+        return Err("That path is outside the workspace.".into());
     }
 
     Ok(target)
@@ -519,9 +516,14 @@ mod tests {
         fs::create_dir_all(&child).unwrap();
         let sibling = scratch("delete-sibling");
 
+        let file = child.join("note.txt");
+        fs::write(&file, "x").unwrap();
+
         assert!(child_directory(&root, &child).is_ok());
+        assert!(child_directory(&root, &file).is_ok());
         assert!(child_directory(&root, &root).is_err());
         assert!(child_directory(&root, &sibling).is_err());
+        assert!(child_directory(&root, &sibling.join("note.txt")).is_err());
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&sibling);

@@ -210,8 +210,12 @@ export function listGithubRepos(account: string) {
   return invoke<GithubRepos>("list_github_repos", { account });
 }
 
-export function deleteFolder(root: string, path: string) {
+export function deletePath(root: string, path: string) {
   return invoke<void>("delete_path", { root, path });
+}
+
+export function deleteFolder(root: string, path: string) {
+  return deletePath(root, path);
 }
 
 export type IgnoreKind = "file" | "folder" | "extension";

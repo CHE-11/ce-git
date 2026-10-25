@@ -1,12 +1,14 @@
 import { ArrowLeft, ChevronDown, ChevronRight, File, Folder, FolderOpen, Loader2, Search } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import type { DirEntry } from "../../../../types/git";
 import { absolutePath, parentDirectories } from "../../lib/changes";
 import { cn } from "../../lib/cn";
 import { fileOpenMode, type EditorId } from "../../lib/editors";
-import { listDirectory, searchDirectory, type ChangeOpenMode } from "../../lib/git-client";
+import { deletePath, listDirectory, searchDirectory, type ChangeOpenMode } from "../../lib/git-client";
 import { baseName, domId, messageOf } from "../../lib/tree";
 import { Button } from "../Button";
+import { Dialog } from "../Dialogs/Dialog";
 import { FileExplorerContextMenu } from "./FileExplorerContextMenu";
 
 type FileExplorerProps = {
@@ -58,7 +60,11 @@ export function FileExplorer({
   const [searchTruncated, setSearchTruncated] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DirEntry | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const repoRef = useRef(repoPath);
+  const deletingRef = useRef(false);
   repoRef.current = repoPath;
   const browsing = query.trim().length === 0;
   const name = baseName(repoPath);
@@ -71,6 +77,10 @@ export function FileExplorer({
     setExpanded({});
     setSelectedPath(null);
     setMenu(null);
+    setPendingDelete(null);
+    setActionError(null);
+    deletingRef.current = false;
+    setDeleting(false);
     void listDirectory(repoPath, "")
       .then((rows) => {
         if (!cancelled) {
@@ -184,6 +194,50 @@ export function FileExplorer({
     setMenu({ entry, x, y });
   }
 
+  async function confirmDelete() {
+    if (!pendingDelete || deletingRef.current) {
+      return;
+    }
+    const entry = pendingDelete;
+    const repo = repoPath;
+    deletingRef.current = true;
+    setDeleting(true);
+    setActionError(null);
+    try {
+      await deletePath(repo, absolutePath(repo, entry.relativePath));
+      if (repoRef.current !== repo) {
+        return;
+      }
+      setPendingDelete(null);
+      setExpanded((current) => withoutPath(current, entry.relativePath));
+      setSelectedPath((current) => (pathWithin(current, entry.relativePath) ? null : current));
+      setSearchEntries((current) => current?.filter((row) => !pathWithin(row.relativePath, entry.relativePath)) ?? null);
+      const parent = parentDirectories(entry.relativePath)[0] ?? "";
+      try {
+        const rows = await listDirectory(repo, parent);
+        if (repoRef.current !== repo) {
+          return;
+        }
+        setEntries((current) => ({ ...withoutPath(current, entry.relativePath), [parent]: rows }));
+      } catch (caught) {
+        if (repoRef.current !== repo) {
+          return;
+        }
+        setEntries((current) => withoutPath(current, entry.relativePath));
+        setActionError(messageOf(caught));
+      }
+    } catch (caught) {
+      if (repoRef.current === repo) {
+        setActionError(messageOf(caught));
+      }
+    } finally {
+      deletingRef.current = false;
+      if (repoRef.current === repo) {
+        setDeleting(false);
+      }
+    }
+  }
+
   const handlers: EntryHandlers = {
     selectedPath,
     menuPath: menu?.entry.relativePath ?? null,
@@ -239,6 +293,11 @@ export function FileExplorer({
         aria-busy={rootLoading || searching}
         className="min-h-0 flex-1 overflow-auto py-1 pr-2 pl-1"
       >
+        {actionError ? (
+          <p id="file-explorer-action-error" className="px-3 py-2 text-sm text-red-400">
+            {actionError}
+          </p>
+        ) : null}
         {browsing && listError ? (
           <p id="file-explorer-error" className="px-3 py-2 text-sm text-red-400">
             {listError}
@@ -320,11 +379,65 @@ export function FileExplorer({
             setMenu(null);
             onOpenFile(entry.relativePath, "default");
           }}
+          onDelete={() => {
+            setPendingDelete(menuEntry);
+            setMenu(null);
+          }}
           onClose={() => setMenu(null)}
         />
       ) : null}
+      {pendingDelete
+        ? createPortal(
+            <Dialog
+              id="delete-explorer-dialog"
+              title={`Delete ${pendingDelete.name}`}
+              open
+              onClose={() => {
+                if (!deleting) {
+                  setPendingDelete(null);
+                }
+              }}
+              onEnter={() => void confirmDelete()}
+            >
+              <p id="delete-explorer-copy" className="text-sm text-zinc-300">
+                {pendingDelete.kind === "folder"
+                  ? "Move this folder to the Recycle Bin, including everything inside it."
+                  : "Move this file to the Recycle Bin."}
+              </p>
+              <p id="delete-explorer-path" className="mt-2 break-all font-mono text-xs text-zinc-500">
+                {absolutePath(repoPath, pendingDelete.relativePath)}
+              </p>
+              <div id="delete-explorer-actions" className="mt-4 flex justify-end gap-2">
+                <Button id="delete-explorer-cancel" variant="ghost" disabled={deleting} onClick={() => setPendingDelete(null)}>
+                  <span id="delete-explorer-cancel-label">Cancel</span>
+                </Button>
+                <Button id="delete-explorer-confirm" variant="destructive" disabled={deleting} onClick={() => void confirmDelete()}>
+                  <span id="delete-explorer-confirm-label">{deleting ? "Deleting…" : "Delete"}</span>
+                </Button>
+              </div>
+            </Dialog>,
+            document.body,
+          )
+        : null}
     </section>
   );
+}
+
+function pathWithin(path: string | null, root: string) {
+  if (!path) {
+    return false;
+  }
+  return path === root || path.startsWith(`${root}/`);
+}
+
+function withoutPath<T>(current: Record<string, T>, root: string) {
+  const next = { ...current };
+  for (const key of Object.keys(next)) {
+    if (pathWithin(key, root)) {
+      delete next[key];
+    }
+  }
+  return next;
 }
 
 function terminalDirectory(repoPath: string, entry: DirEntry) {

@@ -1,4 +1,4 @@
-import { AppWindow, Copy, FolderSearch, Terminal, Text } from "lucide-react";
+import { AppWindow, Copy, FolderSearch, Terminal, Text, Trash2 } from "lucide-react";
 import type { DirEntry } from "../../../../types/git";
 import { fileManagerLabel } from "../../lib/changes";
 import { editorTargetTitle, editorsForMenu, openInLabel, type EditorId } from "../../lib/editors";
@@ -15,6 +15,7 @@ type FileExplorerContextMenuProps = {
   onOpenTerminal: () => void;
   onReveal: () => void;
   onOpenProgram: () => void;
+  onDelete: () => void;
   onClose: () => void;
 };
 
@@ -28,6 +29,7 @@ export function FileExplorerContextMenu({
   onOpenTerminal,
   onReveal,
   onOpenProgram,
+  onDelete,
   onClose,
 }: FileExplorerContextMenuProps) {
   const folder = entry.kind === "folder";
@@ -105,6 +107,16 @@ export function FileExplorerContextMenu({
           />
         </>
       )}
+
+      <ContextMenuSeparator id="file-explorer-menu-separator-delete" />
+      <ContextMenuItem
+        id="file-explorer-menu-delete"
+        icon={<Trash2 id="file-explorer-menu-delete-glyph" aria-hidden="true" />}
+        label="Delete"
+        title={folder ? "Move this folder to the Recycle Bin" : "Move this file to the Recycle Bin"}
+        danger
+        onClick={onDelete}
+      />
     </ContextMenu>
   );
 }

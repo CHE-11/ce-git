@@ -38,6 +38,7 @@ import { AISettingsTab } from "./AISettingsTab";
 import { AppSettingsTab } from "./AppSettingsTab";
 import { GitSettingsTab } from "./GitSettingsTab";
 import { IgnoreSettingsTab } from "./IgnoreSettingsTab";
+import { SettingsTabSkeleton } from "./SettingsTabSkeleton";
 
 const SETTINGS_TABS = [
   { id: "app", label: "App" },
@@ -535,7 +536,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     }
   };
 
-  const showSave = !loading && (tab !== "git" || gitAvailable);
+  const showSave = loading || tab !== "git" || gitAvailable;
 
   const revealExe = async () => {
     if (!exePath) {
@@ -580,11 +581,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         })}
       </div>
 
-      {loading ? (
-        <p id="app-settings-loading" className="mt-4 text-sm text-zinc-400">
-          Loading settings…
-        </p>
-      ) : null}
+      {loading ? <SettingsTabSkeleton tab={tab} /> : null}
 
       {!loading && tab === "app" ? (
         <AppSettingsTab
@@ -709,7 +706,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
             <span id="app-settings-cancel-label">Cancel</span>
           </Button>
           {showSave ? (
-            <Button id="app-settings-save" type="submit" form={panelId(tab)} variant="primary" disabled={busy || (tab === "ai" && loadingModels)}>
+            <Button id="app-settings-save" type="submit" form={panelId(tab)} variant="primary" disabled={loading || busy || (tab === "ai" && loadingModels)}>
               <span id="app-settings-save-label">{saving ? "Saving…" : "Save"}</span>
             </Button>
           ) : null}

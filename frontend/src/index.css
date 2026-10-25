@@ -463,3 +463,42 @@ textarea {
   width: 0;
   height: 0;
 }
+
+@keyframes settings-skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.settings-skeleton-bone,
+.settings-skeleton-lines {
+  background-color: var(--color-zinc-800);
+  background-image: linear-gradient(
+    100deg,
+    var(--color-zinc-800) 0%,
+    var(--color-zinc-800) 38%,
+    var(--color-zinc-700) 50%,
+    var(--color-zinc-800) 62%,
+    var(--color-zinc-800) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: settings-skeleton-shimmer 1.45s ease-in-out infinite;
+}
+
+.settings-skeleton-lines {
+  -webkit-mask-image: repeating-linear-gradient(to bottom, #000 0, #000 0.42lh, transparent 0.42lh, transparent 1lh);
+  mask-image: repeating-linear-gradient(to bottom, #000 0, #000 0.42lh, transparent 0.42lh, transparent 1lh);
+  -webkit-mask-position: 0 0.29lh;
+  mask-position: 0 0.29lh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-skeleton-bone,
+  .settings-skeleton-lines {
+    animation: none;
+  }
+}

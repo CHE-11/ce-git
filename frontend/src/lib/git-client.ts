@@ -39,8 +39,8 @@ export function saveGitSettings(settings: {
   return invoke<void>("save_git_settings", settings);
 }
 
-export function gitSignIn() {
-  return invoke<GitSettings>("git_sign_in");
+export function gitSignIn(username: string) {
+  return invoke<GitSettings>("git_sign_in", { username });
 }
 
 export function gitSignOut(account: string) {

@@ -89,6 +89,23 @@
       }
     },
     {
+      "label": "Publish",
+      "type": "shell",
+      "command": "pnpm publish:exe",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "statusbar": {
+          "hide": false,
+          "color": "#c084fc"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
       "label": "Install/Run App",
       "type": "process",
       "command": "${workspaceFolder}/src-tauri/target/release/ce-git.exe",

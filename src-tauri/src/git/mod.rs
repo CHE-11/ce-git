@@ -69,7 +69,7 @@ pub use commit::commit_repo;
 pub use diff::{RepoDiff, collect_ai_context, repo_diff};
 pub use discover::{TreeNode, discover};
 pub use github::GithubRepos;
-pub(crate) use github::{fetch_github_repos, prepare_github_repos};
+pub(crate) use github::{clone_url_for_account, fetch_github_repos, prepare_github_repos};
 pub use graph::{RepoGraph, repo_graph};
 pub use search::{RepoSearchResult, search_repos};
 pub use settings::{

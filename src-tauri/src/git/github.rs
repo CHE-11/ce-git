@@ -213,32 +213,81 @@ fn github_token(account: &str) -> Result<String, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_password(&stdout).ok_or_else(|| {
-        format!("No GitHub credentials are stored for {account}. Sign in from Settings.")
-    })
+    credential_for_account(&stdout, account)
 }
 
-fn parse_password(stdout: &str) -> Option<String> {
+fn credential_for_account(stdout: &str, account: &str) -> Result<String, String> {
+    let mut username = None;
+    let mut password = None;
     for line in stdout.lines() {
-        let Some(value) = line.trim().strip_prefix("password=") else {
-            continue;
-        };
-        if value.is_empty()
-            || value
-                .chars()
-                .any(|character| character.is_whitespace() || character.is_control())
-        {
-            return None;
+        let line = line.trim();
+        if let Some(value) = line.strip_prefix("username=") {
+            if username.is_none() && !value.is_empty() {
+                username = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("password=") {
+            if password.is_some() {
+                continue;
+            }
+            if !valid_token(value) {
+                return Err(missing_credential(account));
+            }
+            password = Some(value.to_string());
         }
-        if !value
+    }
+    let Some(password) = password else {
+        return Err(missing_credential(account));
+    };
+    let Some(username) = username else {
+        return Err("Git did not say which GitHub account this credential belongs to.".into());
+    };
+    if !username.eq_ignore_ascii_case(account) {
+        return Err(format!(
+            "Git saved a credential for {username}, not {account}."
+        ));
+    }
+    Ok(password)
+}
+
+fn missing_credential(account: &str) -> String {
+    format!("No GitHub credentials are stored for {account}. Sign in from Settings.")
+}
+
+fn valid_token(value: &str) -> bool {
+    !value.is_empty()
+        && !value
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+        && value
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || character == '_')
-        {
-            return None;
-        }
-        return Some(value.to_string());
+}
+
+pub(crate) fn clone_url_for_account(url: &str, account: &str) -> String {
+    let account = account.trim();
+    if account.is_empty() {
+        return url.to_string();
     }
-    None
+    let Some(rest) = url.strip_prefix("https://github.com/") else {
+        return url.to_string();
+    };
+    if rest.is_empty() || rest.contains(['@', '?', '#', ' ', '\\']) {
+        return url.to_string();
+    }
+    format!("https://{}@github.com/{rest}", encode_account(account))
+}
+
+fn encode_account(account: &str) -> String {
+    let mut encoded = String::new();
+    for byte in account.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => {
+                encoded.push(byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
 }
 
 fn parse_repo_page(body: &str) -> Result<RepoPage, String> {
@@ -345,18 +394,49 @@ fn redact_credential_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiRepo, accept_repo, api_error, parse_password, parse_repo_page, redact_credential_text,
-        resolve_account,
+        ApiRepo, accept_repo, api_error, clone_url_for_account, credential_for_account,
+        parse_repo_page, redact_credential_text, resolve_account,
     };
 
     #[test]
     fn reads_a_github_token_from_credential_fill() {
         let stdout =
             "protocol=https\nhost=github.com\nusername=octocat\npassword=gho_secretvalue\n";
-        assert_eq!(parse_password(stdout).as_deref(), Some("gho_secretvalue"));
-        assert!(parse_password("password=\n").is_none());
-        assert!(parse_password("password=has spaces\n").is_none());
-        assert!(parse_password("password=gho_secret\nmore\n").is_some());
+        assert_eq!(
+            credential_for_account(stdout, "octocat").as_deref(),
+            Ok("gho_secretvalue")
+        );
+        assert_eq!(
+            credential_for_account(stdout, "Octocat").as_deref(),
+            Ok("gho_secretvalue")
+        );
+        let mismatch = credential_for_account(stdout, "other").unwrap_err();
+        assert!(mismatch.contains("octocat"));
+        assert!(mismatch.contains("not other"));
+        assert!(!mismatch.contains("gho_"));
+        assert!(credential_for_account("password=\n", "octocat").is_err());
+        assert!(credential_for_account("password=has spaces\n", "octocat").is_err());
+        assert!(credential_for_account("password=gho_secret\nmore\n", "octocat").is_err());
+        assert!(
+            credential_for_account("username=octocat\npassword=gho_secret\nmore\n", "octocat")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn clone_url_names_the_selected_account() {
+        assert_eq!(
+            clone_url_for_account("https://github.com/octocat/hello.git", "alice"),
+            "https://alice@github.com/octocat/hello.git"
+        );
+        assert_eq!(
+            clone_url_for_account("https://github.com/octocat/hello.git", "alice@contoso"),
+            "https://alice%40contoso@github.com/octocat/hello.git"
+        );
+        assert_eq!(
+            clone_url_for_account("https://github.com/octocat/hello.git", "  "),
+            "https://github.com/octocat/hello.git"
+        );
     }
 
     #[test]

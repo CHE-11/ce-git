@@ -84,6 +84,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const [autocrlf, setAutocrlf] = useState("");
   const [accounts, setAccounts] = useState<string[]>([]);
   const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [gitUsername, setGitUsername] = useState("");
   const [gitError, setGitError] = useState<string | null>(null);
   const [gitNotice, setGitNotice] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
@@ -363,6 +364,13 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     if (actionRef.current) {
       return;
     }
+    const requested = gitUsername.trim();
+    if (accounts.length > 0 && !requested) {
+      setGitError("Enter the GitHub username to add.");
+      setGitNotice(null);
+      return;
+    }
+    const before = accounts;
     actionRef.current = true;
     signingInRef.current = true;
     setSigningIn(true);
@@ -370,17 +378,29 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     setGitError(null);
     setGitNotice(null);
     try {
-      const next = await gitSignIn();
+      const next = await gitSignIn(requested);
       if (!mountedRef.current) {
         return;
       }
       applyAccount(next);
-      setGitNotice(next.accounts.length > 0 ? "Signed in." : "Git Credential Manager closed without a GitHub account.");
+      setGitUsername("");
+      setGitNotice(signInNotice(before, next.accounts, requested));
     } catch (caught) {
       if (!mountedRef.current) {
         return;
       }
       const message = messageOf(caught);
+      try {
+        const latest = await gitSettings();
+        if (mountedRef.current) {
+          applyAccount(latest);
+        }
+      } catch {
+        // Keep the sign-in error when settings cannot be reloaded.
+      }
+      if (!mountedRef.current) {
+        return;
+      }
       if (message.toLowerCase().includes("cancelled")) {
         setGitNotice("Sign-in was cancelled.");
       } else {
@@ -614,6 +634,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           signingIn={signingIn}
           cancelling={cancelling}
           signingOut={signingOut}
+          username={gitUsername}
           name={name}
           email={email}
           defaultBranch={defaultBranch}
@@ -624,6 +645,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           onEmailChange={setEmail}
           onDefaultBranchChange={setDefaultBranch}
           onAutocrlfChange={setAutocrlf}
+          onUsernameChange={setGitUsername}
           onSignIn={() => void signIn()}
           onCancelSignIn={cancelSignIn}
           onSignOut={(account) => void signOut(account)}
@@ -695,6 +717,27 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
       </div>
     </Dialog>
   );
+}
+
+function signInNotice(before: string[], after: string[], requested: string) {
+  const requestedMatch = after.find((account) => account.toLowerCase() === requested.toLowerCase());
+  if (requested && requestedMatch) {
+    const already = before.some((account) => account.toLowerCase() === requested.toLowerCase());
+    return already ? `Signed in again as ${requestedMatch}.` : `Signed in as ${requestedMatch}.`;
+  }
+  if (after.length === 0) {
+    return "Git Credential Manager closed without a GitHub account.";
+  }
+  const added = after.filter(
+    (account) => !before.some((known) => known.toLowerCase() === account.toLowerCase()),
+  );
+  if (added.length === 0) {
+    return "GitHub reused the account already saved. Enter the other GitHub username and switch to that account in the browser.";
+  }
+  if (added.length === 1) {
+    return `Signed in as ${added[0]}.`;
+  }
+  return `Signed in as ${added.join(", ")}.`;
 }
 
 function applyModels(

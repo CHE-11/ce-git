@@ -76,7 +76,7 @@ pub fn save_git_settings(
     Ok(())
 }
 
-pub fn git_sign_in() -> Result<GitSettings, String> {
+pub fn git_sign_in(username: String) -> Result<GitSettings, String> {
     if !git_available() {
         return Err("git was not found on PATH.".into());
     }
@@ -86,31 +86,48 @@ pub fn git_sign_in() -> Result<GitSettings, String> {
                 .into(),
         );
     }
+    let requested = match username.trim() {
+        "" => None,
+        value => Some(clean_account(value)?),
+    };
     if !begin_sign_in() {
         return Err("Sign-in is already in progress.".into());
     }
 
-    let result = run_sign_in();
+    let before = github_accounts().unwrap_or_default();
+    let result = run_sign_in(requested.as_deref());
     let cancelled = finish_sign_in();
     match result {
-        Ok(settings) => Ok(settings),
+        Ok(()) => confirm_sign_in(requested.as_deref(), &before),
         Err(_) if cancelled => Err("Sign-in was cancelled.".into()),
         Err(error) => Err(error),
     }
 }
 
-fn run_sign_in() -> Result<GitSettings, String> {
+fn confirm_sign_in(requested: Option<&str>, before: &[String]) -> Result<GitSettings, String> {
+    let settings = read_git_settings()?;
+    let Some(requested) = requested else {
+        return Ok(settings);
+    };
+    if let Some(error) = settings.accounts_error.clone() {
+        return Err(error);
+    }
+    if stored_account(&settings.accounts, requested).is_none() {
+        return Err(sign_in_failure(requested, before, &settings.accounts));
+    }
+    Ok(settings)
+}
+
+fn run_sign_in(username: Option<&str>) -> Result<(), String> {
     ensure_helper()?;
     if sign_in_cancelled() {
         return Err("Sign-in was cancelled.".into());
     }
 
     let dir = work_dir()?;
-    let mut child = spawn_git(
-        &dir,
-        &["credential-manager", "github", "login", "--browser"],
-        true,
-    )?;
+    let args = login_args(username);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut child = spawn_git(&dir, &arg_refs, true)?;
     if !set_sign_in_pid(child.id()) {
         let _ = child.kill();
         let _ = child.wait();
@@ -123,9 +140,57 @@ fn run_sign_in() -> Result<GitSettings, String> {
             .map_err(|error| format!("Sign-in failed: {error}"))?,
     );
     if output.success() {
-        return read_git_settings();
+        return Ok(());
     }
     Err(failure("Sign-in", &output))
+}
+
+fn login_args(username: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "credential-manager".to_string(),
+        "github".to_string(),
+        "login".to_string(),
+        "--browser".to_string(),
+    ];
+    if let Some(username) = username.filter(|value| !value.is_empty()) {
+        args.push("--username".to_string());
+        args.push(username.to_string());
+    }
+    args
+}
+
+fn stored_account<'a>(accounts: &'a [String], requested: &str) -> Option<&'a str> {
+    accounts
+        .iter()
+        .find(|account| account.eq_ignore_ascii_case(requested))
+        .map(String::as_str)
+}
+
+fn sign_in_failure(requested: &str, before: &[String], after: &[String]) -> String {
+    let newcomers: Vec<&str> = after
+        .iter()
+        .filter(|account| {
+            !before
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(account))
+        })
+        .map(String::as_str)
+        .collect();
+    if newcomers.is_empty() {
+        format!(
+            "GitHub did not sign in as {requested}. Switch to that account in the browser and authorize Git Credential Manager."
+        )
+    } else if newcomers.len() == 1 {
+        format!(
+            "GitHub signed in as {}, not {requested}. Switch to {requested} in the browser and try again.",
+            newcomers[0]
+        )
+    } else {
+        format!(
+            "GitHub signed in as {}, not {requested}. Switch to {requested} in the browser and try again.",
+            newcomers.join(", ")
+        )
+    }
 }
 
 pub fn git_sign_out(account: String) -> Result<GitSettings, String> {
@@ -457,8 +522,49 @@ fn is_token(value: &str) -> bool {
 mod tests {
     use super::{
         clean_autocrlf, clean_branch, clean_email, clean_name, helper_line_uses_manager,
-        parse_accounts, redact_secrets,
+        login_args, parse_accounts, redact_secrets, sign_in_failure, stored_account,
     };
+
+    #[test]
+    fn login_targets_the_requested_github_user() {
+        assert_eq!(
+            login_args(None),
+            vec![
+                "credential-manager".to_string(),
+                "github".to_string(),
+                "login".to_string(),
+                "--browser".to_string(),
+            ]
+        );
+        assert_eq!(
+            login_args(Some("alice")),
+            vec![
+                "credential-manager".to_string(),
+                "github".to_string(),
+                "login".to_string(),
+                "--browser".to_string(),
+                "--username".to_string(),
+                "alice".to_string(),
+            ]
+        );
+        assert_eq!(login_args(Some("")), login_args(None));
+    }
+
+    #[test]
+    fn requested_account_must_be_stored() {
+        let accounts = vec!["CHE-11".to_string(), "other".to_string()];
+        assert_eq!(stored_account(&accounts, "che-11"), Some("CHE-11"));
+        assert_eq!(stored_account(&accounts, "CHE-11"), Some("CHE-11"));
+        assert_eq!(stored_account(&accounts, "missing"), None);
+
+        let before = vec!["CHE-11".to_string()];
+        let same = sign_in_failure("other", &before, &before);
+        assert!(same.contains("did not sign in as other"));
+        let replaced =
+            sign_in_failure("other", &before, &["CHE-11".to_string(), "bob".to_string()]);
+        assert!(replaced.contains("signed in as bob"));
+        assert!(replaced.contains("not other"));
+    }
 
     #[test]
     fn parses_github_account_names() {

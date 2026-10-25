@@ -22,6 +22,7 @@ type GitSettingsTabProps = {
   signingIn: boolean;
   cancelling: boolean;
   signingOut: string | null;
+  username: string;
   name: string;
   email: string;
   defaultBranch: string;
@@ -32,6 +33,7 @@ type GitSettingsTabProps = {
   onEmailChange: (email: string) => void;
   onDefaultBranchChange: (branch: string) => void;
   onAutocrlfChange: (autocrlf: string) => void;
+  onUsernameChange: (username: string) => void;
   onSignIn: () => void;
   onCancelSignIn: () => void;
   onSignOut: (account: string) => void;
@@ -48,6 +50,7 @@ export function GitSettingsTab({
   signingIn,
   cancelling,
   signingOut,
+  username,
   name,
   email,
   defaultBranch,
@@ -58,6 +61,7 @@ export function GitSettingsTab({
   onEmailChange,
   onDefaultBranchChange,
   onAutocrlfChange,
+  onUsernameChange,
   onSignIn,
   onCancelSignIn,
   onSignOut,
@@ -127,6 +131,34 @@ export function GitSettingsTab({
                 Sign-in sets Git Credential Manager as Git's credential helper.
               </p>
             ) : null}
+            <label
+              id="git-username-label"
+              htmlFor="git-username-input"
+              className="mt-3 mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase"
+            >
+              GitHub username
+            </label>
+            <input
+              id="git-username-input"
+              value={username}
+              onChange={(event) => onUsernameChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  onSignIn();
+                }
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy || signingIn}
+              placeholder={accounts.length === 0 ? "Optional for the first account" : "other-user"}
+              className={fieldClass}
+            />
+            <p id="git-username-hint" className="mt-1 text-xs text-zinc-500">
+              {accounts.length === 0
+                ? "Leave this blank to use the GitHub account already open in the browser."
+                : "Enter the other GitHub username. Switch to that account in the browser before authorizing."}
+            </p>
             <div id="git-sign-in-row" className="mt-3 flex flex-wrap items-center gap-2">
               {signingIn ? (
                 <>
@@ -253,5 +285,8 @@ function accountStatus(credentialManager: boolean, helperConfigured: boolean, ac
       ? "Sign in to store a GitHub account for HTTPS pull and push."
       : "Sign in to store a GitHub account and set Git Credential Manager as Git's credential helper.";
   }
-  return "HTTPS remotes use this account through Git Credential Manager. SSH remotes keep using your SSH keys.";
+  if (accounts.length === 1) {
+    return "HTTPS remotes use this account through Git Credential Manager. SSH remotes keep using your SSH keys.";
+  }
+  return "HTTPS remotes use these accounts through Git Credential Manager. SSH remotes keep using your SSH keys.";
 }

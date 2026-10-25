@@ -33,8 +33,8 @@ fn save_git_settings(
 }
 
 #[tauri::command]
-async fn git_sign_in() -> Result<git::GitSettings, String> {
-    tauri::async_runtime::spawn_blocking(git::git_sign_in)
+async fn git_sign_in(username: String) -> Result<git::GitSettings, String> {
+    tauri::async_runtime::spawn_blocking(move || git::git_sign_in(username))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -272,6 +272,14 @@ async fn list_github_repos(account: String) -> Result<git::GithubRepos, String> 
         Some(token) => git::fetch_github_repos(&token).await?,
         None => (Vec::new(), false),
     };
+    let account = prepared.account.clone();
+    let repos = repos
+        .into_iter()
+        .map(|mut repo| {
+            repo.url = git::clone_url_for_account(&repo.url, &account);
+            repo
+        })
+        .collect();
     Ok(git::GithubRepos {
         accounts: prepared.accounts,
         account: prepared.account,

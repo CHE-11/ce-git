@@ -442,6 +442,7 @@ export function RepoTree({
                     }));
                   }}
                   onOpen={onOpen}
+                  onViewRepo={onViewRepo}
                   allowRootCollapse={rootsCollapsible}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
                   trailing={

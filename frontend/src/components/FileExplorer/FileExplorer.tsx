@@ -186,7 +186,7 @@ export function FileExplorer({
       }
       return;
     }
-    onOpenFile(entry.relativePath, fileOpenMode(defaultEditor));
+    onOpenFile(entry.relativePath, "default");
   }
 
   function openMenu(entry: DirEntry, x: number, y: number) {

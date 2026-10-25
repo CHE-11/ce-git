@@ -15,6 +15,7 @@ type RepoTreeNodeProps = {
   filter: RepoTreeFilter | null;
   onToggle: (path: string) => void;
   onOpen: (path: string) => void;
+  onViewRepo: (path: string) => void;
   allowRootCollapse?: boolean;
   onContextMenu: (node: TreeNode, x: number, y: number) => void;
   trailing?: ReactNode;
@@ -31,6 +32,7 @@ export function RepoTreeNode({
   filter,
   onToggle,
   onOpen,
+  onViewRepo,
   onContextMenu,
   trailing,
   allowRootCollapse = true,
@@ -47,7 +49,10 @@ export function RepoTreeNode({
   const targeted = node.path === contextPath;
   const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, [], filter);
 
-  const onRowClick = () => {
+  const onRowClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.detail > 1) {
+      return;
+    }
     if (depth === 0) {
       if (isRepo) {
         onOpen(node.path);
@@ -63,11 +68,20 @@ export function RepoTreeNode({
     onOpen(node.path);
   };
 
+  const onRowDoubleClick = () => {
+    if (isRepo) {
+      onViewRepo(node.path);
+    }
+  };
+
   const onRootLabelClick = (event: MouseEvent<HTMLSpanElement>) => {
     if (!canToggle) {
       return;
     }
     event.stopPropagation();
+    if (event.detail > 1) {
+      return;
+    }
     onToggle(node.path);
   };
 
@@ -84,6 +98,7 @@ export function RepoTreeNode({
         )}
         style={{ paddingLeft: depth === 0 ? 8 : 8 + depth * 14 - 18 }}
         onClick={onRowClick}
+        onDoubleClick={onRowDoubleClick}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -97,8 +112,12 @@ export function RepoTreeNode({
             className="flex size-4 shrink-0 items-center justify-center text-zinc-500"
             onClick={(event) => {
               event.stopPropagation();
+              if (event.detail > 1) {
+                return;
+              }
               onToggle(node.path);
             }}
+            onDoubleClick={(event) => event.stopPropagation()}
           >
             {expanded ? (
               <ChevronDown id={domId("tree-chevron", node.path)} className="size-3.5" />
@@ -184,6 +203,7 @@ export function RepoTreeNode({
               filter={filter}
               onToggle={onToggle}
               onOpen={onOpen}
+              onViewRepo={onViewRepo}
               onContextMenu={onContextMenu}
             />
           ))

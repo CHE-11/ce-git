@@ -178,6 +178,8 @@ export function useWorkspace() {
   const [generating, setGenerating] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiAction, setAiAction] = useState<"commit" | "push" | "refresh" | null>(null);
+  const [aiPushPhase, setAiPushPhase] = useState<"idle" | "running" | "done">("idle");
+  const [aiPushTotal, setAiPushTotal] = useState(0);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<AiCommitDraft[]>([]);
   const [pullPaths, setPullPaths] = useState<string[] | null>(null);
@@ -1325,6 +1327,8 @@ export function useWorkspace() {
       })),
     );
     setAiOpen(true);
+    setAiPushPhase("idle");
+    setAiPushTotal(0);
     setGenerating(true);
     setError(null);
     const queue = [...paths];
@@ -1374,6 +1378,8 @@ export function useWorkspace() {
     aiRunRef.current += 1;
     setGenerating(false);
     setAiAction(null);
+    setAiPushPhase("idle");
+    setAiPushTotal(0);
     setReviewError(null);
     setDrafts([]);
     setAiOpen(false);
@@ -1430,6 +1436,11 @@ export function useWorkspace() {
       }
       let pushError: string | null = null;
       if (andPush) {
+        logGeneration.current += 1;
+        seenGeneration.current = logGeneration.current;
+        setLogs([]);
+        setAiPushTotal(okPaths.length);
+        setAiPushPhase("running");
         const pushed = await batchPush(okPaths);
         pushError = batchFailure(pushed);
       }
@@ -1441,17 +1452,17 @@ export function useWorkspace() {
       if (andPush) {
         setAiAction("refresh");
         await finishBatch();
+        return;
       }
       setAiOpen(false);
       setDrafts([]);
-      if (!andPush) {
-        await finishBatch();
-      }
+      await finishBatch();
     } catch (caught) {
       setReviewError(messageOf(caught));
     } finally {
       setAiAction(null);
       endWork();
+      setAiPushPhase((phase) => (phase === "running" ? "done" : phase));
     }
   };
 
@@ -1462,6 +1473,8 @@ export function useWorkspace() {
     setCommitDescription("");
     setGenerating(false);
     setAiAction(null);
+    setAiPushPhase("idle");
+    setAiPushTotal(0);
     setReviewError(null);
     setDrafts([]);
     setAiOpen(false);
@@ -1526,6 +1539,8 @@ export function useWorkspace() {
     generating,
     aiOpen,
     aiAction,
+    aiPushPhase,
+    aiPushTotal,
     reviewError,
     setAiOpen,
     drafts,

@@ -443,6 +443,10 @@ export function HomePage() {
         generating={workspace.generating}
         busy={busy}
         aiAction={workspace.aiAction}
+        logs={workspace.logs}
+        pushPhase={workspace.aiPushPhase}
+        pushTotal={workspace.aiPushTotal}
+        pushError={workspace.error}
         error={workspace.reviewError}
         onClose={workspace.cancelAiReview}
         onChange={workspace.updateDraft}

@@ -3,6 +3,7 @@ mod command;
 mod commit;
 mod diff;
 mod discover;
+mod github;
 mod graph;
 mod search;
 mod settings;
@@ -67,6 +68,8 @@ pub fn clone_repo(url: &str, destination: &std::path::Path) -> Result<(), String
 pub use commit::commit_repo;
 pub use diff::{RepoDiff, collect_ai_context, repo_diff};
 pub use discover::{TreeNode, discover};
+pub use github::GithubRepos;
+pub(crate) use github::{fetch_github_repos, prepare_github_repos};
 pub use graph::{RepoGraph, repo_graph};
 pub use search::{RepoSearchResult, search_repos};
 pub use settings::{

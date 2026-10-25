@@ -1,13 +1,12 @@
 {
   "name": "ce-git",
   "private": true,
-  "version": "1.0.14",
+  "version": "1.0.15",
   "scripts": {
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",
     "version:bump": "node scripts/bump-version.mjs",
     "build:exe": "node scripts/build-exe.mjs",
-    "build:bump": "node scripts/bump-version.mjs && node scripts/build-exe.mjs",
     "build:app": "node scripts/build-macos.mjs",
     "tauri": "tauri"
   },

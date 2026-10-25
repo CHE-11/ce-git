@@ -115,6 +115,21 @@ export interface AiSettings {
   prompts: AiPrompts;
 }
 
+export interface GithubRepo {
+  name: string;
+  url: string;
+  description: string;
+  private: boolean;
+}
+
+export interface GithubRepos {
+  accounts: string[];
+  account: string;
+  repos: GithubRepo[];
+  truncated: boolean;
+  notice: string | null;
+}
+
 export interface GitSettings {
   gitAvailable: boolean;
   credentialManager: boolean;

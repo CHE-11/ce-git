@@ -378,7 +378,7 @@ fn clean_autocrlf(value: &str) -> Result<String, String> {
     Err("Choose a line ending setting.".into())
 }
 
-fn clean_account(account: &str) -> Result<String, String> {
+pub(crate) fn clean_account(account: &str) -> Result<String, String> {
     let account = account.trim();
     if !is_account_line(account) {
         return Err("That GitHub account name is not valid.".into());
@@ -435,7 +435,7 @@ fn detail_of(output: &GitOutput) -> String {
     redact_secrets(detail)
 }
 
-fn redact_secrets(value: &str) -> String {
+pub(crate) fn redact_secrets(value: &str) -> String {
     value
         .split_whitespace()
         .map(|word| {

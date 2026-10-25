@@ -47,9 +47,9 @@
       }
     },
     {
-      "label": "Bump + Build",
+      "label": "Bump",
       "type": "shell",
-      "command": "pnpm build:bump",
+      "command": "pnpm version:bump",
       "group": {
         "kind": "build",
         "isDefault": true

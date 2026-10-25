@@ -9,6 +9,7 @@ import type {
   DirEntry,
   DirSearch,
   GeneratedCommit,
+  GithubRepos,
   GitSettings,
   OpenAiModel,
   PublishOptions,
@@ -203,6 +204,10 @@ export function initRepo(path: string) {
 
 export function cloneRepo(url: string, path: string) {
   return invoke<void>("clone_repo", { url, path });
+}
+
+export function listGithubRepos(account: string) {
+  return invoke<GithubRepos>("list_github_repos", { account });
 }
 
 export function deleteFolder(root: string, path: string) {

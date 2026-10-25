@@ -263,6 +263,25 @@ async fn clone_repo(url: String, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn list_github_repos(account: String) -> Result<git::GithubRepos, String> {
+    let prepared =
+        tauri::async_runtime::spawn_blocking(move || git::prepare_github_repos(&account))
+            .await
+            .map_err(|error| error.to_string())??;
+    let (repos, truncated) = match prepared.token {
+        Some(token) => git::fetch_github_repos(&token).await?,
+        None => (Vec::new(), false),
+    };
+    Ok(git::GithubRepos {
+        accounts: prepared.accounts,
+        account: prepared.account,
+        repos,
+        truncated,
+        notice: prepared.notice,
+    })
+}
+
+#[tauri::command]
 async fn open_in_editor(path: String, editor: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         crate::editor::open_in_editor(Path::new(&path), &editor)
@@ -423,6 +442,7 @@ pub fn run() {
             reveal_in_explorer,
             init_repo,
             clone_repo,
+            list_github_repos,
             delete_path,
             discard_change,
             ignore_change,

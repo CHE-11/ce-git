@@ -420,6 +420,7 @@ export function HomePage() {
 
       {cloneRepoOpen ? (
         <CloneRepoDialog
+          trees={workspace.trees}
           defaultParent={workspace.rootPaths[0] ?? ""}
           onClose={() => setCloneRepoOpen(false)}
           onClone={workspace.cloneRepo}

@@ -1,8 +1,8 @@
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
-import type { GithubRepo } from "../../../../types/git";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { GithubRepo, TreeNode } from "../../../../types/git";
 import { listGithubRepos } from "../../lib/git-client";
-import { messageOf, pickedFolderPath } from "../../lib/tree";
+import { collectRepos, messageOf, pickedFolderPath } from "../../lib/tree";
 import { Button } from "../Button";
 import { Dialog } from "./Dialog";
 
@@ -10,6 +10,7 @@ const fieldClass =
   "min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50";
 
 type CloneRepoDialogProps = {
+  trees?: TreeNode[];
   defaultParent?: string;
   onClose: () => void;
   onClone: (url: string, destination: string) => Promise<void>;
@@ -37,6 +38,10 @@ function joinPath(parent: string, name: string) {
   return `${base}${separator}${name.trim()}`;
 }
 
+function githubShortName(name: string) {
+  return name.split("/").pop()?.trim().toLowerCase() ?? "";
+}
+
 function repoDomId(name: string) {
   const slug = name.replaceAll("/", "--").replace(/[^A-Za-z0-9._-]/g, "");
   return `clone-repo-${slug || "repo"}`;
@@ -47,7 +52,7 @@ function accountDomId(account: string) {
   return `clone-repo-account-${slug || "account"}`;
 }
 
-export function CloneRepoDialog({ defaultParent = "", onClose, onClone }: CloneRepoDialogProps) {
+export function CloneRepoDialog({ trees = [], defaultParent = "", onClose, onClone }: CloneRepoDialogProps) {
   const [url, setUrl] = useState("");
   const [parent, setParent] = useState(defaultParent);
   const [name, setName] = useState("");
@@ -61,6 +66,7 @@ export function CloneRepoDialog({ defaultParent = "", onClose, onClone }: CloneR
   const [listError, setListError] = useState<string | null>(null);
   const [loadingRepos, setLoadingRepos] = useState(true);
   const [filter, setFilter] = useState("");
+  const [hideExisting, setHideExisting] = useState(true);
   const requestRef = useRef(0);
   const nameEditedRef = useRef(false);
 
@@ -165,13 +171,25 @@ export function CloneRepoDialog({ defaultParent = "", onClose, onClone }: CloneR
     }
   };
 
+  const existingNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const tree of trees) {
+      for (const repo of collectRepos(tree)) {
+        names.add(repo.name.toLowerCase());
+      }
+    }
+    return names;
+  }, [trees]);
   const query = filter.trim().toLowerCase();
+  const inTree = (repo: GithubRepo) => existingNames.has(githubShortName(repo.name));
+  const hiddenCount = repos.filter(inTree).length;
+  const available = hideExisting ? repos.filter((repo) => !inTree(repo)) : repos;
   const visible = query
-    ? repos.filter(
+    ? available.filter(
         (repo) =>
           repo.name.toLowerCase().includes(query) || repo.description.toLowerCase().includes(query),
       )
-    : repos;
+    : available;
   const canSubmit = url.trim().length > 0 && parent.trim().length > 0 && name.trim().length > 0;
   const showPicker = accounts.length > 0;
 
@@ -254,6 +272,26 @@ export function CloneRepoDialog({ defaultParent = "", onClose, onClone }: CloneR
           />
         ) : null}
         {showPicker ? (
+          <label
+            id="clone-repo-hide-existing-label"
+            htmlFor="clone-repo-hide-existing"
+            className="mt-2 flex items-center gap-2 text-sm text-zinc-300"
+          >
+            <input
+              id="clone-repo-hide-existing"
+              type="checkbox"
+              checked={hideExisting}
+              disabled={cloning || loadingRepos}
+              onChange={(event) => setHideExisting(event.target.checked)}
+              className="size-3.5 accent-sky-500 disabled:opacity-50"
+            />
+            <span id="clone-repo-hide-existing-text">
+              Hide repositories already in the tree
+              {hiddenCount > 0 ? ` (${hiddenCount})` : ""}
+            </span>
+          </label>
+        ) : null}
+        {showPicker ? (
           <div
             id="clone-repo-list"
             role="listbox"
@@ -271,7 +309,11 @@ export function CloneRepoDialog({ defaultParent = "", onClose, onClone }: CloneR
               </p>
             ) : visible.length === 0 ? (
               <p id="clone-repo-empty" className="px-3 py-2 text-sm text-zinc-400">
-                {repos.length === 0 ? "This account has no repositories." : "No repositories match that filter."}
+                {repos.length === 0
+                  ? "This account has no repositories."
+                  : available.length === 0
+                    ? "Every listed repository is already in the tree."
+                    : "No repositories match that filter."}
               </p>
             ) : (
               visible.map((repo) => {

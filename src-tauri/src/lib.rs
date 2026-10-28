@@ -161,6 +161,11 @@ async fn repo_graph(path: String, limit: u32) -> Result<git::RepoGraph, String> 
     spawn_git(move || git::repo_graph(Path::new(&path), limit)).await?
 }
 
+#[tauri::command]
+async fn commit_diff(path: String, hash: String) -> Result<git::CommitDiff, String> {
+    spawn_git(move || git::commit_diff(Path::new(&path), &hash)).await?
+}
+
 async fn spawn_git<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, String> {
@@ -436,6 +441,7 @@ pub fn run() {
             repo_statuses,
             repo_diff,
             repo_graph,
+            commit_diff,
             search_repos,
             generate_commit_message,
             batch_pull,

@@ -11,7 +11,6 @@ import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirma
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RestoreDialog } from "../components/Dialogs/RestoreDialog";
 import { FileExplorer } from "../components/FileExplorer/FileExplorer";
-import { GitGraph } from "../components/GitGraph/GitGraph";
 import { RepoDetail } from "../components/RepoDetails/RepoDetail";
 import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
@@ -314,17 +313,6 @@ export function HomePage() {
           filter={treeFilter}
           onFilter={setTreeFilter}
         />
-        {graphOpen && explorerPath === null ? (
-          <GitGraph
-            path={workspace.activePath}
-            refreshToken={
-              workspace.activeStatus
-                ? `${workspace.activeStatus.branch}:${workspace.activeStatus.ahead}:${workspace.activeStatus.behind}:${workspace.activeStatus.dirty ? 1 : 0}`
-                : ""
-            }
-            onClose={() => setGraphOpen(false)}
-          />
-        ) : null}
         {explorerPath ? (
           <FileExplorer
             key={explorerPath}

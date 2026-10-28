@@ -36,6 +36,130 @@ pub fn repo_diff(path: &Path) -> Result<RepoDiff, String> {
     })
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitDiff {
+    pub hash: String,
+    pub message: String,
+    pub files: Vec<FileChange>,
+    pub patch: String,
+    pub truncated: bool,
+}
+
+pub fn commit_diff(path: &Path, hash: &str) -> Result<CommitDiff, String> {
+    ensure_repo(path)?;
+    let hash = hash.trim();
+    if !is_commit_id(hash) {
+        return Err("Not a commit hash".into());
+    }
+    let spec = format!("{hash}^{{commit}}");
+    let hash = git(path, &["rev-parse", "--verify", "--quiet", &spec])
+        .map_err(|_| format!("Commit {hash} not found"))?
+        .trim()
+        .to_string();
+    let message = git(path, &["show", "-s", "--format=%B", &hash])?
+        .trim_end()
+        .to_string();
+    let parents = git(path, &["rev-list", "--parents", "-n", "1", &hash])?;
+    let first_parent = parents.split_whitespace().nth(1).map(str::to_string);
+
+    let (names, patch) = match first_parent {
+        Some(parent) => (
+            git(
+                path,
+                &[
+                    "diff",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "-M",
+                    "--name-status",
+                    "-z",
+                    &parent,
+                    &hash,
+                ],
+            )?,
+            git(
+                path,
+                &["diff", "--no-color", "--no-ext-diff", "-M", &parent, &hash],
+            )?,
+        ),
+        None => (
+            git(
+                path,
+                &[
+                    "show",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "--format=",
+                    "-M",
+                    "--name-status",
+                    "-z",
+                    &hash,
+                ],
+            )?,
+            git(
+                path,
+                &[
+                    "show",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "--format=",
+                    "-M",
+                    &hash,
+                ],
+            )?,
+        ),
+    };
+    let (patch, truncated) = truncate_text(&patch, UI_DIFF_LIMIT);
+    Ok(CommitDiff {
+        hash,
+        message,
+        files: parse_name_status(&names),
+        patch,
+        truncated,
+    })
+}
+
+fn is_commit_id(value: &str) -> bool {
+    (4..=64).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn parse_name_status(output: &str) -> Vec<FileChange> {
+    let mut tokens = output.split('\0').filter(|token| !token.is_empty());
+    let mut files = Vec::new();
+    while let Some(code) = tokens.next() {
+        let code = code.trim();
+        let Some(letter) = code.chars().next() else {
+            continue;
+        };
+        let paired = letter == 'R' || letter == 'C';
+        let previous_path = if paired {
+            tokens.next().map(str::to_string)
+        } else {
+            None
+        };
+        let Some(path) = tokens.next() else {
+            break;
+        };
+        let status = match letter {
+            'A' => "added",
+            'D' => "deleted",
+            'R' => "renamed",
+            'C' => "copied",
+            'T' => "typechange",
+            'U' => "unmerged",
+            _ => "modified",
+        };
+        files.push(FileChange {
+            path: path.to_string(),
+            previous_path: previous_path.filter(|previous| !previous.is_empty()),
+            status: status.to_string(),
+            staged: false,
+        });
+    }
+    files
+}
+
 pub fn collect_ai_context(path: &Path) -> Result<String, String> {
     ensure_repo(path)?;
     let (files, patch, _) = change_summary(path, AI_DIFF_LIMIT)?;
@@ -210,7 +334,143 @@ pub fn ensure_repo(path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_porcelain;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::super::command::git;
+    use super::{commit_diff, parse_name_status, parse_porcelain};
+
+    fn scratch(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ce-git-{name}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn run(dir: &Path, args: &[&str]) -> String {
+        let result = git(dir, args);
+        assert!(
+            result.is_ok(),
+            "git {args:?} in {} failed: {result:?}",
+            dir.display()
+        );
+        result.unwrap()
+    }
+
+    fn init_repo(path: &Path) {
+        run(path, &["init", "-b", "main"]);
+        run(path, &["config", "user.email", "ce-git@example.com"]);
+        run(path, &["config", "user.name", "ce-git"]);
+        run(path, &["config", "core.autocrlf", "false"]);
+    }
+
+    fn head(path: &Path) -> String {
+        run(path, &["rev-parse", "HEAD"]).trim().to_string()
+    }
+
+    #[test]
+    fn name_status_reads_renames_and_plain_records() {
+        let files =
+            parse_name_status("M\0src/a.ts\0R087\0old name.ts\0new name.ts\0A\0b.ts\0D\0c.ts\0");
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0].status, "modified");
+        assert_eq!(files[0].path, "src/a.ts");
+        assert_eq!(files[1].status, "renamed");
+        assert_eq!(files[1].path, "new name.ts");
+        assert_eq!(files[1].previous_path.as_deref(), Some("old name.ts"));
+        assert_eq!(files[2].status, "added");
+        assert_eq!(files[3].status, "deleted");
+        assert!(parse_name_status("").is_empty());
+    }
+
+    #[test]
+    fn commit_diff_covers_root_modify_rename_and_merge() {
+        let root = scratch("commit-diff");
+        init_repo(&root);
+        fs::write(root.join("README.md"), "one\n").unwrap();
+        fs::write(root.join("notes.txt"), "alpha\nbeta\ngamma\ndelta\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial", "-m", "Body line."]);
+        let initial = head(&root);
+
+        let first = commit_diff(&root, &initial).unwrap();
+        assert_eq!(first.hash, initial);
+        assert!(first.message.starts_with("initial"), "{}", first.message);
+        assert!(first.message.contains("Body line."), "{}", first.message);
+        assert_eq!(first.files.len(), 2);
+        assert!(first.files.iter().all(|file| file.status == "added"));
+        assert!(first.patch.contains("+one"), "{}", first.patch);
+
+        fs::write(root.join("README.md"), "two\n").unwrap();
+        run(&root, &["commit", "-am", "edit"]);
+        let edit = commit_diff(&root, &head(&root)).unwrap();
+        assert_eq!(edit.files.len(), 1);
+        assert_eq!(edit.files[0].path, "README.md");
+        assert_eq!(edit.files[0].status, "modified");
+        assert!(
+            edit.patch.contains("-one") && edit.patch.contains("+two"),
+            "{}",
+            edit.patch
+        );
+
+        run(&root, &["mv", "notes.txt", "moved.txt"]);
+        run(&root, &["commit", "-m", "rename"]);
+        let rename = commit_diff(&root, &head(&root)).unwrap();
+        assert_eq!(rename.files.len(), 1);
+        assert_eq!(rename.files[0].status, "renamed");
+        assert_eq!(rename.files[0].path, "moved.txt");
+        assert_eq!(rename.files[0].previous_path.as_deref(), Some("notes.txt"));
+
+        run(&root, &["checkout", "-b", "feature"]);
+        fs::write(root.join("feature.txt"), "feature\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "feature work"]);
+        run(&root, &["checkout", "main"]);
+        fs::write(root.join("main.txt"), "main\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "main work"]);
+        run(
+            &root,
+            &[
+                "merge",
+                "--no-ff",
+                "--no-edit",
+                "-m",
+                "merge feature",
+                "feature",
+            ],
+        );
+        let merge = commit_diff(&root, &head(&root)).unwrap();
+        assert_eq!(merge.files.len(), 1, "{:?}", merge.files);
+        assert_eq!(merge.files[0].path, "feature.txt");
+        assert_eq!(merge.files[0].status, "added");
+
+        let short = commit_diff(&root, &initial[..7]).unwrap();
+        assert_eq!(short.hash, initial);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn commit_diff_rejects_options_and_unknown_hashes() {
+        let root = scratch("commit-diff-bad");
+        init_repo(&root);
+        fs::write(root.join("README.md"), "one\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial"]);
+
+        assert!(commit_diff(&root, "--output=x").is_err());
+        assert!(commit_diff(&root, "HEAD").is_err());
+        assert!(commit_diff(&root, "").is_err());
+        assert!(commit_diff(&root, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef").is_err());
+        assert!(!root.join("x").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
 
     #[test]
     fn porcelain_keeps_rename_source() {

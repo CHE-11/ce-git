@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, GitGraph, Loader2, RefreshCw, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, GitGraph as GitGraphIcon, Loader2, RefreshCw, Upload } from "lucide-react";
 import { useState } from "react";
 import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
@@ -10,6 +10,7 @@ import { ChangedFiles, type ChangeFileHandlers } from "./ChangedFiles/ChangedFil
 import { CommitBox } from "./CommitBox";
 import { PublishDialog } from "../Dialogs/PublishDialog";
 import { DiffView } from "../DiffView";
+import { GitGraph } from "../GitGraph/GitGraph";
 
 function CommitCountBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" }) {
   if (count <= 0) {
@@ -129,6 +130,7 @@ export function RepoDetail({
     behind > 0
       ? `Pull ${commitCountLabel(behind)}. A branch that is ahead is merged.`
       : "Pull the default branch. A branch that is ahead is merged.";
+  const graphRefreshToken = status ? `${status.branch}:${status.ahead}:${status.behind}:${status.dirty ? 1 : 0}` : "";
 
   return (
     <section id="repo-detail" className="flex min-w-0 flex-1 flex-col bg-zinc-950">
@@ -192,7 +194,8 @@ export function RepoDetail({
         </p>
         <div id="repo-detail-badges" className="mt-2 flex flex-wrap gap-1.5">
           <Badge id="badge-graph" tone={graphOpen ? "violet" : "grey"} title="Commit graph" pressed={graphOpen} onClick={onToggleGraph}>
-            <GitGraph className="size-3.5" />
+            <GitGraphIcon className="size-3.5" />
+            <span className="ml-1 text-[8px] ">Commit Graph</span>
           </Badge>
           <Badge id="badge-branch" tone="blue">
             {status?.branch ?? "…"}
@@ -227,41 +230,47 @@ export function RepoDetail({
           </p>
         ) : null}
       </header>
-      <div id="repo-detail-body" className="flex min-h-0 flex-1">
-        {diffLoading && !diff ? (
-          <p id="repo-detail-loading" className="px-4 py-6 text-sm text-zinc-500">
-            Loading changes…
-          </p>
-        ) : (
-          <>
-            <ChangedFiles
-              repoPath={path}
-              files={files}
-              selectedPath={selectedFile?.path ?? null}
-              busy={busy}
-              handlers={fileHandlers}
-              menuEditors={menuEditors}
-              onSelect={setSelectedPath}
-            />
-            <DiffView patch={selectedPatch.text} truncated={selectedPatch.truncated} filePath={selectedFile?.path ?? null} />
-          </>
-        )}
-      </div>
-      <CommitBox
-        message={commitMessage}
-        description={commitDescription}
-        prompts={commitPrompts}
-        selectedPrompt={selectedPrompt}
-        dirty={status?.dirty ?? false}
-        busy={busy}
-        generating={generating}
-        openaiReady={openaiReady}
-        onChange={onCommitMessage}
-        onDescription={onCommitDescription}
-        onPrompt={onSelectedPrompt}
-        onGenerate={onGenerate}
-        onCommit={onCommit}
-      />
+      {graphOpen ? (
+        <GitGraph path={path} refreshToken={graphRefreshToken} />
+      ) : (
+        <>
+          <div id="repo-detail-body" className="flex min-h-0 flex-1">
+            {diffLoading && !diff ? (
+              <p id="repo-detail-loading" className="px-4 py-6 text-sm text-zinc-500">
+                Loading changes…
+              </p>
+            ) : (
+              <>
+                <ChangedFiles
+                  repoPath={path}
+                  files={files}
+                  selectedPath={selectedFile?.path ?? null}
+                  busy={busy}
+                  handlers={fileHandlers}
+                  menuEditors={menuEditors}
+                  onSelect={setSelectedPath}
+                />
+                <DiffView patch={selectedPatch.text} truncated={selectedPatch.truncated} filePath={selectedFile?.path ?? null} />
+              </>
+            )}
+          </div>
+          <CommitBox
+            message={commitMessage}
+            description={commitDescription}
+            prompts={commitPrompts}
+            selectedPrompt={selectedPrompt}
+            dirty={status?.dirty ?? false}
+            busy={busy}
+            generating={generating}
+            openaiReady={openaiReady}
+            onChange={onCommitMessage}
+            onDescription={onCommitDescription}
+            onPrompt={onSelectedPrompt}
+            onGenerate={onGenerate}
+            onCommit={onCommit}
+          />
+        </>
+      )}
       <PublishDialog
         open={publishOpen}
         repoName={name}

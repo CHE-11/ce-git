@@ -196,3 +196,11 @@ export interface RepoGraph {
   commits: GraphCommit[];
   truncated: boolean;
 }
+
+export interface CommitDiff {
+  hash: string;
+  message: string;
+  files: FileChange[];
+  patch: string;
+  truncated: boolean;
+}

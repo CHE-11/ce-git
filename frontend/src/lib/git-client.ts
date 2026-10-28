@@ -4,6 +4,7 @@ import type {
   AiPrompts,
   AppSettings,
   BatchProgress,
+  CommitDiff,
   CommitRequest,
   CommitVerbosity,
   DirEntry,
@@ -131,6 +132,10 @@ export function repoDiff(path: string) {
 
 export function repoGraph(path: string, limit: number) {
   return invoke<RepoGraph>("repo_graph", { path, limit });
+}
+
+export function commitDiff(path: string, hash: string) {
+  return invoke<CommitDiff>("commit_diff", { path, hash });
 }
 
 export function searchRepos(request: {

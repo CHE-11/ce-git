@@ -185,38 +185,33 @@ export function RepoTree({
   const dragStart = useRef<{ x: number; width: number } | null>(null);
   const widthRef = useRef(width);
   const moved = useRef(false);
-  const visibleTrees = useMemo(
-    () => trees.map((node) => (filter ? filterRepoTree(node, statuses, [], filter) : node)),
-    [trees, statuses, filter],
-  );
-  const statusTrees = useMemo(
-    () => (filter ? visibleTrees.filter(treeHasRepos) : trees),
-    [filter, visibleTrees, trees],
-  );
   const searchQuery = query.trim();
-  const searchedTrees = useMemo(() => {
-    if (!searchQuery) {
-      return statusTrees;
+  const activeFilter = searchQuery ? null : filter;
+  const shownTrees = useMemo(() => {
+    if (searchQuery) {
+      const repos: TreeNode[] = [];
+      for (const tree of trees) {
+        collectRepos(tree, repos);
+      }
+      const fuse = new Fuse(repos, {
+        keys: ["name", "path"],
+        threshold: 0.15,
+        ignoreLocation: true,
+      });
+      const matched = new Set(fuse.search(searchQuery).map((result) => result.item.path));
+      return trees.flatMap((tree) => {
+        const next = pruneToSearch(tree, matched);
+        return next ? [next] : [];
+      });
     }
-    const repos: TreeNode[] = [];
-    for (const tree of statusTrees) {
-      collectRepos(tree, repos);
+    if (filter) {
+      return trees.map((node) => filterRepoTree(node, statuses, [], filter)).filter(treeHasRepos);
     }
-    const fuse = new Fuse(repos, {
-      keys: ["name", "path"],
-      threshold: 0.15,
-      ignoreLocation: true,
-    });
-    const matched = new Set(fuse.search(searchQuery).map((result) => result.item.path));
-    return statusTrees.flatMap((tree) => {
-      const next = pruneToSearch(tree, matched);
-      return next ? [next] : [];
-    });
-  }, [statusTrees, searchQuery]);
-  const shownTrees = searchedTrees;
+    return trees;
+  }, [trees, statuses, filter, searchQuery]);
   const hasRepos = trees.some(treeHasRepos);
-  const folderPaths = (filter ? visibleTrees : trees).flatMap(pathsBelowRoot);
-  const defaultCollapsed = !filter && !searchQuery;
+  const folderPaths = shownTrees.flatMap(pathsBelowRoot);
+  const defaultCollapsed = !activeFilter && !searchQuery;
   const rootsCollapsible = rootPaths.length > 1;
   const collapsedView = defaultCollapsed
     ? { ...Object.fromEntries(folderPaths.map((path) => [path, true])), ...collapsed }
@@ -231,7 +226,12 @@ export function RepoTree({
   const summary = summarize(statuses);
 
   function toggleFilter(next: RepoTreeFilter) {
-    onFilter(filter === next ? null : next);
+    if (filter === next && !searchQuery) {
+      onFilter(null);
+      return;
+    }
+    setQuery("");
+    onFilter(next);
   }
   const closeMenu = useCallback(() => setMenu(null), []);
   widthRef.current = width;
@@ -315,9 +315,15 @@ export function RepoTree({
     }
   }
 
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (value.trim() && filter) {
+      onFilter(null);
+    }
+  }
+
   function handleClearSearch() {
     setQuery("");
-    if (filter) onFilter(filter); // if there is a filter, run the filters again
     searchInputRef.current?.focus();
   }
 
@@ -343,7 +349,7 @@ export function RepoTree({
           id="repo-tree-search-input"
           type="input"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => handleQueryChange(event.target.value)}
           placeholder="Search repositories"
           aria-label="Search repositories"
           autoComplete="off"
@@ -353,8 +359,8 @@ export function RepoTree({
           className="h-7 min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
         />
         {query ? (
-          <Button id="clear-filter-button" variant="ghost" size="sm" onClick={handleClearSearch}>
-            <X size={20} className="shrink-0 text-zinc-500" />
+          <Button id="repo-tree-search-clear" variant="ghost" size="sm" title="Clear search" aria-label="Clear search" onClick={handleClearSearch}>
+            <X id="repo-tree-search-clear-icon" size={20} className="shrink-0 text-zinc-500" />
           </Button>
         ) : null}
       </form>
@@ -366,7 +372,7 @@ export function RepoTree({
             label="Dirty"
             value={String(summary.dirty)}
             valueClassName={summary.dirty > 0 ? "text-amber-300" : undefined}
-            pressed={filter === "dirty"}
+            pressed={activeFilter === "dirty"}
             title="Show repositories with uncommitted changes"
             onClick={() => toggleFilter("dirty")}
           />
@@ -375,7 +381,7 @@ export function RepoTree({
             label="Ahead"
             value={String(summary.ahead)}
             valueClassName={summary.ahead > 0 ? "text-emerald-300" : undefined}
-            pressed={filter === "ahead"}
+            pressed={activeFilter === "ahead"}
             title="Show repositories ahead of their upstream"
             onClick={() => toggleFilter("ahead")}
           />
@@ -384,7 +390,7 @@ export function RepoTree({
             label="Behind"
             value={String(summary.behind)}
             valueClassName={summary.behind > 0 ? "text-amber-300" : undefined}
-            pressed={filter === "behind"}
+            pressed={activeFilter === "behind"}
             title="Show repositories behind their upstream"
             onClick={() => toggleFilter("behind")}
           />
@@ -393,12 +399,12 @@ export function RepoTree({
             label="Unpub."
             value={String(summary.unpublished)}
             valueClassName={summary.unpublished > 0 ? "text-violet-300" : undefined}
-            pressed={filter === "unpublished"}
+            pressed={activeFilter === "unpublished"}
             title="Show repositories with no remote. Push creates a private GitHub repo when the GitHub CLI is available."
             onClick={() => toggleFilter("unpublished")}
           />
         </div>
-        {filter ? (
+        {activeFilter ? (
           <Button id="clear-filter-button" variant="destructive" size="xs" onClick={handleClearFilter}>
             <span id="clear-filter-label">Clear</span>
           </Button>
@@ -431,7 +437,7 @@ export function RepoTree({
                   activePath={activePath}
                   collapsed={collapsedView}
                   contextPath={menu?.node.path ?? null}
-                  filter={filter}
+                  filter={activeFilter}
                   onToggle={(path) => {
                     if (!rootsCollapsible && pathEquals(path, node.path)) {
                       return;
@@ -479,9 +485,9 @@ export function RepoTree({
           <p id="repo-tree-search-empty" className="px-3 py-6 text-sm text-zinc-500">
             No repositories match “{searchQuery}”.
           </p>
-        ) : filter && hasRepos ? (
+        ) : activeFilter && hasRepos ? (
           <p id="repo-tree-filter-empty" className="w-full px-3 py-6 text-sm text-center text-zinc-500">
-            {filterEmpty[filter]}
+            {filterEmpty[activeFilter]}
           </p>
         ) : (
           <div id="repo-tree-none-block" className="px-3 py-6">

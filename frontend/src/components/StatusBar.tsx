@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
+import { appVersion } from "../lib/git-client";
 import { useFontZoom } from "../lib/zoom";
 import { baseName } from "../lib/tree";
 
@@ -15,6 +17,13 @@ function Divider({ id }: { id: string }) {
 
 export function StatusBar({ rootPaths, branch, discovering, gitReady }: StatusBarProps) {
   const zoom = useFontZoom();
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    appVersion()
+      .then(setVersion)
+      .catch(() => setVersion(null));
+  }, []);
 
   return (
     <footer
@@ -22,6 +31,14 @@ export function StatusBar({ rootPaths, branch, discovering, gitReady }: StatusBa
       className="flex h-6 shrink-0 items-center gap-2 border-t border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-400 select-none"
     >
       <div id="status-bar-stats" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        {version ? (
+          <>
+            <span id="status-version" className="shrink-0 text-zinc-500 tabular-nums" title={`ce-git ${version}`}>
+              v{version}
+            </span>
+            <Divider id="status-sep-version" />
+          </>
+        ) : null}
         <span
           id="status-folder"
           className="min-w-0 truncate text-zinc-300"

@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AiSettings,
@@ -22,6 +23,10 @@ import type {
   TreeNode,
 } from "../../../types/git";
 import type { EditorId } from "./editors";
+
+export function appVersion() {
+  return getVersion();
+}
 
 export function gitAvailable() {
   return invoke<boolean>("git_available");

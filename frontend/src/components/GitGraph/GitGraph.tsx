@@ -12,6 +12,8 @@ const PAGE = 150;
 type GitGraphProps = {
   path: string;
   refreshToken: string;
+  onFilesRestored: () => void | Promise<void>;
+  onBranchMoved: () => void | Promise<void>;
 };
 
 function errorText(reason: unknown) {
@@ -27,7 +29,7 @@ function matches(commit: GraphCommit, needle: string) {
   return commit.refs.some((ref) => ref.name.toLowerCase().includes(needle));
 }
 
-export function GitGraph({ path, refreshToken }: GitGraphProps) {
+export function GitGraph({ path, refreshToken, onFilesRestored, onBranchMoved }: GitGraphProps) {
   const treePane = useResizableWidth({
     storageKey: "ce-git.git-graph-width",
     defaultWidth: 520,
@@ -105,7 +107,7 @@ export function GitGraph({ path, refreshToken }: GitGraphProps) {
         />
         <PaneResizer id="git-graph-resizer" label="Resize commit graph" resizable={treePane} />
       </aside>
-      <GitGraphDetails path={path} commit={selected} />
+      <GitGraphDetails path={path} commit={selected} head={graph?.head ?? null} onFilesRestored={onFilesRestored} onBranchMoved={onBranchMoved} />
     </section>
   );
 }

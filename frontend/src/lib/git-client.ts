@@ -235,6 +235,14 @@ export function discardChange(repo: string, path: string) {
   return invoke<void>("discard_change", { repo, path });
 }
 
+export function restoreCommit(repo: string, hash: string, paths: string[] | null) {
+  return invoke<void>("restore_commit", { repo, hash, paths });
+}
+
+export function resetToCommit(repo: string, hash: string) {
+  return invoke<void>("reset_to_commit", { repo, hash });
+}
+
 export function ignoreChange(repo: string, kind: IgnoreKind, path: string) {
   return invoke<void>("ignore_change", { repo, kind, path });
 }

@@ -350,6 +350,20 @@ async fn discard_change(repo: String, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn restore_commit(
+    repo: String,
+    hash: String,
+    paths: Option<Vec<String>>,
+) -> Result<(), String> {
+    spawn_git(move || git::restore_commit(Path::new(&repo), &hash, paths.as_deref())).await?
+}
+
+#[tauri::command]
+async fn reset_to_commit(repo: String, hash: String) -> Result<(), String> {
+    spawn_git(move || git::reset_to_commit(Path::new(&repo), &hash)).await?
+}
+
+#[tauri::command]
 async fn ignore_change(repo: String, kind: String, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || git::ignore_change(Path::new(&repo), &kind, &path))
         .await
@@ -459,6 +473,8 @@ pub fn run() {
             list_github_repos,
             delete_path,
             discard_change,
+            restore_commit,
+            reset_to_commit,
             ignore_change,
             reveal_change,
             open_change,

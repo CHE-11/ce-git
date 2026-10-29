@@ -10,7 +10,7 @@ mod settings;
 mod status;
 mod sync;
 
-pub use changes::{contained_path, discard_change, ignore_change};
+pub use changes::{contained_path, discard_change, ignore_change, reset_to_commit, restore_commit};
 pub use command::git_available;
 
 pub fn init_repo(path: &std::path::Path) -> Result<(), String> {

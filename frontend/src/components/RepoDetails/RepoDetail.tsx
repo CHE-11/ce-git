@@ -49,7 +49,7 @@ type RepoDetailProps = {
   onSelectedPrompt: (slot: number) => void;
   onGenerate: () => void;
   onCommit: () => void;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   refreshing: boolean;
   onPull: () => void;
   onPush: () => void;
@@ -231,7 +231,15 @@ export function RepoDetail({
         ) : null}
       </header>
       {graphOpen ? (
-        <GitGraph path={path} refreshToken={graphRefreshToken} />
+        <GitGraph
+          path={path}
+          refreshToken={graphRefreshToken}
+          onFilesRestored={async () => {
+            await onRefresh();
+            onToggleGraph();
+          }}
+          onBranchMoved={onRefresh}
+        />
       ) : (
         <>
           <div id="repo-detail-body" className="flex min-h-0 flex-1">

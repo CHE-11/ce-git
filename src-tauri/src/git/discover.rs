@@ -125,7 +125,10 @@ fn walk_children(paths: &[PathBuf], slots: &AtomicUsize) -> Vec<TreeNode> {
     }
 
     let extra = take_slots(slots, paths.len().saturating_sub(1));
-    let _guard = SlotGuard { slots, taken: extra };
+    let _guard = SlotGuard {
+        slots,
+        taken: extra,
+    };
     if extra == 0 {
         return walk_chunk(paths, slots);
     }
@@ -181,7 +184,12 @@ fn take_slots(slots: &AtomicUsize, wanted: usize) -> usize {
         }
         let taken = wanted.min(current);
         if slots
-            .compare_exchange_weak(current, current - taken, Ordering::AcqRel, Ordering::Relaxed)
+            .compare_exchange_weak(
+                current,
+                current - taken,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
             .is_ok()
         {
             return taken;

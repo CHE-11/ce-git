@@ -94,10 +94,12 @@ export function GitPullConfirmationDialog({
     >
       {phase === "confirm" ? (
         <p id="pull-confirm-copy" className="text-sm text-zinc-300">
-          Pull {count} repositories from each default branch. A dirty working tree, or a repository that is already up to
-          date, is skipped. A branch that is only behind is fast-forwarded. If the checked-out branch is also ahead, the
+          Pull {count} repositories from each default branch. A repository that is already up to date is skipped. Local
+          edits stay put when the incoming commits do not touch those files. When they do, those edits are stashed, the
+          commits are pulled, and the edits are put back. If putting them back conflicts, edit the files so your changes
+          fit, then finish. A branch that is only behind is fast-forwarded. If the checked-out branch is also ahead, the
           incoming commits are merged and local commits stay. If that merge conflicts, open the repository in {editorName},
-          resolve the files, and finish the merge.
+          resolve the files, and finish.
         </p>
       ) : (
         <GitSyncProgress id="pull-confirm-progress" label="Pulling" total={count} logs={entries} running={running} error={error} />
@@ -105,11 +107,11 @@ export function GitPullConfirmationDialog({
       {phase === "done" && conflicts.length > 0 ? (
         <section id="pull-conflicts" className="mt-4 rounded-md border border-violet-900 bg-violet-950/40 px-3 py-3">
           <h3 id="pull-conflicts-title" className="text-sm font-medium text-violet-100">
-            Merge conflicts
+            Conflicts
           </h3>
           <p id="pull-conflicts-copy" className="mt-1 text-sm leading-5 text-zinc-300">
-            {editorLabel} and resolve the files, then finish the merge. Abort puts the repository back to where it was before
-            the pull.
+            {editorLabel} and edit the files so the changes fit together, then finish. Abort puts the repository back to
+            where it was before the pull.
           </p>
           <ul id="pull-conflicts-list" className="mt-3 flex flex-col gap-2">
             {conflicts.map((entry, index) => (
@@ -153,7 +155,7 @@ export function GitPullConfirmationDialog({
                     onClick={() => void runConflictAction(onFinishMerge, entry.path)}
                   >
                     <span id={`pull-conflict-${index}-finish-label`}>
-                      {workingPath === entry.path ? "Working…" : "Finish merge"}
+                      {workingPath === entry.path ? "Working…" : "Finish"}
                     </span>
                   </Button>
                 </div>

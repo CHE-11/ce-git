@@ -304,9 +304,7 @@ fn git_config_value(value: &str) -> String {
         return decoded;
     }
     match value.find(['#', ';']) {
-        Some(index)
-            if value[..index].ends_with(' ') || value[..index].ends_with('\t') =>
-        {
+        Some(index) if value[..index].ends_with(' ') || value[..index].ends_with('\t') => {
             value[..index].trim().to_string()
         }
         _ => value.to_string(),

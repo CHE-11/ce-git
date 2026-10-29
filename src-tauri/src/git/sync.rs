@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -56,12 +57,6 @@ pub fn pull_default(path: &Path) -> Outcome {
         return conflict_outcome(path, &head, &branch);
     }
 
-    match is_dirty(path) {
-        Ok(true) => return Outcome::Skipped("Dirty working tree".into()),
-        Ok(false) => {}
-        Err(error) => return Outcome::Failed(error),
-    }
-
     let branch = match resolve_default_branch(path) {
         Ok(branch) => branch,
         Err(error) => return Outcome::Failed(error),
@@ -91,7 +86,9 @@ pub fn pull_default(path: &Path) -> Outcome {
     if !head.detached {
         match divergence(path, "HEAD", &remote) {
             Ok((ahead, behind)) if ahead > 0 && behind > 0 => {
-                let merged = merge_remote(path, &head.name, &branch, &remote, ahead, behind);
+                let merged = pull_keeping_local_edits(path, &remote, || {
+                    merge_remote(path, &head.name, &branch, &remote, ahead, behind)
+                });
                 if !matches!(merged, Outcome::Ok(_)) {
                     return if matches!(relation, LocalRelation::Diverged) {
                         note_local_default(merged, &branch, LocalUpdate::Diverged)
@@ -131,22 +128,99 @@ fn integrate_remote(path: &Path, head: &str, branch: &str, remote: &str) -> Outc
     if behind == 0 {
         return Outcome::Skipped(format!("{branch} is already up to date"));
     }
-    if ahead == 0 {
-        return match git(path, &["merge", "--ff-only", "--no-edit", remote]) {
-            Ok(_) => pull_outcome(
-                path,
-                branch,
-                &CurrentBranch {
-                    name: head.to_string(),
-                    detached: false,
-                    has_commits: true,
-                },
-                before,
-            ),
-            Err(error) => Outcome::Failed(error),
-        };
+    let head_branch = CurrentBranch {
+        name: head.to_string(),
+        detached: false,
+        has_commits: true,
+    };
+    pull_keeping_local_edits(path, remote, || {
+        if ahead == 0 {
+            return match git(path, &["merge", "--ff-only", "--no-edit", remote]) {
+                Ok(_) => pull_outcome(path, branch, &head_branch, before.clone()),
+                Err(error) => Outcome::Failed(error),
+            };
+        }
+        merge_remote(path, head, branch, remote, ahead, behind)
+    })
+}
+
+/// Stash local edits that the incoming commits touch, run the update, then put
+/// those edits back. Edits the incoming commits do not touch stay in the worktree.
+fn pull_keeping_local_edits(
+    path: &Path,
+    remote: &str,
+    mut update: impl FnMut() -> Outcome,
+) -> Outcome {
+    let mut stashed = match stash_overlapping(path, remote) {
+        Ok(stashed) => stashed,
+        Err(error) => return Outcome::Failed(error),
+    };
+    if stashed {
+        if let Err(error) = mark_pull_start(path) {
+            let _ = restore_stashed(path);
+            return Outcome::Failed(error);
+        }
     }
-    merge_remote(path, head, branch, remote, ahead, behind)
+    let mut outcome = update();
+    if !stashed {
+        if let Outcome::Failed(ref message) = outcome {
+            if let Some(files) = overwritten_files(message) {
+                match stash_paths(path, &files) {
+                    Ok(true) => {}
+                    Ok(false) => return outcome,
+                    Err(error) => return Outcome::Failed(error),
+                }
+                stashed = true;
+                if let Err(error) = mark_pull_start(path) {
+                    let _ = restore_stashed(path);
+                    return Outcome::Failed(error);
+                }
+                outcome = update();
+            }
+        }
+    }
+    if !stashed {
+        return note_kept_edits(path, outcome);
+    }
+    finish_with_stash(path, outcome)
+}
+
+fn note_kept_edits(path: &Path, outcome: Outcome) -> Outcome {
+    let dirty = is_dirty(path).unwrap_or(false);
+    match outcome {
+        Outcome::Ok(message) if dirty => Outcome::Ok(format!("{message} Local changes were kept.")),
+        other => other,
+    }
+}
+
+fn finish_with_stash(path: &Path, outcome: Outcome) -> Outcome {
+    match outcome {
+        Outcome::Conflict(message) => Outcome::Conflict(format!(
+            "{message} Conflicting local edits are stashed and come back when the merge finishes."
+        )),
+        Outcome::Ok(message) => match restore_stashed(path) {
+            Ok(StashRestore::Clean) => {
+                Outcome::Ok(format!("{message} Local changes were restored."))
+            }
+            Ok(StashRestore::Conflict(files)) => Outcome::Conflict(format!(
+                "{message} Restoring local changes conflicted in {files}. Edit them so they fit the new commits, then finish."
+            )),
+            Err(error) => Outcome::Failed(format!(
+                "{message} Could not restore local changes: {error}"
+            )),
+        },
+        other => match restore_stashed(path) {
+            Ok(StashRestore::Clean) => other,
+            Ok(StashRestore::Conflict(files)) => Outcome::Conflict(format!(
+                "Restoring local changes conflicted in {files}. Edit them so they fit, then finish."
+            )),
+            Err(error) => match other {
+                Outcome::Failed(message) => Outcome::Failed(format!("{message} {error}")),
+                Outcome::Skipped(message) => Outcome::Failed(format!("{message} {error}")),
+                outcome => outcome,
+            },
+        },
+    }
 }
 
 fn merge_remote(
@@ -253,6 +327,9 @@ pub fn continue_merge(path: &Path) -> Result<String, String> {
         return Err(error);
     }
     if !merge_in_progress(path) {
+        if ce_git_stash(path)?.is_some() {
+            return finish_stashed_edits(path);
+        }
         return Err("No merge is in progress.".into());
     }
 
@@ -277,18 +354,48 @@ pub fn continue_merge(path: &Path) -> Result<String, String> {
     git(path, &["commit", "--no-edit"])?;
     let subject =
         git(path, &["log", "-1", "--pretty=%s"]).unwrap_or_else(|_| "Merge committed".into());
-    Ok(format!("Committed: {}", subject.trim()))
+    let committed = format!("Committed: {}", subject.trim());
+    if ce_git_stash(path)?.is_none() {
+        return Ok(committed);
+    }
+    match restore_stashed(path)? {
+        StashRestore::Clean => Ok(format!("{committed} Local changes were restored.")),
+        StashRestore::Conflict(files) => Err(format!(
+            "Committed the merge. Restoring local changes conflicted in {files}. Edit them so they fit, then finish."
+        )),
+    }
 }
 
 pub fn abort_merge(path: &Path) -> Result<String, String> {
     if let Err(error) = require_repo(path) {
         return Err(error);
     }
-    if !merge_in_progress(path) {
-        return Err("No merge is in progress.".into());
+    if merge_in_progress(path) {
+        git(path, &["merge", "--abort"])?;
+        restore_stashed_clean(path)?;
+        return Ok("Merge aborted".into());
     }
-    git(path, &["merge", "--abort"])?;
-    Ok("Merge aborted".into())
+    if ce_git_stash(path)?.is_some() || pull_start(path).is_some() {
+        if !unmerged_files(path).is_empty() {
+            git(path, &["reset", "--merge"])?;
+        }
+        if let Some(start) = pull_start(path) {
+            git(path, &["reset", "--keep", &start])?;
+        }
+        restore_stashed_clean(path)?;
+        clear_pull_start(path);
+        return Ok("Pull aborted".into());
+    }
+    Err("No merge is in progress.".into())
+}
+
+fn restore_stashed_clean(path: &Path) -> Result<(), String> {
+    match restore_stashed(path)? {
+        StashRestore::Clean => Ok(()),
+        StashRestore::Conflict(files) => Err(format!(
+            "The pull was put back, but local changes conflict in {files}."
+        )),
+    }
 }
 
 enum FileResolution {
@@ -369,6 +476,233 @@ fn unmerged_files(path: &Path) -> Vec<String> {
 
 fn merge_in_progress(path: &Path) -> bool {
     git(path, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_ok()
+}
+
+const PULL_STASH_MESSAGE: &str = "ce-git pull";
+const PULL_START_REF: &str = "refs/ce-git/pull-start";
+
+enum StashRestore {
+    Clean,
+    Conflict(String),
+}
+
+fn stash_overlapping(path: &Path, remote: &str) -> Result<bool, String> {
+    if ce_git_stash(path)?.is_some() {
+        return Err(
+            "A previous pull still has local changes stashed. Finish or abort that pull first."
+                .into(),
+        );
+    }
+    let dirty = worktree_paths(path)?;
+    if dirty.is_empty() {
+        return Ok(false);
+    }
+    let base = merge_base(path, "HEAD", remote).unwrap_or_else(|_| "HEAD".to_string());
+    let incoming = changed_paths(path, &base, remote)?;
+    let mut overlap = Vec::new();
+    for file in dirty {
+        if incoming.contains(&file) && !overlap.contains(&file) {
+            overlap.push(file);
+        }
+    }
+    if overlap.is_empty() {
+        return Ok(false);
+    }
+    stash_paths(path, &overlap)
+}
+
+fn stash_paths(path: &Path, files: &[String]) -> Result<bool, String> {
+    if files.is_empty() {
+        return Ok(false);
+    }
+    let mut args = vec![
+        "stash",
+        "push",
+        "--include-untracked",
+        "-m",
+        PULL_STASH_MESSAGE,
+        "--",
+    ];
+    args.extend(files.iter().map(String::as_str));
+    match git(path, &args) {
+        Ok(_) => Ok(ce_git_stash(path)?.is_some()),
+        Err(error) if error.to_ascii_lowercase().contains("no local changes") => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn worktree_paths(path: &Path) -> Result<Vec<String>, String> {
+    let output = git(path, &["status", "--porcelain=v1", "-uall", "-z"])?;
+    Ok(porcelain_z_paths(&output))
+}
+
+fn porcelain_z_paths(output: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut tokens = output.split('\0').filter(|token| !token.is_empty());
+    while let Some(entry) = tokens.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let status = &entry[..2];
+        let renamed = status.contains('R') || status.contains('C');
+        let path = entry[3..].trim();
+        if !path.is_empty() {
+            paths.push(path.to_string());
+        }
+        if renamed {
+            if let Some(next) = tokens.next() {
+                if !next.is_empty() {
+                    paths.push(next.to_string());
+                }
+            }
+        }
+    }
+    paths
+}
+
+fn changed_paths(path: &Path, from: &str, to: &str) -> Result<HashSet<String>, String> {
+    let output = git(path, &["diff", "--name-status", "-z", "-M", from, to])?;
+    let mut paths = HashSet::new();
+    let mut tokens = output.split('\0').filter(|token| !token.is_empty());
+    while let Some(status) = tokens.next() {
+        let renamed = status.starts_with('R') || status.starts_with('C');
+        if renamed {
+            if let Some(previous) = tokens.next() {
+                paths.insert(previous.to_string());
+            }
+            if let Some(next) = tokens.next() {
+                paths.insert(next.to_string());
+            }
+        } else if let Some(file) = tokens.next() {
+            paths.insert(file.to_string());
+        }
+    }
+    Ok(paths)
+}
+
+fn merge_base(path: &Path, left: &str, right: &str) -> Result<String, String> {
+    Ok(git(path, &["merge-base", left, right])?.trim().to_string())
+}
+
+fn mark_pull_start(path: &Path) -> Result<(), String> {
+    git(path, &["update-ref", PULL_START_REF, "HEAD"])?;
+    Ok(())
+}
+
+fn clear_pull_start(path: &Path) {
+    let _ = git(path, &["update-ref", "-d", PULL_START_REF]);
+}
+
+fn pull_start(path: &Path) -> Option<String> {
+    git(path, &["rev-parse", "--verify", "--quiet", PULL_START_REF])
+        .ok()
+        .map(|sha| sha.trim().to_string())
+        .filter(|sha| !sha.is_empty())
+}
+
+fn ce_git_stash(path: &Path) -> Result<Option<String>, String> {
+    let output = git(path, &["stash", "list", "--format=%gd %gs"])?;
+    Ok(output.lines().find_map(|line| {
+        let line = line.trim();
+        if !line.contains(PULL_STASH_MESSAGE) {
+            return None;
+        }
+        line.split_whitespace().next().map(str::to_string)
+    }))
+}
+
+fn restore_stashed(path: &Path) -> Result<StashRestore, String> {
+    let Some(id) = ce_git_stash(path)? else {
+        clear_pull_start(path);
+        return Ok(StashRestore::Clean);
+    };
+    match git(path, &["stash", "pop", &id]) {
+        Ok(_) => {
+            clear_pull_start(path);
+            Ok(StashRestore::Clean)
+        }
+        Err(_) => {
+            let files = unmerged_files(path);
+            if files.is_empty() {
+                Err(
+                    "Local changes are still stashed. Finish to try applying them again, or abort."
+                        .into(),
+                )
+            } else {
+                Ok(StashRestore::Conflict(summarize_files(&files)))
+            }
+        }
+    }
+}
+
+fn finish_stashed_edits(path: &Path) -> Result<String, String> {
+    let files = unmerged_files(path);
+    if files.is_empty() {
+        return match restore_stashed(path)? {
+            StashRestore::Clean => Ok("Local changes restored.".into()),
+            StashRestore::Conflict(names) => Err(format!(
+                "Restoring local changes conflicted in {names}. Edit them so they fit, then finish."
+            )),
+        };
+    }
+
+    let mut markers = Vec::new();
+    let mut binary = Vec::new();
+    for file in &files {
+        match file_resolution(path, file) {
+            FileResolution::Clean | FileResolution::Missing => {}
+            FileResolution::Markers => markers.push(file.clone()),
+            FileResolution::Binary => binary.push(file.clone()),
+        }
+    }
+    if !markers.is_empty() || !binary.is_empty() {
+        return Err(unresolved_message(&markers, &binary));
+    }
+    for file in &files {
+        git(path, &["add", "--", file])?;
+        git(path, &["restore", "--staged", "--", file])?;
+    }
+    if !unmerged_files(path).is_empty() {
+        return Err("Some files are still unmerged.".into());
+    }
+    if let Some(id) = ce_git_stash(path)? {
+        git(path, &["stash", "drop", &id])?;
+    }
+    clear_pull_start(path);
+    Ok("Local changes restored.".into())
+}
+
+fn overwritten_files(message: &str) -> Option<Vec<String>> {
+    let lower = message.to_ascii_lowercase();
+    if !lower.contains("would be overwritten") {
+        return None;
+    }
+    let mut files = Vec::new();
+    let mut collecting = false;
+    for line in message.lines() {
+        let trimmed = line.trim();
+        if trimmed
+            .to_ascii_lowercase()
+            .contains("would be overwritten")
+        {
+            collecting = true;
+            continue;
+        }
+        if !collecting || trimmed.is_empty() {
+            continue;
+        }
+        let stop = trimmed.starts_with("Please ")
+            || trimmed.starts_with("Aborting")
+            || trimmed.starts_with("error:")
+            || trimmed.starts_with("fatal:")
+            || trimmed.starts_with("Updating")
+            || trimmed.starts_with("Merge with");
+        if stop {
+            break;
+        }
+        files.push(trimmed.to_string());
+    }
+    if files.is_empty() { None } else { Some(files) }
 }
 
 fn pull_outcome(
@@ -775,7 +1109,17 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{find_gh_in, gh_executable};
+    use super::{find_gh_in, gh_executable, overwritten_files};
+
+    #[test]
+    fn overwritten_files_reads_the_paths_git_refuses_to_merge() {
+        let message = "git merge failed: error: Your local changes to the following files would be overwritten by merge:\n\tREADME.md\n\tsrc/app.ts\nPlease commit your changes or stash them before you merge.\nAborting";
+        assert_eq!(
+            overwritten_files(message),
+            Some(vec!["README.md".into(), "src/app.ts".into()])
+        );
+        assert_eq!(overwritten_files("git merge failed: conflict"), None);
+    }
 
     #[test]
     fn find_gh_in_prefers_an_executable_in_the_given_directories() {

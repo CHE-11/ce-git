@@ -350,9 +350,25 @@ mod tests {
         fs::write(alpha.join("dirty.txt"), "wip\n").unwrap();
         let skipped = pull_default(&alpha);
         assert!(
-            matches!(skipped, Outcome::Skipped(ref message) if message.contains("Dirty")),
+            matches!(skipped, Outcome::Skipped(ref message) if message.contains("already up to date")),
             "{skipped:?}"
         );
+
+        fs::write(seed.join("OTHER.md"), "other\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "third"]);
+        run_git(&seed, &["push"]);
+        let pulled = pull_default(&alpha);
+        assert!(matches!(pulled, Outcome::Ok(_)), "{pulled:?}");
+        assert_eq!(
+            fs::read_to_string(alpha.join("dirty.txt")).unwrap(),
+            "wip\n"
+        );
+        let head = git(&alpha, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap();
+        assert_eq!(head.trim(), "feature");
+        let local_main = git(&alpha, &["rev-parse", "main"]).unwrap();
+        let seed_main = git(&seed, &["rev-parse", "main"]).unwrap();
+        assert_eq!(local_main.trim(), seed_main.trim());
 
         let _ = fs::remove_dir_all(tmp);
     }
@@ -402,6 +418,119 @@ mod tests {
             matches!(again, Outcome::Skipped(ref message) if message.contains("already up to date")),
             "{again:?}"
         );
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn pull_keeps_local_edits_the_incoming_commits_do_not_touch() {
+        let (tmp, seed, clone) = tracking_clone("pull-dirty-safe");
+        fs::write(clone.join("README.md"), "local notes\n").unwrap();
+        fs::write(seed.join("OTHER.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(
+            matches!(outcome, Outcome::Ok(ref message) if message.contains("kept")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).unwrap(),
+            "local notes\n"
+        );
+        assert_eq!(
+            fs::read_to_string(clone.join("OTHER.md")).unwrap(),
+            "remote\n"
+        );
+        let head = git(&clone, &["rev-parse", "HEAD"]).unwrap();
+        let remote = git(&seed, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(head.trim(), remote.trim());
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn pull_stashes_overlapping_edits_and_restores_them() {
+        let (tmp, seed, clone) = tracking_clone("pull-dirty-overlap");
+        fs::write(seed.join("README.md"), "a\nb\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "base"]);
+        run_git(&seed, &["push"]);
+        let synced = pull_default(&clone);
+        assert!(matches!(synced, Outcome::Ok(_)), "{synced:?}");
+
+        fs::write(clone.join("README.md"), "A\nb\n").unwrap();
+        fs::write(seed.join("README.md"), "a\nb\nc\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(
+            matches!(outcome, Outcome::Ok(ref message) if message.contains("restored")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).unwrap(),
+            "A\nb\nc\n"
+        );
+        let status = git(&clone, &["status", "--porcelain"]).unwrap();
+        assert!(status.contains("README.md"), "{status}");
+        assert!(git(&clone, &["stash", "list"]).unwrap().trim().is_empty());
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn pull_stash_conflict_can_be_finished_or_aborted() {
+        let (tmp, seed, clone) = tracking_clone("pull-dirty-conflict");
+        fs::write(clone.join("README.md"), "local\n").unwrap();
+        fs::write(seed.join("README.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let outcome = pull_default(&clone);
+        assert!(
+            matches!(outcome, Outcome::Conflict(ref message) if message.contains("README.md")),
+            "{outcome:?}"
+        );
+        let unfinished = continue_merge(&clone);
+        assert!(
+            matches!(unfinished, Err(ref message) if message.contains("conflict markers")),
+            "{unfinished:?}"
+        );
+
+        fs::write(clone.join("README.md"), "both\n").unwrap();
+        let finished = continue_merge(&clone).unwrap();
+        assert!(finished.contains("restored"), "{finished}");
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).unwrap(),
+            "both\n"
+        );
+        let head = git(&clone, &["rev-parse", "HEAD"]).unwrap();
+        let remote = git(&seed, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(head.trim(), remote.trim());
+        assert!(git(&clone, &["stash", "list"]).unwrap().trim().is_empty());
+
+        fs::write(clone.join("README.md"), "local-again\n").unwrap();
+        fs::write(seed.join("README.md"), "remote-again\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote again"]);
+        run_git(&seed, &["push"]);
+        let again = pull_default(&clone);
+        assert!(matches!(again, Outcome::Conflict(_)), "{again:?}");
+        let aborted = abort_merge(&clone).unwrap();
+        assert!(aborted.contains("aborted"), "{aborted}");
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).unwrap(),
+            "local-again\n"
+        );
+        let restored_head = git(&clone, &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(restored_head.trim(), remote.trim());
+        assert!(git(&clone, &["stash", "list"]).unwrap().trim().is_empty());
 
         let _ = fs::remove_dir_all(tmp);
     }

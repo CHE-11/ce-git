@@ -99,6 +99,19 @@ function treeHasRepos(tree: TreeNode) {
   return tree.kind === "repo" || tree.children.length > 0;
 }
 
+function foldersWithDirtyRepos(node: TreeNode, statuses: Record<string, RepoStatus>, dirty: Set<string>): boolean {
+  let containsDirty = node.kind === "repo" && statuses[node.path]?.dirty === true;
+  for (const child of node.children) {
+    if (foldersWithDirtyRepos(child, statuses, dirty)) {
+      containsDirty = true;
+    }
+  }
+  if (containsDirty && node.kind === "folder") {
+    dirty.add(node.path);
+  }
+  return containsDirty;
+}
+
 function collectRepos(node: TreeNode, repos: TreeNode[]) {
   if (node.kind === "repo") {
     repos.push(node);
@@ -212,6 +225,13 @@ export function RepoTree({
     }
     return trees;
   }, [trees, statuses, filter, searchQuery]);
+  const dirtyFolders = useMemo(() => {
+    const dirty = new Set<string>();
+    for (const tree of trees) {
+      foldersWithDirtyRepos(tree, statuses, dirty);
+    }
+    return dirty;
+  }, [trees, statuses]);
   const colorMode = folderColorMode(treeStyle);
   const folderVars = useMemo(() => {
     if (!colorMode) {
@@ -465,6 +485,7 @@ export function RepoTree({
                   folderVars={folderVars}
                   folderColorMode={colorMode}
                   folderIndicator={treeStyle.folderIndicator}
+                  dirtyFolders={dirtyFolders}
                   trailing={
                     <Button
                       id={shownTrees.length === 1 ? "repo-tree-collapse-button" : `repo-tree-collapse-button-${index}`}

@@ -29,6 +29,7 @@ type RepoTreeNodeProps = {
   folderVars: Map<string, string> | null;
   folderColorMode: "background" | "font" | null;
   folderIndicator: boolean;
+  dirtyFolders: ReadonlySet<string>;
   trailing?: ReactNode;
 };
 
@@ -48,6 +49,7 @@ export function RepoTreeNode({
   folderVars,
   folderColorMode,
   folderIndicator,
+  dirtyFolders,
   trailing,
   allowRootCollapse = true,
 }: RepoTreeNodeProps) {
@@ -61,6 +63,7 @@ export function RepoTreeNode({
   const hasChildren = node.children.length > 0;
   const canToggle = hasChildren && !rootLockedOpen;
   const showRootPath = depth === 0 && Boolean(rootPath);
+  const folderDirty = !isRepo && dirtyFolders.has(node.path);
   const targeted = node.path === contextPath;
   const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, [], filter);
   const folderVar = folderVars?.get(node.path) ?? null;
@@ -161,7 +164,7 @@ export function RepoTreeNode({
         >
           {node.name}
         </span>
-        {showRootPath || status || trailing ? (
+        {showRootPath || status || trailing || folderDirty ? (
           <span id={domId("tree-aside", node.path)} className="ml-auto flex min-w-0 items-center justify-end gap-1.5">
             {showRootPath ? (
               <span
@@ -206,6 +209,12 @@ export function RepoTreeNode({
                   </span>
                 ) : null}
               </span>
+            ) : folderDirty ? (
+              <span
+                id={domId("tree-dirty", node.path)}
+                className="size-2 shrink-0 rounded-full bg-amber-400"
+                title="Uncommitted changes"
+              />
             ) : null}
             {trailing ? (
               <span id={domId("tree-trailing", node.path)} className="shrink-0">
@@ -245,6 +254,7 @@ export function RepoTreeNode({
               folderVars={folderVars}
               folderColorMode={folderColorMode}
               folderIndicator={folderIndicator}
+              dirtyFolders={dirtyFolders}
             />
           ))}
         </div>

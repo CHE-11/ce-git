@@ -11,6 +11,7 @@ import {
 import { cn } from "../../../lib/cn";
 import { editorGroups, type EditorId } from "../../../lib/editors";
 import { fileManagerLabel } from "../../../lib/changes";
+import type { TreeStyle } from "../../../lib/tree-style";
 import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP } from "../../../lib/zoom";
 import { Button } from "../../Button";
 
@@ -22,6 +23,7 @@ type AppSettingsTabProps = {
   theme: ThemeId;
   colorMode: ColorMode;
   toolbarLabels: boolean;
+  treeStyle: TreeStyle;
   defaultEditor: EditorId;
   menuEditors: readonly EditorId[];
   warning: string | null;
@@ -32,6 +34,7 @@ type AppSettingsTabProps = {
   onThemeChange: (theme: ThemeId) => void;
   onColorModeChange: (colorMode: ColorMode) => void;
   onToolbarLabelsChange: (toolbarLabels: boolean) => void;
+  onTreeStyleChange: (patch: Partial<TreeStyle>) => void;
   onDefaultEditorChange: (editor: EditorId) => void;
   onMenuEditorChange: (editor: EditorId, shown: boolean) => void;
   onBrowse: () => void;
@@ -48,6 +51,7 @@ export function AppSettingsTab({
   theme,
   colorMode,
   toolbarLabels,
+  treeStyle,
   defaultEditor,
   menuEditors,
   warning,
@@ -58,6 +62,7 @@ export function AppSettingsTab({
   onThemeChange,
   onColorModeChange,
   onToolbarLabelsChange,
+  onTreeStyleChange,
   onDefaultEditorChange,
   onMenuEditorChange,
   onBrowse,
@@ -343,6 +348,50 @@ export function AppSettingsTab({
             </p>
           </div>
         </SettingsSection>
+
+        <SettingsSection
+          id="app-settings-tree"
+          title="Repository tree"
+          hint="Color a top-level folder and everything inside it. Background and name color cannot both be on. Save keeps the choice."
+        >
+          <TreeStyleToggle
+            id="app-settings-folder-background"
+            label="Color folder backgrounds"
+            checked={treeStyle.folderColorBackground}
+            disabled={busy}
+            onChange={(checked) => onTreeStyleChange({ folderColorBackground: checked })}
+          />
+          <TreeStyleToggle
+            id="app-settings-folder-background-unique"
+            label="Different color for each top-level folder"
+            checked={treeStyle.folderColorBackgroundUnique}
+            disabled={busy || !treeStyle.folderColorBackground}
+            nested
+            onChange={(checked) => onTreeStyleChange({ folderColorBackgroundUnique: checked })}
+          />
+          <TreeStyleToggle
+            id="app-settings-folder-font"
+            label="Color folder names"
+            checked={treeStyle.folderFontColor}
+            disabled={busy}
+            onChange={(checked) => onTreeStyleChange({ folderFontColor: checked })}
+          />
+          <TreeStyleToggle
+            id="app-settings-folder-font-unique"
+            label="Different color for each top-level folder"
+            checked={treeStyle.folderFontColorUnique}
+            disabled={busy || !treeStyle.folderFontColor}
+            nested
+            onChange={(checked) => onTreeStyleChange({ folderFontColorUnique: checked })}
+          />
+          <TreeStyleToggle
+            id="app-settings-folder-indicator"
+            label="Show a line beside items in a folder"
+            checked={treeStyle.folderIndicator}
+            disabled={busy}
+            onChange={(checked) => onTreeStyleChange({ folderIndicator: checked })}
+          />
+        </SettingsSection>
       </form>
       {warning ? (
         <p id="app-settings-warning" className="mt-3 text-sm text-amber-200" role="status">
@@ -355,6 +404,43 @@ export function AppSettingsTab({
         </p>
       ) : null}
     </>
+  );
+}
+
+function TreeStyleToggle({
+  id,
+  label,
+  checked,
+  disabled,
+  nested = false,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  nested?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      id={id}
+      className={cn(
+        "flex items-center gap-2 text-sm first:mt-0",
+        nested ? "mt-1.5 pl-6" : "mt-3",
+        disabled ? "text-zinc-500" : "text-zinc-200",
+      )}
+    >
+      <input
+        id={`${id}-input`}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-4 accent-sky-500 disabled:opacity-50"
+      />
+      <span id={`${id}-text`}>{label}</span>
+    </label>
   );
 }
 

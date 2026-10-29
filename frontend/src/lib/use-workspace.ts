@@ -37,6 +37,7 @@ import { baseName, collectRepos, containingRoot, findTreeNode, hiddenTreeItems, 
 import { applyUserThemeCss, publishAppearance } from "./appearance";
 import { publishDefaultEditor, publishMenuEditors, readDefaultEditor, readMenuEditors, type EditorId } from "./editors";
 import { publishToolbarLabels, readToolbarLabels } from "./toolbar-labels";
+import { publishTreeStyle, readTreeStyle, type TreeStyle } from "./tree-style";
 import { clampZoom, publishZoom, readZoom, ZOOM_EVENT } from "./zoom";
 
 type SelectMode = "replace" | "toggle" | "range";
@@ -186,6 +187,7 @@ export function useWorkspace() {
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
   const [removedRepos, setRemovedRepos] = useState<string[]>([]);
   const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
+  const [treeStyle, setTreeStyle] = useState<TreeStyle>(readTreeStyle);
   const [defaultEditor, setDefaultEditor] = useState(readDefaultEditor);
   const [menuEditors, setMenuEditors] = useState(readMenuEditors);
 
@@ -454,6 +456,7 @@ export function useWorkspace() {
         publishZoom(settings.fontZoom);
         publishAppearance(settings.theme, settings.colorMode);
         setToolbarLabels(publishToolbarLabels(settings.toolbarLabels));
+        setTreeStyle(publishTreeStyle(settings));
         setDefaultEditor(publishDefaultEditor(settings.defaultEditor));
         setMenuEditors(publishMenuEditors(settings.menuEditors));
         setSelectedPrompt(prompt);
@@ -1485,6 +1488,7 @@ export function useWorkspace() {
   return {
     rootPaths,
     toolbarLabels,
+    treeStyle,
     defaultEditor,
     menuEditors,
     trees,

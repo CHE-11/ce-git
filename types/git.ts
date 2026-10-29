@@ -166,6 +166,16 @@ export interface AppSettings {
   theme: string;
   colorMode: "dark" | "light" | "system";
   toolbarLabels: boolean;
+  /** Tint each top-level folder and the rows inside it. */
+  folderColorBackground: boolean;
+  /** Give each top-level folder a different background color. */
+  folderColorBackgroundUnique: boolean;
+  /** Color the names in each top-level folder. Mutually exclusive with the background tint. */
+  folderFontColor: boolean;
+  /** Give each top-level folder a different name color. */
+  folderFontColorUnique: boolean;
+  /** Draw a vertical line beside the children of an expanded folder. */
+  folderIndicator: boolean;
   defaultEditor: string;
   menuEditors: string[];
   model: string;

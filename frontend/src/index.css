@@ -94,10 +94,34 @@
   --app-red-600: oklch(57.7% 0.245 27.325);
   --app-red-900: oklch(39.6% 0.141 25.723);
   --app-red-950: oklch(25.8% 0.092 26.042);
+  --tree-folder-0: oklch(78% 0.12 15);
+  --tree-folder-1: oklch(78% 0.12 45);
+  --tree-folder-2: oklch(80% 0.12 75);
+  --tree-folder-3: oklch(78% 0.12 110);
+  --tree-folder-4: oklch(78% 0.11 145);
+  --tree-folder-5: oklch(78% 0.1 175);
+  --tree-folder-6: oklch(78% 0.1 200);
+  --tree-folder-7: oklch(78% 0.11 230);
+  --tree-folder-8: oklch(76% 0.12 265);
+  --tree-folder-9: oklch(76% 0.13 295);
+  --tree-folder-10: oklch(76% 0.13 325);
+  --tree-folder-11: oklch(76% 0.13 350);
 }
 
 html[data-mode="light"] {
   color-scheme: light;
+  --tree-folder-0: oklch(46% 0.14 15);
+  --tree-folder-1: oklch(46% 0.14 45);
+  --tree-folder-2: oklch(44% 0.13 75);
+  --tree-folder-3: oklch(44% 0.13 110);
+  --tree-folder-4: oklch(42% 0.12 145);
+  --tree-folder-5: oklch(42% 0.11 175);
+  --tree-folder-6: oklch(42% 0.11 200);
+  --tree-folder-7: oklch(42% 0.13 230);
+  --tree-folder-8: oklch(42% 0.14 265);
+  --tree-folder-9: oklch(42% 0.15 295);
+  --tree-folder-10: oklch(44% 0.15 325);
+  --tree-folder-11: oklch(44% 0.15 350);
 }
 
 html[data-theme="zinc"][data-mode="light"] {
@@ -494,6 +518,22 @@ textarea {
   mask-image: repeating-linear-gradient(to bottom, #000 0, #000 0.42lh, transparent 0.42lh, transparent 1lh);
   -webkit-mask-position: 0 0.29lh;
   mask-position: 0 0.29lh;
+}
+
+.tree-folder-bg {
+  background-color: color-mix(in oklch, var(--tree-folder) 18%, transparent);
+}
+
+.tree-folder-bg:hover {
+  background-color: color-mix(in oklch, var(--tree-folder) 30%, transparent);
+}
+
+.tree-folder-active {
+  background-color: color-mix(in oklch, var(--app-sky-950) 72%, var(--tree-folder));
+}
+
+.tree-folder-active:hover {
+  background-color: color-mix(in oklch, var(--app-sky-950) 58%, var(--tree-folder));
 }
 
 @media (prefers-reduced-motion: reduce) {

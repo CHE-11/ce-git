@@ -67,6 +67,11 @@ export function saveAppSettings(settings: {
   theme: string;
   colorMode: "dark" | "light" | "system";
   toolbarLabels: boolean;
+  folderColorBackground: boolean;
+  folderColorBackgroundUnique: boolean;
+  folderFontColor: boolean;
+  folderFontColorUnique: boolean;
+  folderIndicator: boolean;
   defaultEditor: string;
   menuEditors: string[];
   selectedPrompt: number | null;

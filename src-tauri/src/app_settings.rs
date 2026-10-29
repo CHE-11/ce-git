@@ -114,6 +114,11 @@ pub struct AppSettings {
     pub theme: String,
     pub color_mode: String,
     pub toolbar_labels: bool,
+    pub folder_color_background: bool,
+    pub folder_color_background_unique: bool,
+    pub folder_font_color: bool,
+    pub folder_font_color_unique: bool,
+    pub folder_indicator: bool,
     pub default_editor: String,
     pub menu_editors: Vec<String>,
     pub model: String,
@@ -162,6 +167,11 @@ struct PortableFile {
     theme: String,
     color_mode: String,
     toolbar_labels: bool,
+    folder_color_background: bool,
+    folder_color_background_unique: bool,
+    folder_font_color: bool,
+    folder_font_color_unique: bool,
+    folder_indicator: bool,
     default_editor: String,
     menu_editors: Vec<String>,
     model: String,
@@ -182,6 +192,11 @@ impl Default for PortableFile {
             theme: DEFAULT_THEME.to_string(),
             color_mode: DEFAULT_COLOR_MODE.to_string(),
             toolbar_labels: false,
+            folder_color_background: false,
+            folder_color_background_unique: false,
+            folder_font_color: false,
+            folder_font_color_unique: false,
+            folder_indicator: false,
             default_editor: crate::editor::DEFAULT_EDITOR.to_string(),
             menu_editors: crate::editor::default_menu_editors(),
             model: String::new(),
@@ -224,6 +239,11 @@ pub fn save_app_settings(
     theme: String,
     color_mode: String,
     toolbar_labels: bool,
+    folder_color_background: bool,
+    folder_color_background_unique: bool,
+    folder_font_color: bool,
+    folder_font_color_unique: bool,
+    folder_indicator: bool,
     default_editor: String,
     menu_editors: Vec<String>,
     selected_prompt: Option<u8>,
@@ -268,6 +288,11 @@ pub fn save_app_settings(
                 file.theme = theme;
                 file.color_mode = color_mode;
                 file.toolbar_labels = toolbar_labels;
+                file.folder_color_background = folder_color_background;
+                file.folder_color_background_unique = folder_color_background_unique;
+                file.folder_font_color = folder_font_color && !folder_color_background;
+                file.folder_font_color_unique = folder_font_color_unique;
+                file.folder_indicator = folder_indicator;
                 file.default_editor = default_editor;
                 file.menu_editors = menu_editors;
                 Ok(view_of(&Loaded {
@@ -294,6 +319,11 @@ pub fn save_app_settings(
                 file.theme = theme;
                 file.color_mode = color_mode;
                 file.toolbar_labels = toolbar_labels;
+                file.folder_color_background = folder_color_background;
+                file.folder_color_background_unique = folder_color_background_unique;
+                file.folder_font_color = folder_font_color;
+                file.folder_font_color_unique = folder_font_color_unique;
+                file.folder_indicator = folder_indicator;
                 file.default_editor = default_editor;
                 file.menu_editors = menu_editors;
                 file.selected_prompt = prompt;
@@ -522,6 +552,11 @@ fn view_of(loaded: &Loaded) -> AppSettings {
         theme: file.theme.clone(),
         color_mode: file.color_mode.clone(),
         toolbar_labels: file.toolbar_labels,
+        folder_color_background: file.folder_color_background,
+        folder_color_background_unique: file.folder_color_background_unique,
+        folder_font_color: file.folder_font_color,
+        folder_font_color_unique: file.folder_font_color_unique,
+        folder_indicator: file.folder_indicator,
         default_editor: file.default_editor.clone(),
         menu_editors: file.menu_editors.clone(),
         model: file.model.clone(),
@@ -803,6 +838,9 @@ impl PortableFile {
         self.font_zoom = clamp_zoom(self.font_zoom);
         self.theme = normalize_theme(&self.theme);
         self.color_mode = normalize_color_mode(&self.color_mode);
+        if self.folder_color_background && self.folder_font_color {
+            self.folder_font_color = false;
+        }
         self.default_editor = normalize_editor(&self.default_editor);
         self.menu_editors = normalize_menu_editors(std::mem::take(&mut self.menu_editors));
         self.model = self.model.trim().to_string();
@@ -1040,6 +1078,11 @@ mod tests {
         assert_eq!(loaded.theme, "zinc");
         assert_eq!(loaded.color_mode, "dark");
         assert_eq!(loaded.toolbar_labels, false);
+        assert_eq!(loaded.folder_color_background, false);
+        assert_eq!(loaded.folder_color_background_unique, false);
+        assert_eq!(loaded.folder_font_color, false);
+        assert_eq!(loaded.folder_font_color_unique, false);
+        assert_eq!(loaded.folder_indicator, false);
         assert_eq!(loaded.default_editor, "default");
         assert_eq!(
             loaded.menu_editors,
@@ -1057,6 +1100,11 @@ mod tests {
         next.theme = "nord".into();
         next.color_mode = "light".into();
         next.toolbar_labels = true;
+        next.folder_color_background = true;
+        next.folder_color_background_unique = true;
+        next.folder_font_color = true;
+        next.folder_font_color_unique = true;
+        next.folder_indicator = true;
         next.default_editor = "cursor".into();
         next.menu_editors = vec!["zed".into(), "nope".into(), "code".into(), "zed".into()];
         next.folder_ignore = "node_modules\n(^|[\\\\/])vendor$".into();
@@ -1068,6 +1116,11 @@ mod tests {
         assert_eq!(saved.theme, "nord");
         assert_eq!(saved.color_mode, "light");
         assert_eq!(saved.toolbar_labels, true);
+        assert_eq!(saved.folder_color_background, true);
+        assert_eq!(saved.folder_color_background_unique, true);
+        assert_eq!(saved.folder_font_color, false);
+        assert_eq!(saved.folder_font_color_unique, true);
+        assert_eq!(saved.folder_indicator, true);
         assert_eq!(saved.default_editor, "cursor");
         assert_eq!(
             saved.menu_editors,

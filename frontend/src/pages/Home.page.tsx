@@ -312,6 +312,7 @@ export function HomePage() {
           onRestoreRemoved={() => setRestoreOpen(true)}
           filter={treeFilter}
           onFilter={setTreeFilter}
+          treeStyle={workspace.treeStyle}
         />
         {explorerPath ? (
           <FileExplorer

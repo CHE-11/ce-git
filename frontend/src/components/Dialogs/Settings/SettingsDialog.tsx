@@ -31,6 +31,7 @@ import {
 import { normalizeEditor, normalizeMenuEditors, readDefaultEditor, readMenuEditors, type EditorId } from "../../../lib/editors";
 import { folderIgnoreError, messageOf, pickedFolderPath } from "../../../lib/tree";
 import { readToolbarLabels } from "../../../lib/toolbar-labels";
+import { readTreeStyle, treeStyleFrom, type TreeStyle } from "../../../lib/tree-style";
 import { MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, readZoom } from "../../../lib/zoom";
 import { Button } from "../../Button";
 import { Dialog } from "../Dialog";
@@ -68,6 +69,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
   const [theme, setTheme] = useState<ThemeId>(openedAppearance.current.theme);
   const [colorMode, setColorMode] = useState<ColorMode>(openedAppearance.current.colorMode);
   const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
+  const [treeStyle, setTreeStyle] = useState<TreeStyle>(readTreeStyle);
   const [defaultEditor, setDefaultEditor] = useState(readDefaultEditor);
   const [menuEditors, setMenuEditors] = useState(readMenuEditors);
   const [exePath, setExePath] = useState("");
@@ -160,6 +162,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         if (settings.shared) {
           setZoom(clampDialogZoom(settings.fontZoom));
           setToolbarLabels(settings.toolbarLabels);
+          setTreeStyle(treeStyleFrom(settings));
           setDefaultEditor(normalizeEditor(settings.defaultEditor));
           setMenuEditors(normalizeMenuEditors(settings.menuEditors));
           applyAppearance(appearance.theme, appearance.colorMode);
@@ -249,6 +252,19 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     applyAppearance(theme, next);
   };
 
+  const changeTreeStyle = (patch: Partial<TreeStyle>) => {
+    setTreeStyle((current) => {
+      const next = { ...current, ...patch };
+      if (patch.folderColorBackground) {
+        next.folderFontColor = false;
+      }
+      if (patch.folderFontColor) {
+        next.folderColorBackground = false;
+      }
+      return next;
+    });
+  };
+
   const applyFolderPreview = async (path: string) => {
     const token = (folderPreviewRef.current += 1);
     const preview = await previewAppSettings(path);
@@ -268,6 +284,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
     setColorMode(appearance.colorMode);
     setZoom(clampDialogZoom(preview.fontZoom));
     setToolbarLabels(preview.toolbarLabels);
+    setTreeStyle(treeStyleFrom(preview));
     setDefaultEditor(normalizeEditor(preview.defaultEditor));
     setMenuEditors(normalizeMenuEditors(preview.menuEditors));
     setPrompts(withDefaultPrompts(preview.prompts));
@@ -328,6 +345,7 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
         theme,
         colorMode,
         toolbarLabels,
+        ...treeStyle,
         defaultEditor,
         menuEditors,
         selectedPrompt,
@@ -591,6 +609,8 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           theme={theme}
           colorMode={colorMode}
           toolbarLabels={toolbarLabels}
+          treeStyle={treeStyle}
+          onTreeStyleChange={changeTreeStyle}
           defaultEditor={defaultEditor}
           menuEditors={menuEditors}
           exePath={exePath}

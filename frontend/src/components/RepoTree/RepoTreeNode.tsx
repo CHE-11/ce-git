@@ -1,8 +1,16 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import type { RepoStatus, TreeNode } from "../../../../types/git";
 import { domId, repoMatchesFilter, type RepoTreeFilter } from "../../lib/tree";
 import { cn } from "../../lib/cn";
+
+function rowPadding(depth: number) {
+  return depth === 0 ? 8 : 8 + depth * 14 - 18;
+}
+
+function guideLeft(depth: number) {
+  return rowPadding(depth + 1) + 8;
+}
 
 type RepoTreeNodeProps = {
   node: TreeNode;
@@ -18,6 +26,9 @@ type RepoTreeNodeProps = {
   onViewRepo: (path: string) => void;
   allowRootCollapse?: boolean;
   onContextMenu: (node: TreeNode, x: number, y: number) => void;
+  folderVars: Map<string, string> | null;
+  folderColorMode: "background" | "font" | null;
+  folderIndicator: boolean;
   trailing?: ReactNode;
 };
 
@@ -34,6 +45,9 @@ export function RepoTreeNode({
   onOpen,
   onViewRepo,
   onContextMenu,
+  folderVars,
+  folderColorMode,
+  folderIndicator,
   trailing,
   allowRootCollapse = true,
 }: RepoTreeNodeProps) {
@@ -42,12 +56,19 @@ export function RepoTreeNode({
   const status = isRepo ? statuses[node.path] : undefined;
   const active = node.path === activePath;
   const rootLockedOpen = depth === 0 && !allowRootCollapse;
+  const showGuide = folderIndicator && !rootLockedOpen;
   const expanded = rootLockedOpen || !collapsed[node.path];
   const hasChildren = node.children.length > 0;
   const canToggle = hasChildren && !rootLockedOpen;
   const showRootPath = depth === 0 && Boolean(rootPath);
   const targeted = node.path === contextPath;
   const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, [], filter);
+  const folderVar = folderVars?.get(node.path) ?? null;
+  const tintBackground = folderColorMode === "background" && folderVar !== null;
+  const tintFont = folderColorMode === "font" && folderVar !== null;
+  const nodeStyle: CSSProperties | undefined = folderVar
+    ? ({ "--tree-folder": `var(${folderVar})` } as CSSProperties)
+    : undefined;
 
   const onRowClick = (event: MouseEvent<HTMLDivElement>) => {
     if (event.detail > 1) {
@@ -86,17 +107,20 @@ export function RepoTreeNode({
   };
 
   return (
-    <div id={domId("tree-node", node.path)}>
+    <div id={domId("tree-node", node.path)} className="relative" style={nodeStyle}>
       <div
         id={rowId}
         className={cn(
-          "flex items-center gap-1.5 rounded-md py-1 pr-2 text-sm select-none hover:bg-zinc-800/80",
+          "flex items-center gap-1.5 rounded-md py-1 pr-2 text-sm select-none",
+          !tintBackground && "hover:bg-zinc-800/80",
           (isRepo || (canToggle && depth > 0)) && "cursor-pointer",
-          active && "bg-sky-950/70",
+          !tintBackground && active && "bg-sky-950/70",
+          tintBackground && "tree-folder-bg",
+          tintBackground && active && "tree-folder-active",
           targeted && "ring-1 ring-inset ring-sky-800",
           dimmed && "opacity-50",
         )}
-        style={{ paddingLeft: depth === 0 ? 8 : 8 + depth * 14 - 18 }}
+        style={{ paddingLeft: rowPadding(depth) }}
         onClick={onRowClick}
         onDoubleClick={onRowDoubleClick}
         onContextMenu={(event) => {
@@ -130,7 +154,8 @@ export function RepoTreeNode({
         ) : null}
         <span
           id={domId("tree-name", node.path)}
-          className={cn("shrink-0 text-zinc-100", depth === 0 && canToggle && "cursor-pointer")}
+          className={cn("shrink-0", !tintFont && "text-zinc-100", depth === 0 && canToggle && "cursor-pointer")}
+          style={tintFont ? { color: "var(--tree-folder)" } : undefined}
           title={node.path}
           onClick={depth === 0 ? onRootLabelClick : undefined}
         >
@@ -190,8 +215,20 @@ export function RepoTreeNode({
           </span>
         ) : null}
       </div>
-      {expanded
-        ? node.children.map((child) => (
+      {expanded && hasChildren ? (
+        <div id={domId("tree-children", node.path)} className="relative">
+          {showGuide ? (
+            <span
+              id={domId("tree-guide", node.path)}
+              aria-hidden="true"
+              className={cn("pointer-events-none absolute top-0 bottom-0 z-10 w-px", folderVar ? "opacity-80" : "bg-zinc-600")}
+              style={{
+                left: guideLeft(depth),
+                ...(folderVar ? { backgroundColor: "var(--tree-folder)" } : {}),
+              }}
+            />
+          ) : null}
+          {node.children.map((child) => (
             <RepoTreeNode
               key={child.path}
               node={child}
@@ -205,9 +242,13 @@ export function RepoTreeNode({
               onOpen={onOpen}
               onViewRepo={onViewRepo}
               onContextMenu={onContextMenu}
+              folderVars={folderVars}
+              folderColorMode={folderColorMode}
+              folderIndicator={folderIndicator}
             />
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

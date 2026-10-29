@@ -14,6 +14,7 @@ import type { RepoStatus, TreeNode } from "../../../../types/git";
 import { cn } from "../../lib/cn";
 import type { EditorId } from "../../lib/editors";
 import { countRemovedUnder, domId, filterRepoTree, hasNestedRepo, pathEquals, type RepoTreeFilter } from "../../lib/tree";
+import { folderColorMode, folderColorVars, type TreeStyle } from "../../lib/tree-style";
 import { Button } from "../Button";
 import { Dialog } from "../Dialogs/Dialog";
 import { RepoTreeFilterStat } from "./RepoTreeFilterStat";
@@ -83,6 +84,7 @@ type RepoTreeProps = {
   onAddRoot: () => void;
   filter: RepoTreeFilter | null;
   onFilter: (filter: RepoTreeFilter | null) => void;
+  treeStyle: TreeStyle;
 };
 
 const filterEmpty: Record<RepoTreeFilter, string> = {
@@ -173,6 +175,7 @@ export function RepoTree({
   onRestoreRemoved,
   filter,
   onFilter,
+  treeStyle,
 }: RepoTreeProps) {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -209,6 +212,14 @@ export function RepoTree({
     }
     return trees;
   }, [trees, statuses, filter, searchQuery]);
+  const colorMode = folderColorMode(treeStyle);
+  const folderVars = useMemo(() => {
+    if (!colorMode) {
+      return null;
+    }
+    const unique = colorMode === "background" ? treeStyle.folderColorBackgroundUnique : treeStyle.folderFontColorUnique;
+    return folderColorVars(trees, unique);
+  }, [trees, colorMode, treeStyle.folderColorBackgroundUnique, treeStyle.folderFontColorUnique]);
   const hasRepos = trees.some(treeHasRepos);
   const folderPaths = shownTrees.flatMap(pathsBelowRoot);
   const defaultCollapsed = !activeFilter && !searchQuery;
@@ -451,6 +462,9 @@ export function RepoTree({
                   onViewRepo={onViewRepo}
                   allowRootCollapse={rootsCollapsible}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
+                  folderVars={folderVars}
+                  folderColorMode={colorMode}
+                  folderIndicator={treeStyle.folderIndicator}
                   trailing={
                     <Button
                       id={shownTrees.length === 1 ? "repo-tree-collapse-button" : `repo-tree-collapse-button-${index}`}

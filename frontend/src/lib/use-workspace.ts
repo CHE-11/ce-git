@@ -43,7 +43,6 @@ type SelectMode = "replace" | "toggle" | "range";
 
 const VERBOSITY_KEY = "ce-git.commit-verbosity";
 const PROMPT_KEY = "ce-git.commit-prompt";
-const CHECK_INTERVAL_MS = 10_000;
 
 function readPromptSlot(): number {
   try {
@@ -123,16 +122,6 @@ function sameStatuses(current: Record<string, RepoStatus>, rows: readonly RepoSt
   return keys.length === rows.length && rows.every((row) => current[row.path] && statusKey(current[row.path]) === statusKey(row));
 }
 
-function diffKey(diff: RepoDiff | null) {
-  if (!diff) {
-    return "";
-  }
-  const files = diff.files
-    .map((file) => `${file.path}\u0000${file.previousPath ?? ""}\u0000${file.status}\u0000${file.staged}`)
-    .join("\u0001");
-  return `${diff.truncated}\u0000${diff.patch}\u0000${files}`;
-}
-
 function rememberPrompt(value: number) {
   localStorage.setItem(PROMPT_KEY, String(value));
 }
@@ -203,10 +192,7 @@ export function useWorkspace() {
   const logGeneration = useRef(0);
   const seenGeneration = useRef(0);
   const busyRef = useRef(false);
-  const discoveringRef = useRef(false);
-  const gitReadyRef = useRef(true);
   const scanRef = useRef<Promise<string[]> | null>(null);
-  const statusPollRef = useRef<Promise<void> | null>(null);
   const statusesRef = useRef<Record<string, RepoStatus>>({});
   const activePathRef = useRef<string | null>(null);
   const selectedPathsRef = useRef<string[]>([]);
@@ -215,7 +201,6 @@ export function useWorkspace() {
   const scanErrorRef = useRef<string | null>(null);
   const interactionEpoch = useRef(0);
   const diffRequestRef = useRef(0);
-  const pointerDownRef = useRef(0);
   const savedCommitsRef = useRef<Record<string, SavedCommit>>({});
   const aiRunRef = useRef(0);
 
@@ -240,10 +225,6 @@ export function useWorkspace() {
     busyRef.current = false;
     setBusyAction(null);
   };
-
-  useEffect(() => {
-    gitReadyRef.current = gitReady;
-  }, [gitReady]);
 
   useEffect(() => {
     activePathRef.current = activePath;
@@ -348,7 +329,6 @@ export function useWorkspace() {
           return [];
         }
         if (!quiet) {
-          discoveringRef.current = true;
           setDiscovering(true);
           scanErrorRef.current = null;
           setError(null);
@@ -392,7 +372,6 @@ export function useWorkspace() {
           return [];
         } finally {
           if (!quiet) {
-            discoveringRef.current = false;
             setDiscovering(false);
           }
         }
@@ -749,108 +728,6 @@ export function useWorkspace() {
       setDetailToken((token) => token + 1);
     }
   };
-
-  const checkForChanges = useCallback(async () => {
-    if (
-      document.hidden ||
-      pointerDownRef.current > 0 ||
-      !gitReadyRef.current ||
-      busyRef.current ||
-      discoveringRef.current ||
-      scanRef.current ||
-      statusPollRef.current
-    ) {
-      return;
-    }
-    const paths = repoPathsRef.current;
-    if (paths.length === 0) {
-      return;
-    }
-    const epoch = interactionEpoch.current;
-    const activeAtStart = activePathRef.current;
-    const diffRequestAtStart = diffRequestRef.current;
-
-    const run = (async () => {
-      let rows: RepoStatus[];
-      try {
-        rows = await repoStatuses(paths);
-      } catch {
-        return;
-      }
-      if (!pollStillCurrent(epoch, paths)) {
-        return;
-      }
-      setStatuses((current) => (sameStatuses(current, rows) ? current : Object.fromEntries(rows.map((row) => [row.path, row]))));
-
-      const active = activePathRef.current;
-      if (!active || !activeAtStart || !pathEquals(active, activeAtStart) || !paths.some((path) => pathEquals(path, active))) {
-        return;
-      }
-      try {
-        const next = await repoDiff(active);
-        if (
-          diffRequestRef.current !== diffRequestAtStart ||
-          !pollStillCurrent(epoch, paths) ||
-          !activePathRef.current ||
-          !pathEquals(activePathRef.current, active)
-        ) {
-          return;
-        }
-        setDiff((current) => (diffKey(current) === diffKey(next) ? current : next));
-      } catch {
-        // A background check leaves the open diff in place.
-      }
-    })();
-
-    statusPollRef.current = run;
-    try {
-      await run;
-    } finally {
-      if (statusPollRef.current === run) {
-        statusPollRef.current = null;
-      }
-    }
-
-    function pollStillCurrent(startedAt: number, startedPaths: readonly string[]) {
-      return (
-        interactionEpoch.current === startedAt &&
-        pointerDownRef.current === 0 &&
-        !busyRef.current &&
-        !discoveringRef.current &&
-        !scanRef.current &&
-        samePaths(startedPaths, repoPathsRef.current)
-      );
-    }
-  }, []);
-
-  const checkRef = useRef(checkForChanges);
-  checkRef.current = checkForChanges;
-
-  useEffect(() => {
-    const down = () => {
-      pointerDownRef.current += 1;
-    };
-    const up = () => {
-      pointerDownRef.current = Math.max(0, pointerDownRef.current - 1);
-    };
-    const tick = () => {
-      if (!document.hidden && pointerDownRef.current === 0) {
-        void checkRef.current();
-      }
-    };
-    const timer = window.setInterval(tick, CHECK_INTERVAL_MS);
-    document.addEventListener("visibilitychange", tick);
-    window.addEventListener("pointerdown", down);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-      window.removeEventListener("pointerdown", down);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
-  }, []);
 
   const selectRepo = (path: string, mode: SelectMode) => {
     interactionEpoch.current += 1;

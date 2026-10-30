@@ -209,8 +209,8 @@ export function searchDirectory(repo: string, query: string) {
   return invoke<DirSearch>("search_directory", { repo, query });
 }
 
-export function openInTerminal(path: string) {
-  return invoke<void>("open_in_terminal", { path });
+export function openInTerminal(path: string, command?: string) {
+  return invoke<void>("open_in_terminal", { path, command: command ?? null });
 }
 
 export function initRepo(path: string) {

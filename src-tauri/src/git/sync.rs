@@ -1090,10 +1090,21 @@ fn gh_failure(output: &Output) -> String {
         stderr.trim()
     };
     if detail.is_empty() {
-        "GitHub CLI could not create the repository".to_string()
-    } else {
-        detail.lines().next().unwrap_or(detail).to_string()
+        return "GitHub CLI could not create the repository".to_string();
     }
+    let lower = detail.to_ascii_lowercase();
+    if lower.contains("gh auth login")
+        || lower.contains("not logged into")
+        || lower.contains("to get started with github cli")
+        || lower.contains("try authenticating")
+        || lower.contains("authentication required")
+        || lower.contains("http 401")
+        || lower.contains("bad credentials")
+    {
+        return "Not logged in to GitHub CLI. Run `gh auth login` in a terminal, then try again."
+            .to_string();
+    }
+    detail.lines().next().unwrap_or(detail).to_string()
 }
 
 fn require_repo(path: &Path) -> Result<(), String> {

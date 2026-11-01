@@ -1301,8 +1301,10 @@ export function useWorkspace() {
     try {
       const generated = await generateCommitMessage(path, prompt);
       writeSaved(path, generated.subject, generated.description);
-      setCommitMessage(generated.subject);
-      setCommitDescription(generated.description);
+      if (activePathRef.current && pathEquals(activePathRef.current, path)) {
+        setCommitMessage(generated.subject);
+        setCommitDescription(generated.description);
+      }
     } catch (caught) {
       setError(messageOf(caught));
     } finally {

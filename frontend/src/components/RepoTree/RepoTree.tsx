@@ -99,17 +99,29 @@ function treeHasRepos(tree: TreeNode) {
   return tree.kind === "repo" || tree.children.length > 0;
 }
 
-function foldersWithDirtyRepos(node: TreeNode, statuses: Record<string, RepoStatus>, dirty: Set<string>): boolean {
-  let containsDirty = node.kind === "repo" && statuses[node.path]?.dirty === true;
+function foldersWithRepoFlags(
+  node: TreeNode,
+  statuses: Record<string, RepoStatus>,
+  dirty: Set<string>,
+  behind: Set<string>,
+): { dirty: boolean; behind: boolean } {
+  const status = node.kind === "repo" ? statuses[node.path] : undefined;
+  let containsDirty = status?.dirty === true;
+  let containsBehind = (status?.behind ?? 0) > 0;
   for (const child of node.children) {
-    if (foldersWithDirtyRepos(child, statuses, dirty)) {
-      containsDirty = true;
+    const flags = foldersWithRepoFlags(child, statuses, dirty, behind);
+    containsDirty = containsDirty || flags.dirty;
+    containsBehind = containsBehind || flags.behind;
+  }
+  if (node.kind === "folder") {
+    if (containsDirty) {
+      dirty.add(node.path);
+    }
+    if (containsBehind) {
+      behind.add(node.path);
     }
   }
-  if (containsDirty && node.kind === "folder") {
-    dirty.add(node.path);
-  }
-  return containsDirty;
+  return { dirty: containsDirty, behind: containsBehind };
 }
 
 function collectRepos(node: TreeNode, repos: TreeNode[]) {
@@ -225,12 +237,13 @@ export function RepoTree({
     }
     return trees;
   }, [trees, statuses, filter, searchQuery]);
-  const dirtyFolders = useMemo(() => {
+  const { dirtyFolders, behindFolders } = useMemo(() => {
     const dirty = new Set<string>();
+    const behind = new Set<string>();
     for (const tree of trees) {
-      foldersWithDirtyRepos(tree, statuses, dirty);
+      foldersWithRepoFlags(tree, statuses, dirty, behind);
     }
-    return dirty;
+    return { dirtyFolders: dirty, behindFolders: behind };
   }, [trees, statuses]);
   const colorMode = folderColorMode(treeStyle);
   const folderVars = useMemo(() => {
@@ -486,6 +499,7 @@ export function RepoTree({
                   folderColorMode={colorMode}
                   folderIndicator={treeStyle.folderIndicator}
                   dirtyFolders={dirtyFolders}
+                  behindFolders={behindFolders}
                   trailing={
                     <Button
                       id={shownTrees.length === 1 ? "repo-tree-collapse-button" : `repo-tree-collapse-button-${index}`}

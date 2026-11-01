@@ -30,6 +30,7 @@ type RepoTreeNodeProps = {
   folderColorMode: "background" | "font" | null;
   folderIndicator: boolean;
   dirtyFolders: ReadonlySet<string>;
+  behindFolders: ReadonlySet<string>;
   trailing?: ReactNode;
 };
 
@@ -50,6 +51,7 @@ export function RepoTreeNode({
   folderColorMode,
   folderIndicator,
   dirtyFolders,
+  behindFolders,
   trailing,
   allowRootCollapse = true,
 }: RepoTreeNodeProps) {
@@ -64,6 +66,7 @@ export function RepoTreeNode({
   const canToggle = hasChildren && !rootLockedOpen;
   const showRootPath = depth === 0 && Boolean(rootPath);
   const folderDirty = !isRepo && dirtyFolders.has(node.path);
+  const folderBehind = !isRepo && behindFolders.has(node.path);
   const targeted = node.path === contextPath;
   const dimmed = filter !== null && isRepo && !repoMatchesFilter(node.path, statuses, [], filter);
   const folderVar = folderVars?.get(node.path) ?? null;
@@ -164,7 +167,7 @@ export function RepoTreeNode({
         >
           {node.name}
         </span>
-        {showRootPath || status || trailing || folderDirty ? (
+        {showRootPath || status || trailing || folderDirty || folderBehind ? (
           <span id={domId("tree-aside", node.path)} className="ml-auto flex min-w-0 items-center justify-end gap-1.5">
             {showRootPath ? (
               <span
@@ -187,8 +190,12 @@ export function RepoTreeNode({
                   </span>
                 ) : null}
                 {status.behind > 0 ? (
-                  <span id={domId("tree-behind", node.path)} className="text-sky-400">
-                    ↓{status.behind}
+                  <span
+                    id={domId("tree-behind", node.path)}
+                    className="text-red-400"
+                    title={`${status.behind} commit${status.behind === 1 ? "" : "s"} to pull`}
+                  >
+                    {status.behind}
                   </span>
                 ) : null}
                 {status.github === null && !status.error ? (
@@ -209,12 +216,23 @@ export function RepoTreeNode({
                   </span>
                 ) : null}
               </span>
-            ) : folderDirty ? (
-              <span
-                id={domId("tree-dirty", node.path)}
-                className="size-2 shrink-0 rounded-full bg-amber-400"
-                title="Uncommitted changes"
-              />
+            ) : folderDirty || folderBehind ? (
+              <>
+                {folderBehind ? (
+                  <span
+                    id={domId("tree-behind", node.path)}
+                    className="size-2 shrink-0 rounded-full bg-red-400"
+                    title="Commits to pull"
+                  />
+                ) : null}
+                {folderDirty ? (
+                  <span
+                    id={domId("tree-dirty", node.path)}
+                    className="size-2 shrink-0 rounded-full bg-amber-400"
+                    title="Uncommitted changes"
+                  />
+                ) : null}
+              </>
             ) : null}
             {trailing ? (
               <span id={domId("tree-trailing", node.path)} className="shrink-0">
@@ -255,6 +273,7 @@ export function RepoTreeNode({
               folderColorMode={folderColorMode}
               folderIndicator={folderIndicator}
               dirtyFolders={dirtyFolders}
+              behindFolders={behindFolders}
             />
           ))}
         </div>

@@ -16,6 +16,14 @@ pub fn contained_path(repo: &Path, relative: &str) -> Result<PathBuf, String> {
     join_inside(repo, &relative)
 }
 
+/// Repo-relative git path after the same containment checks as [`contained_path`].
+pub fn checked_relative(repo: &Path, value: &str) -> Result<String, String> {
+    ensure_repo(repo)?;
+    let relative = safe_relative(value)?;
+    let _ = join_inside(repo, &relative)?;
+    Ok(relative.git)
+}
+
 pub fn discard_change(repo: &Path, relative: &str) -> Result<(), String> {
     ensure_repo(repo)?;
     let current = safe_relative(relative)?;

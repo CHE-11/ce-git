@@ -19,6 +19,8 @@ import type {
   RepoGraph,
   RepoSearchResult,
   RepoStatus,
+  StashEntry,
+  StashPatch,
   ThinkingMode,
   TreeNode,
 } from "../../../types/git";
@@ -235,6 +237,26 @@ export function deleteFolder(root: string, path: string) {
 
 export type IgnoreKind = "file" | "folder" | "extension";
 export type ChangeOpenMode = "editor" | "default" | Exclude<EditorId, "default">;
+
+export function listStashes(repo: string) {
+  return invoke<StashEntry[]>("list_stashes", { repo });
+}
+
+export function stashPaths(repo: string, paths: string[], message: string) {
+  return invoke<void>("stash_paths", { repo, paths, message });
+}
+
+export function showStash(repo: string, id: string) {
+  return invoke<StashPatch>("show_stash", { repo, id });
+}
+
+export function applyStash(repo: string, id: string, pop: boolean) {
+  return invoke<void>("apply_stash", { repo, id, pop });
+}
+
+export function dropStash(repo: string, id: string) {
+  return invoke<void>("drop_stash", { repo, id });
+}
 
 export function discardChange(repo: string, path: string) {
   return invoke<void>("discard_change", { repo, path });

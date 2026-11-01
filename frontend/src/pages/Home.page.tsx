@@ -352,15 +352,36 @@ export function HomePage() {
           menuEditors={workspace.menuEditors}
           graphOpen={graphOpen}
           onToggleGraph={() => setGraphOpen((open) => !open)}
+          stashes={workspace.stashes}
+          onRestoreStash={(id) => {
+            if (workspace.activePath) {
+              void workspace.restoreStash(workspace.activePath, id);
+            }
+          }}
+          onApplyStash={(id) => {
+            if (workspace.activePath) {
+              void workspace.applyStash(workspace.activePath, id);
+            }
+          }}
+          onDropStash={(id) => {
+            if (workspace.activePath) {
+              void workspace.dropStash(workspace.activePath, id);
+            }
+          }}
           fileHandlers={{
-            discard: (file) => {
+            discard: (files) => {
               if (workspace.activePath) {
-                void workspace.discardChange(workspace.activePath, file);
+                void workspace.discardChanges(workspace.activePath, files);
               }
             },
             ignore: (kind, target) => {
               if (workspace.activePath) {
                 void workspace.ignoreChange(workspace.activePath, kind, target);
+              }
+            },
+            ignoreFiles: (paths) => {
+              if (workspace.activePath) {
+                void workspace.ignoreChanges(workspace.activePath, paths);
               }
             },
             reveal: (relativePath) => {
@@ -371,6 +392,11 @@ export function HomePage() {
             open: (relativePath, mode) => {
               if (workspace.activePath) {
                 void workspace.openChange(workspace.activePath, relativePath, mode);
+              }
+            },
+            stash: (paths, message) => {
+              if (workspace.activePath) {
+                void workspace.stashChanges(workspace.activePath, paths, message);
               }
             },
             reportError: workspace.reportError,

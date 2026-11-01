@@ -46,6 +46,20 @@ export interface FileChange {
   staged: boolean;
 }
 
+export interface StashEntry {
+  id: string;
+  message: string;
+  committedAt: number;
+  pull: boolean;
+}
+
+export interface StashPatch {
+  id: string;
+  message: string;
+  patch: string;
+  truncated: boolean;
+}
+
 export interface SearchMatch {
   path: string;
   line: number;

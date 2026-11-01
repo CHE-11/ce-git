@@ -7,6 +7,7 @@ mod github;
 mod graph;
 mod search;
 mod settings;
+mod stash;
 mod status;
 mod sync;
 
@@ -75,6 +76,9 @@ pub use search::{RepoSearchResult, search_repos};
 pub use settings::{
     GitSettings, git_cancel_sign_in, git_sign_in, git_sign_out, read_git_settings,
     save_git_settings,
+};
+pub use stash::{
+    StashEntry, StashPatch, apply_stash, drop_stash, list_stashes, show_stash, stash_paths,
 };
 pub use status::{RepoStatus, status_of};
 pub use sync::{

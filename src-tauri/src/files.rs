@@ -291,7 +291,14 @@ fn linux_open_terminal(path: &Path, command: Option<&str>) -> Result<(), String>
     let shell = format!("{command}; exec bash");
     if spawn_command(
         "x-terminal-emulator",
-        &["--working-directory", &directory, "-e", "bash", "-lc", &shell],
+        &[
+            "--working-directory",
+            &directory,
+            "-e",
+            "bash",
+            "-lc",
+            &shell,
+        ],
     )
     .is_ok()
     {
@@ -299,7 +306,14 @@ fn linux_open_terminal(path: &Path, command: Option<&str>) -> Result<(), String>
     }
     spawn_command(
         "gnome-terminal",
-        &["--working-directory", &directory, "--", "bash", "-lc", &shell],
+        &[
+            "--working-directory",
+            &directory,
+            "--",
+            "bash",
+            "-lc",
+            &shell,
+        ],
     )
 }
 

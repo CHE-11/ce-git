@@ -4,6 +4,7 @@ type DiffViewProps = {
   patch: string;
   truncated: boolean;
   filePath: string | null;
+  placeholder?: string;
 };
 
 function lineClass(line: string) {
@@ -25,7 +26,7 @@ function lineClass(line: string) {
   return "text-zinc-300";
 }
 
-export function DiffView({ patch, truncated, filePath }: DiffViewProps) {
+export function DiffView({ patch, truncated, filePath, placeholder }: DiffViewProps) {
   const lines = patch.length > 0 ? patch.split("\n") : [];
 
   return (
@@ -49,7 +50,7 @@ export function DiffView({ patch, truncated, filePath }: DiffViewProps) {
       </div>
       {lines.length === 0 ? (
         <p id="diff-empty" className="px-3 text-sm text-zinc-500">
-          {filePath ? "No diff for this file." : "No diff to show."}
+          {placeholder ?? (filePath ? "No diff for this file." : "No diff to show.")}
         </p>
       ) : (
         <pre

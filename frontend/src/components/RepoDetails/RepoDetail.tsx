@@ -1,9 +1,10 @@
 import { ArrowDownToLine, ArrowUpToLine, GitGraph as GitGraphIcon, Loader2, RefreshCw, Upload } from "lucide-react";
-import { useState } from "react";
-import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus } from "../../../../types/git";
+import { useEffect, useRef, useState } from "react";
+import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus, StashEntry, StashPatch } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
+import { showStash } from "../../lib/git-client";
 import { patchForPath } from "../../lib/diff";
-import { baseName } from "../../lib/tree";
+import { baseName, messageOf } from "../../lib/tree";
 import { Badge } from "../Badge";
 import { Button } from "../Button";
 import { ChangedFiles, type ChangeFileHandlers } from "./ChangedFiles/ChangedFiles";
@@ -55,6 +56,10 @@ type RepoDetailProps = {
   onPush: () => void;
   onPublish: (options: PublishOptions) => Promise<void>;
   fileHandlers: ChangeFileHandlers;
+  stashes: StashEntry[];
+  onRestoreStash: (id: string) => void;
+  onApplyStash: (id: string) => void;
+  onDropStash: (id: string) => void;
   menuEditors: readonly EditorId[];
   graphOpen: boolean;
   onToggleGraph: () => void;
@@ -83,6 +88,10 @@ export function RepoDetail({
   onPush,
   onPublish,
   fileHandlers,
+  stashes,
+  onRestoreStash,
+  onApplyStash,
+  onDropStash,
   menuEditors,
   graphOpen,
   onToggleGraph,
@@ -90,12 +99,55 @@ export function RepoDetail({
   const files = diff?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [stashId, setStashId] = useState<string | null>(null);
+  const [stashPatch, setStashPatch] = useState<StashPatch | null>(null);
+  const [stashLoading, setStashLoading] = useState(false);
+  const reportErrorRef = useRef(fileHandlers.reportError);
+  reportErrorRef.current = fileHandlers.reportError;
   const [selectionRepo, setSelectionRepo] = useState(path);
   if (selectionRepo !== path) {
     setSelectionRepo(path);
     setSelectedPath(null);
     setPublishOpen(false);
+    setStashId(null);
+    setStashPatch(null);
   }
+  useEffect(() => {
+    if (stashId && !stashes.some((stash) => stash.id === stashId)) {
+      setStashId(null);
+    }
+  }, [stashes, stashId]);
+  const selectedStash = stashes.find((stash) => stash.id === stashId) ?? null;
+  useEffect(() => {
+    if (!path || !stashId) {
+      setStashPatch(null);
+      setStashLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const requested = stashId;
+    setStashLoading(true);
+    void showStash(path, requested)
+      .then((next) => {
+        if (!cancelled) {
+          setStashPatch(next);
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setStashPatch(null);
+          reportErrorRef.current(messageOf(caught));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStashLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, stashId, selectedStash?.committedAt, selectedStash?.message]);
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
   const selectedPatch = patchForPath(diff?.patch ?? "", selectedFile?.path ?? null);
 
@@ -256,9 +308,25 @@ export function RepoDetail({
                   busy={busy}
                   handlers={fileHandlers}
                   menuEditors={menuEditors}
+                  stashes={stashes}
+                  selectedStashId={stashId}
                   onSelect={setSelectedPath}
+                  onShowFile={() => setStashId(null)}
+                  onSelectStash={setStashId}
+                  onRestoreStash={onRestoreStash}
+                  onApplyStash={onApplyStash}
+                  onDropStash={onDropStash}
                 />
-                <DiffView patch={selectedPatch.text} truncated={selectedPatch.truncated} filePath={selectedFile?.path ?? null} />
+                <DiffView
+                  patch={stashId ? (stashPatch?.patch ?? "") : selectedPatch.text}
+                  truncated={stashId ? Boolean(stashPatch?.truncated) : selectedPatch.truncated}
+                  filePath={
+                    stashId
+                      ? (stashPatch?.message ?? stashes.find((stash) => stash.id === stashId)?.message ?? "Stash")
+                      : (selectedFile?.path ?? null)
+                  }
+                  placeholder={stashId ? (stashLoading ? "Loading stash…" : "No diff for this stash.") : undefined}
+                />
               </>
             )}
           </div>

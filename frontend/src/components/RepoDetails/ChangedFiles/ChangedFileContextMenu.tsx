@@ -1,4 +1,4 @@
-import { AppWindow, ChevronRight, Copy, FileX, Files, Folder, FolderSearch, FolderX, Link2, Undo2 } from "lucide-react";
+import { AppWindow, Archive, ChevronRight, Copy, FileX, Files, Folder, FolderSearch, FolderX, Link2, Undo2 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { FileChange } from "../../../../../types/git";
 import { absolutePath, fileExtension, fileManagerLabel, parentDirectories } from "../../../lib/changes";
@@ -11,12 +11,15 @@ import { EditorIcon } from "../../EditorIcon";
 
 type ChangedFileMenuProps = {
   file: FileChange;
+  targets: FileChange[];
   repoPath: string;
   x: number;
   y: number;
   busy: boolean;
   onDiscard: () => void;
+  onStash: () => void;
   onIgnore: (kind: IgnoreKind, target: string) => void;
+  onIgnoreFiles: () => void;
   onReveal: () => void;
   menuEditors: readonly string[];
   onOpenInEditor: (editor: EditorId) => void;
@@ -25,6 +28,10 @@ type ChangedFileMenuProps = {
   onCopy: (text: string) => void;
   onClose: () => void;
 };
+
+function countLabel(count: number, single: string, many: string) {
+  return count > 1 ? many : single;
+}
 
 function moveFocus(event: ReactKeyboardEvent<HTMLElement>, items: HTMLButtonElement[]) {
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
@@ -54,12 +61,15 @@ function isInside(target: EventTarget | null, id: string) {
 
 export function ChangedFileContextMenu({
   file,
+  targets,
   repoPath,
   x,
   y,
   busy,
   onDiscard,
+  onStash,
   onIgnore,
+  onIgnoreFiles,
   onReveal,
   menuEditors,
   onOpenInEditor,
@@ -75,9 +85,20 @@ export function ChangedFileContextMenu({
   const [shift, setShift] = useState(0);
   const directories = parentDirectories(file.path);
   const extension = fileExtension(file.path);
-  const deleted = file.status === "deleted";
-  const ignoreDisabled = deleted || busy;
-  const openDisabled = deleted;
+  const ignorable = targets.filter((item) => item.status !== "deleted");
+  const openable = targets.filter((item) => item.status !== "deleted");
+  const ignoreDisabled = ignorable.length === 0 || busy;
+  const openDisabled = openable.length === 0;
+  const discardLabel = countLabel(targets.length, "Discard changes", `Discard ${targets.length} files`);
+  const stashLabel = countLabel(targets.length, "Stash changes", `Stash ${targets.length} files`);
+  const ignoreLabel = countLabel(
+    ignorable.length,
+    "Ignore file (add to .gitignore)",
+    `Ignore ${ignorable.length} files (add to .gitignore)`,
+  );
+  const copyAbsoluteLabel = countLabel(targets.length, "Copy file path", `Copy ${targets.length} file paths`);
+  const copyRelativeLabel = countLabel(targets.length, "Copy relative file path", `Copy ${targets.length} relative file paths`);
+  const programLabel = countLabel(openable.length, "Open with default program", `Open ${openable.length} files with default program`);
   const revealLabel = fileManagerLabel();
   const editors = editorsForMenu(menuEditors);
 
@@ -122,7 +143,7 @@ export function ChangedFileContextMenu({
   return (
     <ContextMenu
       id="changed-file-menu"
-      label={`Actions for ${file.path}`}
+      label={targets.length > 1 ? `Actions for ${targets.length} files` : `Actions for ${file.path}`}
       x={x}
       y={y}
       scrollParentId="changed-files"
@@ -157,9 +178,17 @@ export function ChangedFileContextMenu({
         id="changed-file-menu-discard"
         scope="main"
         icon={<Undo2 id="changed-file-menu-discard-glyph" aria-hidden="true" />}
-        label="Discard changes"
+        label={discardLabel}
         disabled={busy}
         onClick={() => run(onDiscard)}
+      />
+      <ContextMenuItem
+        id="changed-file-menu-stash"
+        scope="main"
+        icon={<Archive id="changed-file-menu-stash-glyph" aria-hidden="true" />}
+        label={stashLabel}
+        disabled={busy}
+        onClick={() => run(onStash)}
       />
 
       <ContextMenuSeparator id="changed-file-menu-separator-ignore" />
@@ -168,9 +197,9 @@ export function ChangedFileContextMenu({
         id="changed-file-menu-ignore-file"
         scope="main"
         icon={<FileX id="changed-file-menu-ignore-file-glyph" aria-hidden="true" />}
-        label="Ignore file (add to .gitignore)"
+        label={ignoreLabel}
         disabled={ignoreDisabled}
-        onClick={() => run(() => onIgnore("file", file.path))}
+        onClick={() => run(onIgnoreFiles)}
       />
       {directories.length > 0 ? (
         <div
@@ -259,15 +288,15 @@ export function ChangedFileContextMenu({
         id="changed-file-menu-copy-absolute"
         scope="main"
         icon={<Copy id="changed-file-menu-copy-absolute-glyph" aria-hidden="true" />}
-        label="Copy file path"
-        onClick={() => run(() => onCopy(absolutePath(repoPath, file.path)))}
+        label={copyAbsoluteLabel}
+        onClick={() => run(() => onCopy(targets.map((item) => absolutePath(repoPath, item.path)).join("\n")))}
       />
       <ContextMenuItem
         id="changed-file-menu-copy-relative"
         scope="main"
         icon={<Link2 id="changed-file-menu-copy-relative-glyph" aria-hidden="true" />}
-        label="Copy relative file path"
-        onClick={() => run(() => onCopy(file.path))}
+        label={copyRelativeLabel}
+        onClick={() => run(() => onCopy(targets.map((item) => item.path).join("\n")))}
       />
 
       <ContextMenuSeparator id="changed-file-menu-separator-reveal" />
@@ -287,8 +316,14 @@ export function ChangedFileContextMenu({
           key={`open-${editor.id}`}
           scope="main"
           icon={<EditorIcon id={`changed-file-menu-open-${editor.id}-glyph`} editor={editor.id} />}
-          label={openInLabel(editor)}
-          title={editorTargetTitle(editor, "file")}
+          label={
+            openable.length > 1
+              ? editor.id === "default"
+                ? `Open ${openable.length} files in default editor`
+                : `Open ${openable.length} files in ${editor.label}`
+              : openInLabel(editor)
+          }
+          title={openable.length > 1 ? `Open ${openable.length} files` : editorTargetTitle(editor, "file")}
           disabled={openDisabled}
           onClick={() => run(() => onOpenInEditor(editor.id))}
         />
@@ -313,7 +348,7 @@ export function ChangedFileContextMenu({
         id="changed-file-menu-open-default"
         scope="main"
         icon={<AppWindow id="changed-file-menu-open-default-glyph" aria-hidden="true" />}
-        label="Open with default program"
+        label={programLabel}
         disabled={openDisabled}
         onClick={() => run(onOpenProgram)}
       />

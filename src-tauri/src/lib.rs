@@ -353,6 +353,31 @@ async fn delete_path(root: String, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn list_stashes(repo: String) -> Result<Vec<git::StashEntry>, String> {
+    spawn_git(move || git::list_stashes(Path::new(&repo))).await?
+}
+
+#[tauri::command]
+async fn stash_paths(repo: String, paths: Vec<String>, message: String) -> Result<(), String> {
+    spawn_git(move || git::stash_paths(Path::new(&repo), &paths, &message)).await?
+}
+
+#[tauri::command]
+async fn show_stash(repo: String, id: String) -> Result<git::StashPatch, String> {
+    spawn_git(move || git::show_stash(Path::new(&repo), &id)).await?
+}
+
+#[tauri::command]
+async fn apply_stash(repo: String, id: String, pop: bool) -> Result<(), String> {
+    spawn_git(move || git::apply_stash(Path::new(&repo), &id, pop)).await?
+}
+
+#[tauri::command]
+async fn drop_stash(repo: String, id: String) -> Result<(), String> {
+    spawn_git(move || git::drop_stash(Path::new(&repo), &id)).await?
+}
+
+#[tauri::command]
 async fn discard_change(repo: String, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || git::discard_change(Path::new(&repo), &path))
         .await
@@ -484,6 +509,11 @@ pub fn run() {
             clone_repo,
             list_github_repos,
             delete_path,
+            list_stashes,
+            stash_paths,
+            show_stash,
+            apply_stash,
+            drop_stash,
             discard_change,
             restore_commit,
             reset_to_commit,

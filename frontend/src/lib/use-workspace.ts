@@ -1,13 +1,15 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, PublishOptions, RepoDiff, RepoStatus, TreeNode } from "../../../types/git";
+import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, PublishOptions, RepoDiff, RepoStatus, StashEntry, TreeNode } from "../../../types/git";
 import {
   aiSettings,
+  applyStash,
   appSettings,
   batchCommit,
   batchPull,
   batchPush,
+  dropStash,
   publishRepo,
   deleteFolder as deleteFolderOnDisk,
   discardChange as discardFile,
@@ -15,6 +17,8 @@ import {
   generateCommitMessage,
   gitAvailable,
   ignoreChange as ignoreFile,
+  listStashes,
+  stashPaths,
   cloneRepo as cloneRepository,
   initRepo,
   openChange as openFile,
@@ -134,6 +138,12 @@ function diffKey(diff: RepoDiff | null) {
   return `${diff.truncated}\u0000${diff.patch}\u0000${files}`;
 }
 
+function stashKey(stashes: readonly StashEntry[]) {
+  return stashes
+    .map((stash) => `${stash.id}\u0000${stash.message}\u0000${stash.committedAt}\u0000${stash.pull}`)
+    .join("\u0001");
+}
+
 function rememberPrompt(value: number) {
   localStorage.setItem(PROMPT_KEY, String(value));
 }
@@ -162,6 +172,7 @@ export function useWorkspace() {
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [diff, setDiff] = useState<RepoDiff | null>(null);
+  const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [commitMessage, setCommitMessage] = useState("");
   const [commitDescription, setCommitDescription] = useState("");
   const [commitPrompts, setCommitPrompts] = useState<AiPrompts>(withDefaultPrompts(undefined));
@@ -217,6 +228,7 @@ export function useWorkspace() {
   const scanErrorRef = useRef<string | null>(null);
   const interactionEpoch = useRef(0);
   const diffRequestRef = useRef(0);
+  const stashRepoRef = useRef<string | null>(null);
   const pointerDownRef = useRef(0);
   const savedCommitsRef = useRef<Record<string, SavedCommit>>({});
   const aiRunRef = useRef(0);
@@ -610,14 +622,34 @@ export function useWorkspace() {
       diffRequestRef.current += 1;
       setDiff(null);
       setDiffLoading(false);
+      stashRepoRef.current = null;
+      setStashes([]);
       return;
     }
     const request = diffRequestRef.current + 1;
     diffRequestRef.current = request;
     const requested = activePath;
     let cancelled = false;
+    if (!stashRepoRef.current || !pathEquals(stashRepoRef.current, requested)) {
+      stashRepoRef.current = requested;
+      setStashes([]);
+    }
     setDiff(null);
     setDiffLoading(true);
+    void listStashes(requested)
+      .then((next) => {
+        if (cancelled || diffRequestRef.current !== request || !pathEquals(activePathRef.current ?? "", requested)) {
+          return;
+        }
+        setStashes((current) => (stashKey(current) === stashKey(next) ? current : next));
+      })
+      .catch((caught) => {
+        if (cancelled || diffRequestRef.current !== request) {
+          return;
+        }
+        setStashes([]);
+        setError(messageOf(caught));
+      });
     void repoDiff(requested)
       .then((next) => {
         if (cancelled || diffRequestRef.current !== request || !pathEquals(activePathRef.current ?? "", requested)) {
@@ -790,7 +822,7 @@ export function useWorkspace() {
         return;
       }
       try {
-        const next = await repoDiff(active);
+        const [diffResult, stashResult] = await Promise.allSettled([repoDiff(active), listStashes(active)]);
         if (
           diffRequestRef.current !== diffRequestAtStart ||
           !pollStillCurrent(epoch, paths) ||
@@ -799,7 +831,14 @@ export function useWorkspace() {
         ) {
           return;
         }
-        setDiff((current) => (diffKey(current) === diffKey(next) ? current : next));
+        if (diffResult.status === "fulfilled") {
+          const next = diffResult.value;
+          setDiff((current) => (diffKey(current) === diffKey(next) ? current : next));
+        }
+        if (stashResult.status === "fulfilled") {
+          const listed = stashResult.value;
+          setStashes((current) => (stashKey(current) === stashKey(listed) ? current : listed));
+        }
       } catch {
         // A background check leaves the open diff in place.
       }
@@ -1067,7 +1106,11 @@ export function useWorkspace() {
     interactionEpoch.current += 1;
     const epoch = interactionEpoch.current;
     try {
-      const [statusResult, diffResult] = await Promise.allSettled([repoStatuses([repo]), repoDiff(repo)]);
+      const [statusResult, diffResult, stashResult] = await Promise.allSettled([
+        repoStatuses([repo]),
+        repoDiff(repo),
+        listStashes(repo),
+      ]);
       if (interactionEpoch.current !== epoch || !activePathRef.current || !pathEquals(activePathRef.current, repo)) {
         return;
       }
@@ -1083,7 +1126,17 @@ export function useWorkspace() {
       if (diffResult.status === "fulfilled") {
         setDiff(diffResult.value);
       }
-      const failure = statusResult.status === "rejected" ? statusResult.reason : diffResult.status === "rejected" ? diffResult.reason : null;
+      if (stashResult.status === "fulfilled") {
+        setStashes(stashResult.value);
+      }
+      const failure =
+        statusResult.status === "rejected"
+          ? statusResult.reason
+          : diffResult.status === "rejected"
+            ? diffResult.reason
+            : stashResult.status === "rejected"
+              ? stashResult.reason
+              : null;
       if (failure) {
         setError(messageOf(failure));
       }
@@ -1092,17 +1145,85 @@ export function useWorkspace() {
     }
   };
 
-  const discardChange = async (repo: string, file: FileChange) => {
-    if (!repo) {
+  const discardChanges = async (repo: string, files: FileChange[]) => {
+    if (!repo || files.length === 0) {
       return;
     }
     beginWork("discard");
     setError(null);
     try {
-      await discardFile(repo, file.path);
+      for (const file of files) {
+        await discardFile(repo, file.path);
+      }
       await refreshRepo(repo);
     } catch (caught) {
       setError(messageOf(caught));
+      await refreshRepo(repo).catch(() => undefined);
+    } finally {
+      endWork();
+    }
+  };
+
+  const ignoreChanges = async (repo: string, paths: string[]) => {
+    if (!repo || paths.length === 0) {
+      return;
+    }
+    beginWork("ignore");
+    setError(null);
+    try {
+      for (const path of paths) {
+        await ignoreFile(repo, "file", path);
+      }
+      await refreshRepo(repo);
+    } catch (caught) {
+      setError(messageOf(caught));
+      await refreshRepo(repo).catch(() => undefined);
+    } finally {
+      endWork();
+    }
+  };
+
+  const stashChanges = async (repo: string, paths: string[], message: string) => {
+    if (!repo || paths.length === 0) {
+      return;
+    }
+    beginWork("stash");
+    setError(null);
+    try {
+      await stashPaths(repo, paths, message);
+      await refreshRepo(repo);
+    } catch (caught) {
+      setError(messageOf(caught));
+      await refreshRepo(repo).catch(() => undefined);
+    } finally {
+      endWork();
+    }
+  };
+
+  const restoreStash = async (repo: string, id: string) => {
+    await runStashAction(repo, "stash-restore", () => applyStash(repo, id, true));
+  };
+
+  const applyStashEntry = async (repo: string, id: string) => {
+    await runStashAction(repo, "stash-apply", () => applyStash(repo, id, false));
+  };
+
+  const dropStashEntry = async (repo: string, id: string) => {
+    await runStashAction(repo, "stash-drop", () => dropStash(repo, id));
+  };
+
+  const runStashAction = async (repo: string, action: string, work: () => Promise<void>) => {
+    if (!repo) {
+      return;
+    }
+    beginWork(action);
+    setError(null);
+    try {
+      await work();
+      await refreshRepo(repo);
+    } catch (caught) {
+      setError(messageOf(caught));
+      await refreshRepo(repo).catch(() => undefined);
     } finally {
       endWork();
     }
@@ -1500,6 +1621,7 @@ export function useWorkspace() {
     activePath,
     activeStatus,
     diff,
+    stashes,
     commitMessage,
     setCommitMessage: (message: string) => {
       setCommitMessage(message);
@@ -1573,7 +1695,12 @@ export function useWorkspace() {
     removeRepo,
     restoreRemoved,
     deleteFolder,
-    discardChange,
+    discardChanges,
+    ignoreChanges,
+    stashChanges,
+    restoreStash,
+    applyStash: applyStashEntry,
+    dropStash: dropStashEntry,
     ignoreChange,
     revealChange,
     openChange,

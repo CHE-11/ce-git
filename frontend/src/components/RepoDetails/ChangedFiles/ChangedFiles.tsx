@@ -6,9 +6,10 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { FileChange } from "../../../../../types/git";
+import type { FileChange, StashEntry } from "../../../../../types/git";
 import { cn } from "../../../lib/cn";
 import { fileOpenMode, type EditorId } from "../../../lib/editors";
 import { statusMark } from "../../../lib/file-status";
@@ -16,13 +17,17 @@ import type { ChangeOpenMode, IgnoreKind } from "../../../lib/git-client";
 import { domId, messageOf } from "../../../lib/tree";
 import { Button } from "../../Button";
 import { ActionConfirmDialog } from "../../Dialogs/ActionConfirmDialog";
+import { StashChangesDialog } from "../../Dialogs/StashChangesDialog";
 import { ChangedFileContextMenu } from "./ChangedFileContextMenu";
+import { StashList } from "./StashList";
 
 export type ChangeFileHandlers = {
-  discard: (file: FileChange) => void;
+  discard: (files: FileChange[]) => void;
   ignore: (kind: IgnoreKind, target: string) => void;
+  ignoreFiles: (paths: string[]) => void;
   reveal: (relativePath: string) => void;
   open: (relativePath: string, mode: ChangeOpenMode) => void;
+  stash: (paths: string[], message: string) => void;
   reportError: (message: string) => void;
 };
 
@@ -66,31 +71,89 @@ type ChangedFilesProps = {
   busy: boolean;
   handlers: ChangeFileHandlers;
   menuEditors: readonly EditorId[];
+  stashes: StashEntry[];
+  selectedStashId: string | null;
   onSelect: (path: string) => void;
+  onShowFile: () => void;
+  onSelectStash: (id: string) => void;
+  onRestoreStash: (id: string) => void;
+  onApplyStash: (id: string) => void;
+  onDropStash: (id: string) => void;
 };
 
 type FileMenu = {
   file: FileChange;
+  targets: FileChange[];
   x: number;
   y: number;
 };
 
-function discardCopy(file: FileChange) {
-  if (file.status === "untracked" || file.status === "added") {
-    return `Discard ${file.path}? The file will be deleted from disk.`;
+function removesOnDiscard(file: FileChange) {
+  return file.status === "untracked" || file.status === "added";
+}
+
+function discardCopy(files: FileChange[]) {
+  const file = files[0];
+  if (!file) {
+    return "";
   }
-  return `Discard ${file.path}? Your changes will be replaced with the last committed version.`;
+  if (files.length === 1) {
+    if (removesOnDiscard(file)) {
+      return `Discard ${file.path}? The file will be deleted from disk.`;
+    }
+    return `Discard ${file.path}? Your changes will be replaced with the last committed version.`;
+  }
+  const removes = files.filter(removesOnDiscard).length;
+  if (removes === files.length) {
+    return `Discard ${files.length} files? They will be deleted from disk.`;
+  }
+  if (removes === 0) {
+    return `Discard ${files.length} files? Your changes will be replaced with the last committed version.`;
+  }
+  const noun = removes === 1 ? "file is" : "files are";
+  return `Discard ${files.length} files? Committed files are restored, and ${removes} untracked ${noun} deleted from disk.`;
+}
+
+function stashPathList(files: FileChange[]) {
+  const paths: string[] = [];
+  for (const file of files) {
+    if (!paths.includes(file.path)) {
+      paths.push(file.path);
+    }
+    if (file.previousPath && !paths.includes(file.previousPath)) {
+      paths.push(file.previousPath);
+    }
+  }
+  return paths;
 }
 
 function fileName(path: string) {
   return path.split(/[/\\]/).pop() ?? path;
 }
 
-export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, menuEditors, onSelect }: ChangedFilesProps) {
+export function ChangedFiles({
+  repoPath,
+  files,
+  selectedPath,
+  busy,
+  handlers,
+  menuEditors,
+  stashes,
+  selectedStashId,
+  onSelect,
+  onShowFile,
+  onSelectStash,
+  onRestoreStash,
+  onApplyStash,
+  onDropStash,
+}: ChangedFilesProps) {
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
   const [menu, setMenu] = useState<FileMenu | null>(null);
-  const [discarding, setDiscarding] = useState<FileChange | null>(null);
+  const [discarding, setDiscarding] = useState<FileChange[] | null>(null);
+  const [stashing, setStashing] = useState<FileChange[] | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const anchorRef = useRef<string | null>(null);
   const [query, setQuery] = useState("");
   const searchQuery = query.trim();
   const visibleFiles = useMemo(() => {
@@ -125,7 +188,16 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
 
   useEffect(() => {
     setQuery("");
+    setSelectedPaths([]);
+    anchorRef.current = null;
   }, [repoPath]);
+
+  useEffect(() => {
+    setSelectedPaths((current) => {
+      const next = current.filter((path) => files.some((file) => file.path === path));
+      return next.length === current.length ? current : next;
+    });
+  }, [files]);
 
   useEffect(() => {
     function onResize() {
@@ -188,6 +260,57 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
     storeWidth(clampWidth(widthRef.current));
   }
 
+  function chooseFiles(file: FileChange, event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) {
+    const path = file.path;
+    const order = visibleFiles.map((item) => item.path);
+    let next: string[];
+    if (event.shiftKey && anchorRef.current) {
+      const start = order.indexOf(anchorRef.current);
+      const end = order.indexOf(path);
+      if (start >= 0 && end >= 0) {
+        const [from, to] = start < end ? [start, end] : [end, start];
+        next = order.slice(from, to + 1);
+      } else {
+        anchorRef.current = path;
+        next = [path];
+      }
+    } else if (event.metaKey || event.ctrlKey) {
+      anchorRef.current = path;
+      next = selectedPaths.includes(path) ? selectedPaths.filter((item) => item !== path) : [...selectedPaths, path];
+    } else {
+      anchorRef.current = path;
+      next = [path];
+    }
+    setSelectedPaths(next);
+    onShowFile();
+    if (next.includes(path)) {
+      onSelect(path);
+    } else if (next.length > 0) {
+      onSelect(next[next.length - 1]);
+    }
+  }
+
+  function openMenu(file: FileChange, event: ReactMouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const keep = selectedPaths.includes(file.path);
+    const next = keep ? selectedPaths : [file.path];
+    if (!keep) {
+      anchorRef.current = file.path;
+      setSelectedPaths(next);
+    }
+    onSelect(file.path);
+    onShowFile();
+    const chosen = new Set(next);
+    const targets = files.filter((item) => chosen.has(item.path));
+    setMenu({
+      file,
+      targets: targets.length > 0 ? targets : [file],
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const step = event.shiftKey ? 48 : 16;
     if (event.key === "ArrowLeft") {
@@ -244,6 +367,7 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
       <h3 id="changed-files-title" className="px-3 py-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
         Changes
       </h3>
+      <div id="changed-files-body" className="flex min-h-0 flex-1 flex-col">
       {files.length === 0 ? (
         <p id="changed-files-empty" className="px-3 text-sm text-zinc-500">
           Working tree clean
@@ -253,9 +377,10 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
           No files match “{searchQuery}”.
         </p>
       ) : (
-        <ul id="changed-files" className="min-h-0 flex-1 overflow-auto">
+        <ul id="changed-files" className="min-h-0 flex-1 overflow-auto select-none">
           {visibleFiles.map((file) => {
-            const selected = file.path === selectedPath;
+            const selected = selectedPaths.includes(file.path);
+            const current = file.path === selectedPath;
             const key = `${file.status}-${file.path}`;
             const mark = statusMark(file.status);
             return (
@@ -263,14 +388,15 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
                 <button
                   id={domId("changed-file", key)}
                   type="button"
-                  aria-current={selected ? "true" : undefined}
-                  onClick={() => onSelect(file.path)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onSelect(file.path);
-                    setMenu({ file, x: event.clientX, y: event.clientY });
+                  aria-selected={selected}
+                  aria-current={current ? "true" : undefined}
+                  onMouseDown={(event) => {
+                    if (event.shiftKey) {
+                      event.preventDefault();
+                    }
                   }}
+                  onClick={(event) => chooseFiles(file, event)}
+                  onContextMenu={(event) => openMenu(file, event)}
                   className={cn(
                     "flex w-full items-center gap-2 px-3 py-1 text-left text-sm hover:bg-zinc-800/80",
                     selected && "bg-sky-950/70",
@@ -296,6 +422,18 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
           })}
         </ul>
       )}
+      {stashes.length > 0 ? (
+        <StashList
+          stashes={stashes}
+          selectedId={selectedStashId}
+          busy={busy}
+          onSelect={onSelectStash}
+          onRestore={onRestoreStash}
+          onApply={onApplyStash}
+          onDrop={onDropStash}
+        />
+      ) : null}
+      </div>
       <div
         id="changed-files-resizer"
         role="separator"
@@ -330,17 +468,36 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
         <ChangedFileContextMenu
           key={`${menu.file.status}-${menu.file.path}-${menu.x}-${menu.y}`}
           file={menu.file}
+          targets={menu.targets}
           repoPath={repoPath}
           x={menu.x}
           y={menu.y}
           busy={busy}
-          onDiscard={() => setDiscarding(menu.file)}
+          onDiscard={() => setDiscarding(menu.targets)}
+          onStash={() => setStashing(menu.targets)}
           onIgnore={handlers.ignore}
+          onIgnoreFiles={() => {
+            handlers.ignoreFiles(menu.targets.filter((item) => item.status !== "deleted").map((item) => item.path));
+          }}
           onReveal={() => handlers.reveal(menu.file.path)}
           menuEditors={menuEditors}
-          onOpenInEditor={(editor) => handlers.open(menu.file.path, fileOpenMode(editor))}
+          onOpenInEditor={(editor) => {
+            for (const target of menu.targets) {
+              if (target.status === "deleted") {
+                continue;
+              }
+              handlers.open(target.path, fileOpenMode(editor));
+            }
+          }}
           onOpenGitignore={(editor) => handlers.open(".gitignore", fileOpenMode(editor))}
-          onOpenProgram={() => handlers.open(menu.file.path, "default")}
+          onOpenProgram={() => {
+            for (const target of menu.targets) {
+              if (target.status === "deleted") {
+                continue;
+              }
+              handlers.open(target.path, "default");
+            }
+          }}
           onCopy={(text) => {
             void navigator.clipboard.writeText(text).catch((caught) => {
               handlers.reportError(messageOf(caught));
@@ -361,9 +518,23 @@ export function ChangedFiles({ repoPath, files, selectedPath, busy, handlers, me
           if (!discarding) {
             return;
           }
-          const file = discarding;
+          const filesToDiscard = discarding;
           setDiscarding(null);
-          handlers.discard(file);
+          handlers.discard(filesToDiscard);
+        }}
+      />
+      <StashChangesDialog
+        key={stashing ? stashing.map((file) => `${file.status}:${file.path}`).join("|") : "stash-changes"}
+        files={stashing ?? []}
+        open={stashing !== null}
+        onClose={() => setStashing(null)}
+        onConfirm={(message) => {
+          if (!stashing) {
+            return;
+          }
+          const paths = stashPathList(stashing);
+          setStashing(null);
+          handlers.stash(paths, message);
         }}
       />
     </section>

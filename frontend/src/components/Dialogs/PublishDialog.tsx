@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PublishOptions, RepoVisibility } from "../../../../types/git";
+import { openInTerminal } from "../../lib/git-client";
 import { messageOf } from "../../lib/tree";
 import { Button } from "../Button";
 import { Dialog } from "./Dialog";
@@ -13,9 +14,12 @@ const VISIBILITY: { value: RepoVisibility; label: string; hint: string }[] = [
   { value: "internal", label: "Internal", hint: "Visible inside an organization" },
 ];
 
+const GH_AUTH_LOGIN = "gh auth login";
+
 type PublishDialogProps = {
   open: boolean;
   repoName: string;
+  repoPath: string;
   onClose: () => void;
   onPublish: (options: PublishOptions) => Promise<void>;
 };
@@ -47,13 +51,28 @@ function validate(name: string, description: string, homepage: string) {
   return null;
 }
 
-export function PublishDialog({ open, repoName, onClose, onPublish }: PublishDialogProps) {
+function isGithubAuthError(message: string) {
+  const text = message.toLowerCase();
+  return (
+    text.includes("gh auth login") ||
+    text.includes("not logged into") ||
+    text.includes("not logged in to github") ||
+    text.includes("to get started with github cli") ||
+    text.includes("try authenticating") ||
+    text.includes("authentication required") ||
+    /\bhttp 401\b/.test(text) ||
+    text.includes("bad credentials")
+  );
+}
+
+export function PublishDialog({ open, repoName, repoPath, onClose, onPublish }: PublishDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<RepoVisibility>("private");
   const [homepage, setHomepage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [openingTerminal, setOpeningTerminal] = useState(false);
   const [sessionRepo, setSessionRepo] = useState<string | null>(null);
 
   if (open && sessionRepo !== repoName) {
@@ -64,6 +83,7 @@ export function PublishDialog({ open, repoName, onClose, onPublish }: PublishDia
     setHomepage("");
     setError(null);
     setPublishing(false);
+    setOpeningTerminal(false);
   }
   if (!open && sessionRepo !== null) {
     setSessionRepo(null);
@@ -96,6 +116,22 @@ export function PublishDialog({ open, repoName, onClose, onPublish }: PublishDia
       setPublishing(false);
     }
   };
+
+  const openLoginTerminal = async () => {
+    if (!repoPath || openingTerminal) {
+      return;
+    }
+    setOpeningTerminal(true);
+    try {
+      await openInTerminal(repoPath, GH_AUTH_LOGIN);
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setOpeningTerminal(false);
+    }
+  };
+
+  const showLoginTerminal = error !== null && isGithubAuthError(error);
 
   return (
     <Dialog
@@ -218,9 +254,24 @@ export function PublishDialog({ open, repoName, onClose, onPublish }: PublishDia
           className={fieldClass}
         />
         {error ? (
-          <p id="publish-error" className="mt-3 text-sm text-red-400">
-            {error}
-          </p>
+          <div id="publish-error" className="mt-3 space-y-2">
+            <p id="publish-error-message" className="text-sm text-red-400">
+              {error}
+            </p>
+            {showLoginTerminal ? (
+              <Button
+                id="publish-open-terminal"
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void openLoginTerminal()}
+                disabled={openingTerminal || !repoPath}
+                title={`Open a terminal and run ${GH_AUTH_LOGIN}`}
+              >
+                <span id="publish-open-terminal-label">{openingTerminal ? "Opening…" : "Open in Terminal"}</span>
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         <div id="publish-actions" className="mt-4 flex justify-end gap-2">
           <Button id="publish-cancel" variant="ghost" onClick={requestClose} disabled={publishing}>

@@ -282,6 +282,7 @@ export function RepoDetail({
       <PublishDialog
         open={publishOpen}
         repoName={name}
+        repoPath={path ?? ""}
         onClose={() => setPublishOpen(false)}
         onPublish={async (options) => {
           await onPublish(options);

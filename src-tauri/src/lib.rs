@@ -381,10 +381,12 @@ async fn ignore_change(repo: String, kind: String, path: String) -> Result<(), S
 }
 
 #[tauri::command]
-async fn open_in_terminal(path: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || files::open_in_terminal(Path::new(&path)))
-        .await
-        .map_err(|error| error.to_string())?
+async fn open_in_terminal(path: String, command: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        files::open_in_terminal(Path::new(&path), command.as_deref())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

@@ -198,7 +198,7 @@ pub fn reveal_path(path: &Path) -> Result<(), String> {
     reveal_existing(&target, select_file && path.exists())
 }
 
-pub fn open_in_terminal(path: &Path) -> Result<(), String> {
+pub fn open_in_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
     let path = if path.exists() {
         display_path(path)
     } else {
@@ -207,21 +207,18 @@ pub fn open_in_terminal(path: &Path) -> Result<(), String> {
     if !path.is_dir() {
         return Err(format!("Folder does not exist: {}", path.display()));
     }
+    let command = command.map(str::trim).filter(|value| !value.is_empty());
     #[cfg(windows)]
     {
-        return windows_shell::open_terminal(&path);
+        return windows_shell::open_terminal(&path, command);
     }
     #[cfg(target_os = "macos")]
     {
-        return spawn_command("open", &["-a", "Terminal", &path.to_string_lossy()]);
+        return macos_open_terminal(&path, command);
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let directory = path.to_string_lossy();
-        if spawn_command("x-terminal-emulator", &["--working-directory", &directory]).is_ok() {
-            return Ok(());
-        }
-        return spawn_command("gnome-terminal", &["--working-directory", &directory]);
+        return linux_open_terminal(&path, command);
     }
 }
 
@@ -267,6 +264,53 @@ fn start_default(path: &Path) -> Result<(), String> {
     {
         return spawn_command("xdg-open", &[&path.to_string_lossy()]);
     }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_open_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
+    let Some(command) = command else {
+        return spawn_command("open", &["-a", "Terminal", &path.to_string_lossy()]);
+    };
+    let script = format!(
+        "tell application \"Terminal\" to do script \"cd {} && {}\"",
+        escape_applescript(&shell_single_quote(&path.to_string_lossy())),
+        escape_applescript(command)
+    );
+    spawn_command("osascript", &["-e", &script])
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn linux_open_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
+    let directory = path.to_string_lossy();
+    let Some(command) = command else {
+        if spawn_command("x-terminal-emulator", &["--working-directory", &directory]).is_ok() {
+            return Ok(());
+        }
+        return spawn_command("gnome-terminal", &["--working-directory", &directory]);
+    };
+    let shell = format!("{command}; exec bash");
+    if spawn_command(
+        "x-terminal-emulator",
+        &["--working-directory", &directory, "-e", "bash", "-lc", &shell],
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+    spawn_command(
+        "gnome-terminal",
+        &["--working-directory", &directory, "--", "bash", "-lc", &shell],
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(target_os = "macos")]
+fn escape_applescript(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 #[cfg(unix)]
@@ -321,19 +365,32 @@ mod windows_shell {
         Ok(())
     }
 
-    pub fn open_terminal(path: &Path) -> Result<(), String> {
+    pub fn open_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
         let mut terminal = Command::new("wt.exe");
+        terminal.arg("-d").arg(path);
+        if let Some(command) = command {
+            terminal.args([
+                "--",
+                "powershell.exe",
+                "-NoExit",
+                "-NoLogo",
+                "-Command",
+                command,
+            ]);
+        }
         terminal
-            .arg("-d")
-            .arg(path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         if terminal.spawn().is_ok() {
             return Ok(());
         }
-        Command::new("powershell.exe")
-            .args(["-NoExit", "-NoLogo"])
+        let mut powershell = Command::new("powershell.exe");
+        powershell.args(["-NoExit", "-NoLogo"]);
+        if let Some(command) = command {
+            powershell.args(["-Command", command]);
+        }
+        powershell
             .current_dir(path)
             .stdin(Stdio::null())
             .spawn()

@@ -30,7 +30,15 @@ pub struct StashPatch {
 pub fn list_stashes(repo: &Path) -> Result<Vec<StashEntry>, String> {
     ensure_repo(repo)?;
     let output = git(repo, &["stash", "list", "-z", "--format=%gd%x1f%gs%x1f%ct"])?;
-    Ok(parse_stash_list(&output))
+    let mut entries = parse_stash_list(&output);
+    // The message marks a stash a pull created. Lock it only while that merge is still open.
+    // A leftover stash after the pull finished can be restored or dropped.
+    if !merge_in_progress(repo) {
+        for entry in &mut entries {
+            entry.pull = false;
+        }
+    }
+    Ok(entries)
 }
 
 pub fn stash_paths(repo: &Path, paths: &[String], message: &str) -> Result<(), String> {
@@ -95,27 +103,41 @@ pub fn show_stash(repo: &Path, id: &str) -> Result<StashPatch, String> {
 
 pub fn apply_stash(repo: &Path, id: &str, pop: bool) -> Result<(), String> {
     ensure_repo(repo)?;
-    let id = require_user_stash(repo, id)?;
+    let entry = require_user_stash(repo, id)?;
     let action = if pop { "pop" } else { "apply" };
-    git(repo, &["stash", action, &id])?;
+    git(repo, &["stash", action, &entry.id])?;
+    if pop && entry.message.contains(PULL_STASH_MARK) {
+        clear_pull_start(repo);
+    }
     Ok(())
 }
 
 pub fn drop_stash(repo: &Path, id: &str) -> Result<(), String> {
     ensure_repo(repo)?;
-    let id = require_user_stash(repo, id)?;
-    git(repo, &["stash", "drop", &id])?;
+    let entry = require_user_stash(repo, id)?;
+    git(repo, &["stash", "drop", &entry.id])?;
+    if entry.message.contains(PULL_STASH_MARK) {
+        clear_pull_start(repo);
+    }
     Ok(())
 }
 
-fn require_user_stash(repo: &Path, id: &str) -> Result<String, String> {
+fn require_user_stash(repo: &Path, id: &str) -> Result<StashEntry, String> {
     let id = stash_id(id)?;
     let entries = list_stashes(repo)?;
-    match entries.iter().find(|entry| entry.id == id) {
+    match entries.into_iter().find(|entry| entry.id == id) {
         Some(entry) if entry.pull => Err("That stash belongs to a pull in progress.".into()),
-        Some(_) => Ok(id),
+        Some(entry) => Ok(entry),
         None => Err("Stash not found.".into()),
     }
+}
+
+fn merge_in_progress(repo: &Path) -> bool {
+    git(repo, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_ok()
+}
+
+fn clear_pull_start(repo: &Path) {
+    let _ = git(repo, &["update-ref", "-d", "refs/ce-git/pull-start"]);
 }
 
 fn stash_message(repo: &Path, id: &str) -> Result<String, String> {
@@ -288,9 +310,45 @@ mod tests {
             ],
         );
         let pull = list_stashes(&root).unwrap();
-        assert!(pull[0].pull, "{}", pull[0].message);
-        assert!(apply_stash(&root, "stash@{0}", true).is_err());
-        assert!(drop_stash(&root, "stash@{0}").is_err());
+        assert!(!pull[0].pull, "{}", pull[0].message);
+        drop_stash(&root, "stash@{0}").unwrap();
+        assert!(list_stashes(&root).unwrap().is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pull_stash_stays_locked_only_while_a_merge_is_open() {
+        let root = scratch("stash-merge");
+        init_repo(&root);
+        fs::write(root.join("old.txt"), "one\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-m", "initial"]);
+        run_git(&root, &["checkout", "-b", "side"]);
+        fs::write(root.join("old.txt"), "side\n").unwrap();
+        run_git(&root, &["commit", "-am", "side"]);
+        run_git(&root, &["checkout", "main"]);
+        fs::write(root.join("old.txt"), "main\n").unwrap();
+        run_git(&root, &["commit", "-am", "main"]);
+        fs::write(root.join("notes.txt"), "keep\n").unwrap();
+        run_git(&root, &["add", "notes.txt"]);
+        run_git(
+            &root,
+            &["stash", "push", "-m", "ce-git pull", "--", "notes.txt"],
+        );
+
+        let before = list_stashes(&root).unwrap();
+        assert!(!before[0].pull, "{}", before[0].message);
+
+        assert!(git(&root, &["merge", "side"]).is_err());
+        let during = list_stashes(&root).unwrap();
+        assert!(during.iter().any(|entry| entry.pull), "{during:?}");
+        assert!(drop_stash(&root, &during[0].id).is_err());
+
+        run_git(&root, &["merge", "--abort"]);
+        let after = list_stashes(&root).unwrap();
+        assert!(after.iter().all(|entry| !entry.pull));
+        drop_stash(&root, &after[0].id).unwrap();
 
         let _ = fs::remove_dir_all(root);
     }

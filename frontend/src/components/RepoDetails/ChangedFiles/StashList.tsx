@@ -1,7 +1,8 @@
-import { Archive, ArchiveRestore, FolderInput, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, FolderInput, Trash2 } from "lucide-react";
 import { useState } from "react";
-import type { StashEntry } from "../../../../../types/git";
+import type { StashEntry, StashFile } from "../../../../../types/git";
 import { cn } from "../../../lib/cn";
+import { statusMark } from "../../../lib/file-status";
 import { domId } from "../../../lib/tree";
 import { ActionConfirmDialog } from "../../Dialogs/ActionConfirmDialog";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ContextMenu";
@@ -9,8 +10,15 @@ import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../Contex
 type StashListProps = {
   stashes: StashEntry[];
   selectedId: string | null;
+  files: StashFile[];
+  filesLoading: boolean;
+  selectedPath: string | null;
   busy: boolean;
   onSelect: (id: string) => void;
+  onSelectFile: (path: string) => void;
+  open: boolean;
+  fill: boolean;
+  onToggle: () => void;
   onRestore: (id: string) => void;
   onApply: (id: string) => void;
   onDrop: (id: string) => void;
@@ -41,16 +49,55 @@ function stashDate(seconds: number) {
   });
 }
 
-export function StashList({ stashes, selectedId, busy, onSelect, onRestore, onApply, onDrop }: StashListProps) {
+export function StashList({
+  stashes,
+  selectedId,
+  files,
+  filesLoading,
+  selectedPath,
+  busy,
+  onSelect,
+  onSelectFile,
+  open,
+  fill,
+  onToggle,
+  onRestore,
+  onApply,
+  onDrop,
+}: StashListProps) {
   const [menu, setMenu] = useState<StashMenu | null>(null);
   const [pending, setPending] = useState<PendingStash | null>(null);
   const pullLocked = menu?.stash.pull ?? false;
 
   return (
-    <section id="stashes" className="flex max-h-[40%] min-h-0 shrink-0 flex-col border-t border-zinc-800">
-      <h3 id="stashes-title" className="px-3 py-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-        Stashes
-      </h3>
+    <section
+      id="stashes"
+      className={cn(
+        "flex flex-col border-t border-zinc-800",
+        open && fill && "min-h-0 flex-1",
+        open && !fill && "max-h-[40%] min-h-0 shrink-0",
+        !open && "mt-auto shrink-0",
+      )}
+    >
+      <button
+        id="stashes-toggle"
+        type="button"
+        aria-expanded={open}
+        aria-controls="stashes-list"
+        onClick={onToggle}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-semibold tracking-wide text-zinc-500 uppercase hover:text-zinc-300"
+      >
+        <ChevronDown
+          id="stashes-toggle-chevron"
+          aria-hidden="true"
+          className={cn("size-3.5 shrink-0 transition-transform", !open && "-rotate-90")}
+        />
+        <span id="stashes-title">Stashes</span>
+        <span id="stashes-count" className="text-zinc-600">
+          {stashes.length}
+        </span>
+      </button>
+      {open ? (
       <ul id="stashes-list" className="min-h-0 flex-1 overflow-auto pb-2">
         {stashes.map((stash) => {
           const selected = stash.id === selectedId;
@@ -86,10 +133,59 @@ export function StashList({ stashes, selectedId, busy, onSelect, onRestore, onAp
                   </span>
                 ) : null}
               </button>
+              {selected ? (
+                <ul id={domId("stash-files", stash.id)} className="pb-1">
+                  {filesLoading ? (
+                    <li id={domId("stash-files-loading", stash.id)} className="px-8 py-1 text-xs text-zinc-500">
+                      Loading files…
+                    </li>
+                  ) : files.length === 0 ? (
+                    <li id={domId("stash-files-empty", stash.id)} className="px-8 py-1 text-xs text-zinc-500">
+                      This stash has no files to compare.
+                    </li>
+                  ) : (
+                    files.map((file) => {
+                      const mark = statusMark(file.status);
+                      const current = file.path === selectedPath;
+                      return (
+                        <li id={domId("stash-file-item", `${stash.id}-${file.path}`)} key={file.path}>
+                          <button
+                            id={domId("stash-file", `${stash.id}-${file.path}`)}
+                            type="button"
+                            aria-current={current ? "true" : undefined}
+                            title={file.path}
+                            onClick={() => onSelectFile(file.path)}
+                            className={cn(
+                              "flex w-full items-center gap-2 py-1 pr-3 pl-8 text-left text-sm hover:bg-zinc-800/80",
+                              current && "bg-sky-950/70",
+                            )}
+                          >
+                            <span
+                              id={domId("stash-file-status", `${stash.id}-${file.path}`)}
+                              title={mark.label}
+                              aria-label={mark.label}
+                              className={cn("w-4 shrink-0 text-center text-xs font-semibold", mark.className)}
+                            >
+                              {mark.letter}
+                            </span>
+                            <span
+                              id={domId("stash-file-path", `${stash.id}-${file.path}`)}
+                              className="truncate text-zinc-200"
+                            >
+                              {file.path}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              ) : null}
             </li>
           );
         })}
       </ul>
+      ) : null}
       {menu ? (
         <ContextMenu
           id="stash-menu"

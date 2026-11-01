@@ -20,6 +20,9 @@ import type {
   RepoSearchResult,
   RepoStatus,
   StashEntry,
+  StashFile,
+  StashFileView,
+  StashKeepSource,
   StashPatch,
   ThinkingMode,
   TreeNode,
@@ -211,7 +214,7 @@ export function searchDirectory(repo: string, query: string) {
   return invoke<DirSearch>("search_directory", { repo, query });
 }
 
-export function openInTerminal(path: string, command?: string) {
+export function openInTerminal(path: string, command?: "gh auth login") {
   return invoke<void>("open_in_terminal", { path, command: command ?? null });
 }
 
@@ -256,6 +259,18 @@ export function applyStash(repo: string, id: string, pop: boolean) {
 
 export function dropStash(repo: string, id: string) {
   return invoke<void>("drop_stash", { repo, id });
+}
+
+export function stashFiles(repo: string, id: string) {
+  return invoke<StashFile[]>("stash_files", { repo, id });
+}
+
+export function stashFileSides(repo: string, id: string, path: string) {
+  return invoke<StashFileView>("stash_file_sides", { repo, id, path });
+}
+
+export function keepStashFile(repo: string, id: string, path: string, source: StashKeepSource) {
+  return invoke<void>("keep_stash_file", { repo, id, path, source });
 }
 
 export function discardChange(repo: string, path: string) {

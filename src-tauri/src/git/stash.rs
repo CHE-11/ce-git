@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 
 use serde::Serialize;
@@ -122,6 +123,312 @@ pub fn drop_stash(repo: &Path, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashFile {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashFileView {
+    pub path: String,
+    pub remote_ref: String,
+    pub on_remote: bool,
+    pub remote_text: String,
+    pub remote_missing: bool,
+    pub remote_truncated: bool,
+    pub remote_binary: bool,
+    pub stash_text: String,
+    pub stash_missing: bool,
+    pub stash_truncated: bool,
+    pub stash_binary: bool,
+}
+
+pub fn stash_files(repo: &Path, id: &str) -> Result<Vec<StashFile>, String> {
+    ensure_repo(repo)?;
+    let id = require_listed_stash(repo, id)?;
+    files_in_stash(repo, &id)
+}
+
+pub fn stash_file_sides(repo: &Path, id: &str, path: &str) -> Result<StashFileView, String> {
+    ensure_repo(repo)?;
+    let id = require_listed_stash(repo, id)?;
+    let path = checked_relative(repo, path)?;
+    let files = files_in_stash(repo, &id)?;
+    let previous = files
+        .into_iter()
+        .find(|file| file.path == path)
+        .and_then(|file| file.previous_path);
+    let base = compare_base(repo)?;
+    let remote = read_blob(repo, &base.rev, &path, previous.as_deref());
+    let stash = read_stash_blob(repo, &id, &path);
+    Ok(StashFileView {
+        path,
+        remote_ref: base.label,
+        on_remote: base.on_remote,
+        remote_text: remote.text,
+        remote_missing: remote.missing,
+        remote_truncated: remote.truncated,
+        remote_binary: remote.binary,
+        stash_text: stash.text,
+        stash_missing: stash.missing,
+        stash_truncated: stash.truncated,
+        stash_binary: stash.binary,
+    })
+}
+
+pub fn keep_stash_file(repo: &Path, id: &str, path: &str, source: &str) -> Result<(), String> {
+    ensure_repo(repo)?;
+    let entry = require_user_stash(repo, id)?;
+    let path = checked_relative(repo, path)?;
+    let files = files_in_stash(repo, &entry.id)?;
+    let previous = files
+        .iter()
+        .find(|file| file.path == path)
+        .and_then(|file| file.previous_path.clone());
+    match source {
+        "remote" => {
+            let base = compare_base(repo)?;
+            if blob_exists(repo, &format!("{}:{path}", base.rev)) {
+                restore_worktree(repo, &base.rev, &path)
+            } else if let Some(previous) = previous.as_deref() {
+                if blob_exists(repo, &format!("{}:{previous}", base.rev)) {
+                    restore_worktree(repo, &base.rev, previous)?;
+                }
+                remove_worktree_file(repo, &path)
+            } else {
+                remove_worktree_file(repo, &path)
+            }
+        }
+        "stash" => {
+            if blob_exists(repo, &format!("{}:{path}", entry.id)) {
+                restore_worktree(repo, &entry.id, &path)?;
+            } else if let Some(parent) = untracked_parent(repo, &entry.id) {
+                if blob_exists(repo, &format!("{parent}:{path}")) {
+                    restore_worktree(repo, &parent, &path)?;
+                } else {
+                    remove_worktree_file(repo, &path)?;
+                }
+            } else {
+                remove_worktree_file(repo, &path)?;
+            }
+            if let Some(previous) = previous.as_deref() {
+                if !blob_exists(repo, &format!("{}:{previous}", entry.id)) {
+                    remove_worktree_file(repo, previous)?;
+                }
+            }
+            Ok(())
+        }
+        _ => Err("Choose the remote or stashed copy.".into()),
+    }
+}
+
+fn require_listed_stash(repo: &Path, id: &str) -> Result<String, String> {
+    let id = stash_id(id)?;
+    let entries = list_stashes(repo)?;
+    if entries.iter().any(|entry| entry.id == id) {
+        Ok(id)
+    } else {
+        Err("Stash not found.".into())
+    }
+}
+
+struct CompareBase {
+    rev: String,
+    label: String,
+    on_remote: bool,
+}
+
+fn compare_base(repo: &Path) -> Result<CompareBase, String> {
+    if let Ok(upstream) = git(
+        repo,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    ) {
+        let label = upstream.trim().to_string();
+        if !label.is_empty() && label != "@{upstream}" {
+            return Ok(CompareBase {
+                rev: label.clone(),
+                label,
+                on_remote: true,
+            });
+        }
+    }
+    let branch = git(repo, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let label = branch.trim().to_string();
+    Ok(CompareBase {
+        rev: "HEAD".to_string(),
+        label: if label.is_empty() {
+            "HEAD".to_string()
+        } else {
+            label
+        },
+        on_remote: false,
+    })
+}
+
+fn files_in_stash(repo: &Path, id: &str) -> Result<Vec<StashFile>, String> {
+    let base = compare_base(repo)?;
+    let mut files = parse_name_status(&git(
+        repo,
+        &["diff", "-z", "--name-status", "-M", &base.rev, id],
+    )?);
+    let mut seen: HashSet<String> = files.iter().map(|file| file.path.clone()).collect();
+    if let Some(parent) = untracked_parent(repo, id) {
+        let extra = parse_name_status(&git(
+            repo,
+            &["diff", "-z", "--name-status", "-M", &base.rev, &parent],
+        )?);
+        for mut file in extra {
+            if seen.insert(file.path.clone()) {
+                file.status = "untracked".to_string();
+                file.previous_path = None;
+                files.push(file);
+            }
+        }
+    }
+    Ok(files)
+}
+
+fn parse_name_status(output: &str) -> Vec<StashFile> {
+    let mut files = Vec::new();
+    let mut tokens = output.split('\0').filter(|token| !token.is_empty());
+    while let Some(status) = tokens.next() {
+        let code = status.chars().next().unwrap_or('M');
+        if code == 'R' || code == 'C' {
+            let previous = tokens.next().unwrap_or("").to_string();
+            let path = tokens.next().unwrap_or("").to_string();
+            if path.is_empty() {
+                continue;
+            }
+            files.push(StashFile {
+                path,
+                previous_path: if previous.is_empty() {
+                    None
+                } else {
+                    Some(previous)
+                },
+                status: if code == 'C' { "copied" } else { "renamed" }.to_string(),
+            });
+            continue;
+        }
+        let path = tokens.next().unwrap_or("").to_string();
+        if path.is_empty() {
+            continue;
+        }
+        files.push(StashFile {
+            path,
+            previous_path: None,
+            status: match code {
+                'A' => "added",
+                'D' => "deleted",
+                'T' => "typechange",
+                'U' => "unmerged",
+                _ => "modified",
+            }
+            .to_string(),
+        });
+    }
+    files
+}
+
+struct BlobText {
+    text: String,
+    missing: bool,
+    truncated: bool,
+    binary: bool,
+}
+
+fn read_blob(repo: &Path, rev: &str, path: &str, previous: Option<&str>) -> BlobText {
+    if let Some(text) = cat_blob(repo, &format!("{rev}:{path}")) {
+        return text;
+    }
+    if let Some(previous) = previous {
+        if let Some(text) = cat_blob(repo, &format!("{rev}:{previous}")) {
+            return text;
+        }
+    }
+    BlobText {
+        text: String::new(),
+        missing: true,
+        truncated: false,
+        binary: false,
+    }
+}
+
+fn read_stash_blob(repo: &Path, id: &str, path: &str) -> BlobText {
+    if let Some(text) = cat_blob(repo, &format!("{id}:{path}")) {
+        return text;
+    }
+    if let Some(parent) = untracked_parent(repo, id) {
+        if let Some(text) = cat_blob(repo, &format!("{parent}:{path}")) {
+            return text;
+        }
+    }
+    BlobText {
+        text: String::new(),
+        missing: true,
+        truncated: false,
+        binary: false,
+    }
+}
+
+fn cat_blob(repo: &Path, spec: &str) -> Option<BlobText> {
+    let text = git(repo, &["cat-file", "-p", spec]).ok()?;
+    if text.contains('\0') {
+        return Some(BlobText {
+            text: String::new(),
+            missing: false,
+            truncated: false,
+            binary: true,
+        });
+    }
+    let (text, truncated) = truncate_text(&text, UI_DIFF_LIMIT);
+    Some(BlobText {
+        text,
+        missing: false,
+        truncated,
+        binary: false,
+    })
+}
+
+fn blob_exists(repo: &Path, spec: &str) -> bool {
+    git(repo, &["cat-file", "-e", spec]).is_ok()
+}
+
+fn untracked_parent(repo: &Path, id: &str) -> Option<String> {
+    let spec = format!("{id}^3");
+    git(repo, &["rev-parse", "-q", "--verify", &spec])
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn restore_worktree(repo: &Path, source: &str, path: &str) -> Result<(), String> {
+    git(
+        repo,
+        &["restore", "--source", source, "--worktree", "--", path],
+    )?;
+    Ok(())
+}
+
+fn remove_worktree_file(repo: &Path, path: &str) -> Result<(), String> {
+    let full = super::changes::contained_path(repo, path)?;
+    if full.is_file() {
+        fs::remove_file(&full)
+            .map_err(|error| format!("Could not remove {}: {error}", full.display()))?;
+    }
+    Ok(())
+}
+
 fn require_user_stash(repo: &Path, id: &str) -> Result<StashEntry, String> {
     let id = stash_id(id)?;
     let entries = list_stashes(repo)?;
@@ -216,7 +523,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::super::command::git;
-    use super::{apply_stash, drop_stash, list_stashes, parse_stash_list, show_stash, stash_paths};
+    use super::{
+        apply_stash, drop_stash, keep_stash_file, list_stashes, parse_stash_list, show_stash,
+        stash_file_sides, stash_files, stash_paths,
+    };
 
     fn scratch(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -349,6 +659,43 @@ mod tests {
         let after = list_stashes(&root).unwrap();
         assert!(after.iter().all(|entry| !entry.pull));
         drop_stash(&root, &after[0].id).unwrap();
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stash_file_sides_and_keep_one_side() {
+        let root = scratch("stash-file");
+        init_repo(&root);
+        fs::write(root.join("old.txt"), "one\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-m", "initial"]);
+        fs::write(root.join("old.txt"), "two\n").unwrap();
+        run_git(&root, &["stash", "push", "-m", "notes", "--", "old.txt"]);
+
+        let files = stash_files(&root, "stash@{0}").unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "old.txt");
+        assert_eq!(files[0].status, "modified");
+
+        let sides = stash_file_sides(&root, "stash@{0}", "old.txt").unwrap();
+        assert!(!sides.on_remote);
+        assert_eq!(sides.remote_ref, "main");
+        assert!(sides.remote_text.contains("one"), "{}", sides.remote_text);
+        assert!(sides.stash_text.contains("two"), "{}", sides.stash_text);
+        assert!(!sides.remote_missing);
+        assert!(!sides.stash_missing);
+
+        keep_stash_file(&root, "stash@{0}", "old.txt", "stash").unwrap();
+        assert_eq!(read(&root.join("old.txt")), "two\n");
+        assert_eq!(list_stashes(&root).unwrap().len(), 1);
+
+        keep_stash_file(&root, "stash@{0}", "old.txt", "remote").unwrap();
+        assert_eq!(read(&root.join("old.txt")), "one\n");
+        assert_eq!(list_stashes(&root).unwrap().len(), 1);
+
+        assert!(stash_files(&root, "stash@{n}").is_err());
+        assert!(keep_stash_file(&root, "HEAD", "old.txt", "stash").is_err());
 
         let _ = fs::remove_dir_all(root);
     }

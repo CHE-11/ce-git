@@ -207,18 +207,28 @@ pub fn open_in_terminal(path: &Path, command: Option<&str>) -> Result<(), String
     if !path.is_dir() {
         return Err(format!("Folder does not exist: {}", path.display()));
     }
-    let command = command.map(str::trim).filter(|value| !value.is_empty());
+    let login = accepted_terminal_command(command)?;
     #[cfg(windows)]
     {
-        return windows_shell::open_terminal(&path, command);
+        return windows_shell::open_terminal(&path, login);
     }
     #[cfg(target_os = "macos")]
     {
-        return macos_open_terminal(&path, command);
+        return macos_open_terminal(&path, login);
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        return linux_open_terminal(&path, command);
+        return linux_open_terminal(&path, login);
+    }
+}
+
+/// The webview may only ask for a terminal, or for `gh auth login`.
+/// Anything else would run as a shell command.
+fn accepted_terminal_command(command: Option<&str>) -> Result<bool, String> {
+    match command.map(str::trim).filter(|value| !value.is_empty()) {
+        None => Ok(false),
+        Some("gh auth login") => Ok(true),
+        Some(_) => Err("That terminal command is not allowed.".into()),
     }
 }
 
@@ -266,65 +276,147 @@ fn start_default(path: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(any(test, target_os = "macos"))]
+const GITHUB_LOGIN_APPLESCRIPT: &str = r#"on run argv
+  set repoPath to item 1 of argv
+  tell application "Terminal"
+    activate
+    do script "cd " & quoted form of repoPath & " && gh auth login"
+  end tell
+end run"#;
+
 #[cfg(target_os = "macos")]
-fn macos_open_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
-    let Some(command) = command else {
+fn macos_open_terminal(path: &Path, login: bool) -> Result<(), String> {
+    if !login {
         return spawn_command("open", &["-a", "Terminal", &path.to_string_lossy()]);
-    };
-    let script = format!(
-        "tell application \"Terminal\" to do script \"cd {} && {}\"",
-        escape_applescript(&shell_single_quote(&path.to_string_lossy())),
-        escape_applescript(command)
-    );
-    spawn_command("osascript", &["-e", &script])
+    }
+    let repo = path.to_string_lossy();
+    spawn_command("osascript", &["-e", GITHUB_LOGIN_APPLESCRIPT, &repo])
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn linux_open_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
+fn linux_open_terminal(path: &Path, login: bool) -> Result<(), String> {
     let directory = path.to_string_lossy();
-    let Some(command) = command else {
+    if !login {
         if spawn_command("x-terminal-emulator", &["--working-directory", &directory]).is_ok() {
             return Ok(());
         }
         return spawn_command("gnome-terminal", &["--working-directory", &directory]);
-    };
-    let shell = format!("{command}; exec bash");
+    }
+    let shell = unix_github_login_shell(path);
+    // gnome-terminal treats `-e` as one argument and ignores the rest, so a
+    // split `sh -lc <script>` would open a shell and never run the login.
     if spawn_command(
-        "x-terminal-emulator",
-        &[
-            "--working-directory",
-            &directory,
-            "-e",
-            "bash",
-            "-lc",
-            &shell,
-        ],
+        "gnome-terminal",
+        &["--working-directory", &directory, "--", "sh", "-lc", &shell],
     )
     .is_ok()
     {
         return Ok(());
     }
+    if spawn_command(
+        "konsole",
+        &["--workdir", &directory, "-e", "sh", "-lc", &shell],
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+    if spawn_command(
+        "xfce4-terminal",
+        &["--working-directory", &directory, "-x", "sh", "-lc", &shell],
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+    if spawn_command(
+        "kitty",
+        &["--working-directory", &directory, "sh", "-lc", &shell],
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+    if spawn_command("xterm", &["-e", "sh", "-lc", &shell]).is_ok() {
+        return Ok(());
+    }
+    let one_shot = format!("sh -lc {}", shell_single_quote(&shell));
     spawn_command(
-        "gnome-terminal",
-        &[
-            "--working-directory",
-            &directory,
-            "--",
-            "bash",
-            "-lc",
-            &shell,
-        ],
+        "x-terminal-emulator",
+        &["--working-directory", &directory, "-e", &one_shot],
     )
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-#[cfg(target_os = "macos")]
-fn escape_applescript(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+fn unix_github_login_shell(path: &Path) -> String {
+    format!(
+        "cd {} && gh auth login; exec \"${{SHELL:-sh}}\"",
+        shell_single_quote(&path.to_string_lossy())
+    )
+}
+
+#[cfg(any(test, windows))]
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(any(test, windows))]
+fn github_login_powershell(path: &Path) -> String {
+    let quoted = powershell_single_quote(&path.to_string_lossy());
+    format!(
+        "Set-Location -LiteralPath {quoted}\r\n\
+$machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')\r\n\
+$user = [Environment]::GetEnvironmentVariable('Path', 'User')\r\n\
+if ($machine -or $user) {{\r\n\
+    $env:Path = (@($machine, $user) | Where-Object {{ $_ }}) -join ';'\r\n\
+}}\r\n\
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {{\r\n\
+    Write-Host 'GitHub CLI (gh) was not found. Install it from https://cli.github.com, then run: gh auth login'\r\n\
+    return\r\n\
+}}\r\n\
+gh auth login\r\n"
+    )
+}
+
+#[cfg(any(test, windows))]
+fn encode_utf16le_base64(script: &str) -> String {
+    let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    base64_encode(&bytes)
+}
+
+#[cfg(any(test, windows))]
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    let mut chunks = data.chunks_exact(3);
+    for chunk in chunks.by_ref() {
+        let value = ((chunk[0] as u32) << 16) | ((chunk[1] as u32) << 8) | chunk[2] as u32;
+        out.push(TABLE[((value >> 18) & 63) as usize] as char);
+        out.push(TABLE[((value >> 12) & 63) as usize] as char);
+        out.push(TABLE[((value >> 6) & 63) as usize] as char);
+        out.push(TABLE[(value & 63) as usize] as char);
+    }
+    let rest = chunks.remainder();
+    if rest.len() == 1 {
+        let value = (rest[0] as u32) << 16;
+        out.push(TABLE[((value >> 18) & 63) as usize] as char);
+        out.push(TABLE[((value >> 12) & 63) as usize] as char);
+        out.push('=');
+        out.push('=');
+    } else if rest.len() == 2 {
+        let value = ((rest[0] as u32) << 16) | ((rest[1] as u32) << 8);
+        out.push(TABLE[((value >> 18) & 63) as usize] as char);
+        out.push(TABLE[((value >> 12) & 63) as usize] as char);
+        out.push(TABLE[((value >> 6) & 63) as usize] as char);
+        out.push('=');
+    }
+    out
 }
 
 #[cfg(unix)]
@@ -348,8 +440,11 @@ fn spawn_command(program: &str, args: &[&str]) -> Result<(), String> {
 mod windows_shell {
     use std::ffi::c_void;
     use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::process::{Command, Stdio};
+
+    const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
     #[link(name = "shell32")]
     unsafe extern "system" {
@@ -379,34 +474,63 @@ mod windows_shell {
         Ok(())
     }
 
-    pub fn open_terminal(path: &Path, command: Option<&str>) -> Result<(), String> {
-        let mut terminal = Command::new("wt.exe");
-        terminal.arg("-d").arg(path);
-        if let Some(command) = command {
-            terminal.args([
-                "--",
-                "powershell.exe",
-                "-NoExit",
-                "-NoLogo",
-                "-Command",
-                command,
-            ]);
+    pub fn open_terminal(path: &Path, login: bool) -> Result<(), String> {
+        if login {
+            return open_github_login(path);
         }
-        terminal
+        Command::new("wt.exe")
+            .arg("-d")
+            .arg(path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        if terminal.spawn().is_ok() {
+            .stderr(Stdio::null())
+            .spawn()
+            .or_else(|_| {
+                Command::new("powershell.exe")
+                    .args(["-NoExit", "-NoLogo"])
+                    .current_dir(path)
+                    .creation_flags(CREATE_NEW_CONSOLE)
+                    .spawn()
+            })
+            .map_err(|error| format!("Could not open {} in a terminal: {error}", path.display()))?;
+        Ok(())
+    }
+
+    fn open_github_login(path: &Path) -> Result<(), String> {
+        // Windows Terminal splits on ';', and a quoted `-Command` loses its
+        // quotes when Terminal rebuilds the command line, so PowerShell only
+        // runs the first word. `-EncodedCommand` is one token. The script
+        // also reloads PATH; this process still has the PATH from startup,
+        // which misses GitHub CLI installed after that.
+        let encoded = super::encode_utf16le_base64(&super::github_login_powershell(path));
+        let launch = [
+            "-NoProfile",
+            "-NoExit",
+            "-NoLogo",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-EncodedCommand",
+            encoded.as_str(),
+        ];
+        if Command::new("wt.exe")
+            .arg("-d")
+            .arg(path)
+            .arg("--")
+            .arg("powershell.exe")
+            .args(launch)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .is_ok()
+        {
             return Ok(());
         }
-        let mut powershell = Command::new("powershell.exe");
-        powershell.args(["-NoExit", "-NoLogo"]);
-        if let Some(command) = command {
-            powershell.args(["-Command", command]);
-        }
-        powershell
+        // A window-subsystem app has no console. A new console keeps `gh auth login` interactive.
+        Command::new("powershell.exe")
+            .args(launch)
             .current_dir(path)
-            .stdin(Stdio::null())
+            .creation_flags(CREATE_NEW_CONSOLE)
             .spawn()
             .map_err(|error| format!("Could not open {} in a terminal: {error}", path.display()))?;
         Ok(())
@@ -555,7 +679,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        DirKind, child_directory, display_path, is_strict_child, list_directory, search_directory,
+        DirKind, GITHUB_LOGIN_APPLESCRIPT, accepted_terminal_command, child_directory,
+        display_path, encode_utf16le_base64, github_login_powershell, is_strict_child,
+        list_directory, search_directory, unix_github_login_shell,
     };
 
     fn scratch(name: &str) -> PathBuf {
@@ -700,6 +826,65 @@ mod tests {
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn terminal_command_allows_only_github_login() {
+        assert!(!accepted_terminal_command(None).unwrap());
+        assert!(!accepted_terminal_command(Some("  ")).unwrap());
+        assert!(accepted_terminal_command(Some("  gh auth login  ")).unwrap());
+        assert!(accepted_terminal_command(Some("gh auth login; calc.exe")).is_err());
+        assert!(accepted_terminal_command(Some("gh auth login && rm -rf /")).is_err());
+        assert!(accepted_terminal_command(Some("calc.exe")).is_err());
+    }
+
+    #[test]
+    fn github_login_applescript_quotes_the_path_as_an_argument() {
+        assert!(GITHUB_LOGIN_APPLESCRIPT.contains("quoted form of repoPath"));
+        assert!(GITHUB_LOGIN_APPLESCRIPT.contains("item 1 of argv"));
+        assert!(GITHUB_LOGIN_APPLESCRIPT.contains("gh auth login"));
+    }
+
+    #[test]
+    fn unix_login_shell_quotes_spaces_and_quotes() {
+        let shell = unix_github_login_shell(Path::new("/home/a b/o'brien"));
+        assert_eq!(
+            shell,
+            "cd '/home/a b/o'\\''brien' && gh auth login; exec \"${SHELL:-sh}\""
+        );
+    }
+
+    #[test]
+    fn powershell_login_script_quotes_the_repo_and_reloads_path() {
+        let script = github_login_powershell(Path::new(r"C:\Repos\O'Brien"));
+        assert!(script.contains("Set-Location -LiteralPath 'C:\\Repos\\O''Brien'"));
+        assert!(script.contains("GetEnvironmentVariable('Path', 'Machine')"));
+        assert!(script.contains("gh auth login"));
+        let encoded = encode_utf16le_base64(&script);
+        assert!(encoded.chars().all(|ch| !ch.is_whitespace() && ch != ';'));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_runs_an_encoded_command() {
+        let encoded = encode_utf16le_base64("Write-Output 'ce-git-encoded'\r\n");
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NoLogo",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-EncodedCommand",
+                &encoded,
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("ce-git-encoded"));
     }
 
     #[cfg(windows)]

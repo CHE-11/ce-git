@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, PublishOptions, RepoDiff, RepoStatus, StashEntry, TreeNode } from "../../../types/git";
+import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, PublishOptions, RepoDiff, RepoStatus, StashEntry, StashKeepSource, TreeNode } from "../../../types/git";
 import {
   aiSettings,
   applyStash,
@@ -10,6 +10,7 @@ import {
   batchPull,
   batchPush,
   dropStash,
+  keepStashFile as keepStashFileRequest,
   publishRepo,
   deleteFolder as deleteFolderOnDisk,
   discardChange as discardFile,
@@ -1212,6 +1213,10 @@ export function useWorkspace() {
     await runStashAction(repo, "stash-drop", () => dropStash(repo, id));
   };
 
+  const keepStashFile = async (repo: string, id: string, path: string, source: StashKeepSource) => {
+    await runStashAction(repo, "stash-keep", () => keepStashFileRequest(repo, id, path, source));
+  };
+
   const runStashAction = async (repo: string, action: string, work: () => Promise<void>) => {
     if (!repo) {
       return;
@@ -1701,6 +1706,7 @@ export function useWorkspace() {
     restoreStash,
     applyStash: applyStashEntry,
     dropStash: dropStashEntry,
+    keepStashFile,
     ignoreChange,
     revealChange,
     openChange,

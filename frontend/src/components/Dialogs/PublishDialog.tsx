@@ -55,11 +55,15 @@ function isGithubAuthError(message: string) {
   const text = message.toLowerCase();
   return (
     text.includes("gh auth login") ||
+    text.includes("gh auth refresh") ||
     text.includes("not logged into") ||
-    text.includes("not logged in to github") ||
+    text.includes("not logged in to") ||
     text.includes("to get started with github cli") ||
     text.includes("try authenticating") ||
     text.includes("authentication required") ||
+    text.includes("requires authentication") ||
+    text.includes("to use github cli in automation") ||
+    text.includes("gh_token") ||
     /\bhttp 401\b/.test(text) ||
     text.includes("bad credentials")
   );
@@ -73,6 +77,7 @@ export function PublishDialog({ open, repoName, repoPath, onClose, onPublish }: 
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [openingTerminal, setOpeningTerminal] = useState(false);
+  const [loginHint, setLoginHint] = useState<string | null>(null);
   const [sessionRepo, setSessionRepo] = useState<string | null>(null);
 
   if (open && sessionRepo !== repoName) {
@@ -84,6 +89,7 @@ export function PublishDialog({ open, repoName, repoPath, onClose, onPublish }: 
     setError(null);
     setPublishing(false);
     setOpeningTerminal(false);
+    setLoginHint(null);
   }
   if (!open && sessionRepo !== null) {
     setSessionRepo(null);
@@ -124,8 +130,10 @@ export function PublishDialog({ open, repoName, repoPath, onClose, onPublish }: 
     setOpeningTerminal(true);
     try {
       await openInTerminal(repoPath, GH_AUTH_LOGIN);
+      setLoginHint("Finish signing in in the terminal, then click Publish again.");
     } catch (caught) {
-      setError(messageOf(caught));
+      const opened = messageOf(caught);
+      setError((current) => (current ? `${current}\n${opened}` : opened));
     } finally {
       setOpeningTerminal(false);
     }
@@ -255,7 +263,7 @@ export function PublishDialog({ open, repoName, repoPath, onClose, onPublish }: 
         />
         {error ? (
           <div id="publish-error" className="mt-3 space-y-2">
-            <p id="publish-error-message" className="text-sm text-red-400">
+            <p id="publish-error-message" className="text-sm whitespace-pre-wrap text-red-400">
               {error}
             </p>
             {showLoginTerminal ? (
@@ -265,11 +273,18 @@ export function PublishDialog({ open, repoName, repoPath, onClose, onPublish }: 
                 size="sm"
                 variant="outline"
                 onClick={() => void openLoginTerminal()}
-                disabled={openingTerminal || !repoPath}
+                disabled={publishing || openingTerminal || !repoPath}
                 title={`Open a terminal and run ${GH_AUTH_LOGIN}`}
               >
-                <span id="publish-open-terminal-label">{openingTerminal ? "Opening…" : "Open in Terminal"}</span>
+                <span id="publish-open-terminal-label">
+                  {openingTerminal ? "Opening terminal…" : "Sign in with GitHub CLI"}
+                </span>
               </Button>
+            ) : null}
+            {showLoginTerminal && loginHint ? (
+              <p id="publish-login-hint" className="text-sm text-zinc-400">
+                {loginHint}
+              </p>
             ) : null}
           </div>
         ) : null}

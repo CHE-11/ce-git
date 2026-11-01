@@ -60,6 +60,28 @@ export interface StashPatch {
   truncated: boolean;
 }
 
+export interface StashFile {
+  path: string;
+  previousPath?: string | null;
+  status: string;
+}
+
+export interface StashFileView {
+  path: string;
+  remoteRef: string;
+  onRemote: boolean;
+  remoteText: string;
+  remoteMissing: boolean;
+  remoteTruncated: boolean;
+  remoteBinary: boolean;
+  stashText: string;
+  stashMissing: boolean;
+  stashTruncated: boolean;
+  stashBinary: boolean;
+}
+
+export type StashKeepSource = "remote" | "stash";
+
 export interface SearchMatch {
   path: string;
   line: number;

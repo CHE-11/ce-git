@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { Search, X } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { FileChange, StashEntry } from "../../../../../types/git";
+import type { FileChange, StashEntry, StashFile } from "../../../../../types/git";
 import { cn } from "../../../lib/cn";
 import { fileOpenMode, type EditorId } from "../../../lib/editors";
 import { statusMark } from "../../../lib/file-status";
@@ -73,9 +73,13 @@ type ChangedFilesProps = {
   menuEditors: readonly EditorId[];
   stashes: StashEntry[];
   selectedStashId: string | null;
+  stashFiles: StashFile[];
+  stashFilesLoading: boolean;
+  selectedStashPath: string | null;
   onSelect: (path: string) => void;
   onShowFile: () => void;
   onSelectStash: (id: string) => void;
+  onSelectStashFile: (path: string) => void;
   onRestoreStash: (id: string) => void;
   onApplyStash: (id: string) => void;
   onDropStash: (id: string) => void;
@@ -140,9 +144,13 @@ export function ChangedFiles({
   menuEditors,
   stashes,
   selectedStashId,
+  stashFiles,
+  stashFilesLoading,
+  selectedStashPath,
   onSelect,
   onShowFile,
   onSelectStash,
+  onSelectStashFile,
   onRestoreStash,
   onApplyStash,
   onDropStash,
@@ -153,6 +161,8 @@ export function ChangedFiles({
   const [discarding, setDiscarding] = useState<FileChange[] | null>(null);
   const [stashing, setStashing] = useState<FileChange[] | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [changesOpen, setChangesOpen] = useState(true);
+  const [stashesOpen, setStashesOpen] = useState(true);
   const anchorRef = useRef<string | null>(null);
   const [query, setQuery] = useState("");
   const searchQuery = query.trim();
@@ -364,19 +374,34 @@ export function ChangedFiles({
           </Button>
         ) : null}
       </form>
-      <h3 id="changed-files-title" className="px-3 py-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-        Changes
-      </h3>
+      <button
+        id="changed-files-toggle"
+        type="button"
+        aria-expanded={changesOpen}
+        aria-controls="changed-files"
+        onClick={() => setChangesOpen((open) => !open)}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-semibold tracking-wide text-zinc-500 uppercase hover:text-zinc-300"
+      >
+        <ChevronDown
+          id="changed-files-toggle-chevron"
+          aria-hidden="true"
+          className={cn("size-3.5 shrink-0 transition-transform", !changesOpen && "-rotate-90")}
+        />
+        <span id="changed-files-title">Changes</span>
+        <span id="changed-files-count" className="text-zinc-600">
+          {files.length}
+        </span>
+      </button>
       <div id="changed-files-body" className="flex min-h-0 flex-1 flex-col">
-      {files.length === 0 ? (
+      {changesOpen && files.length === 0 ? (
         <p id="changed-files-empty" className="px-3 text-sm text-zinc-500">
           Working tree clean
         </p>
-      ) : visibleFiles.length === 0 ? (
+      ) : changesOpen && visibleFiles.length === 0 ? (
         <p id="changed-files-search-empty" className="px-3 text-sm text-zinc-500">
           No files match “{searchQuery}”.
         </p>
-      ) : (
+      ) : changesOpen ? (
         <ul id="changed-files" className="min-h-0 flex-1 overflow-auto select-none">
           {visibleFiles.map((file) => {
             const selected = selectedPaths.includes(file.path);
@@ -421,13 +446,20 @@ export function ChangedFiles({
             );
           })}
         </ul>
-      )}
+      ) : null}
       {stashes.length > 0 ? (
         <StashList
           stashes={stashes}
           selectedId={selectedStashId}
+          files={stashFiles}
+          filesLoading={stashFilesLoading}
+          selectedPath={selectedStashPath}
           busy={busy}
           onSelect={onSelectStash}
+          onSelectFile={onSelectStashFile}
+          open={stashesOpen}
+          fill={!changesOpen}
+          onToggle={() => setStashesOpen((open) => !open)}
           onRestore={onRestoreStash}
           onApply={onApplyStash}
           onDrop={onDropStash}

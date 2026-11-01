@@ -78,7 +78,8 @@ pub use settings::{
     save_git_settings,
 };
 pub use stash::{
-    StashEntry, StashPatch, apply_stash, drop_stash, list_stashes, show_stash, stash_paths,
+    StashEntry, StashFile, StashFileView, StashPatch, apply_stash, drop_stash, keep_stash_file,
+    list_stashes, show_stash, stash_file_sides, stash_files, stash_paths,
 };
 pub use status::{RepoStatus, status_of};
 pub use sync::{

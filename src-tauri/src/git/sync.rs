@@ -1081,6 +1081,9 @@ fn expand_percent_env(value: &str) -> String {
     expanded
 }
 
+const GH_AUTH_HINT: &str =
+    "Not logged in to GitHub CLI. Run gh auth login in a terminal, then try again.";
+
 fn gh_failure(output: &Output) -> String {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1089,22 +1092,36 @@ fn gh_failure(output: &Output) -> String {
     } else {
         stderr.trim()
     };
+    explain_gh_failure(detail)
+}
+
+fn explain_gh_failure(detail: &str) -> String {
     if detail.is_empty() {
         return "GitHub CLI could not create the repository".to_string();
     }
-    let lower = detail.to_ascii_lowercase();
-    if lower.contains("gh auth login")
-        || lower.contains("not logged into")
-        || lower.contains("to get started with github cli")
-        || lower.contains("try authenticating")
-        || lower.contains("authentication required")
-        || lower.contains("http 401")
-        || lower.contains("bad credentials")
-    {
-        return "Not logged in to GitHub CLI. Run `gh auth login` in a terminal, then try again."
-            .to_string();
+    if github_cli_needs_auth(detail) {
+        return GH_AUTH_HINT.to_string();
     }
     detail.lines().next().unwrap_or(detail).to_string()
+}
+
+fn github_cli_needs_auth(detail: &str) -> bool {
+    let lower = detail.to_ascii_lowercase();
+    const MARKERS: &[&str] = &[
+        "gh auth login",
+        "gh auth refresh",
+        "not logged into",
+        "not logged in to",
+        "to get started with github cli",
+        "try authenticating",
+        "authentication required",
+        "requires authentication",
+        "to use github cli in automation",
+        "gh_token",
+        "http 401",
+        "bad credentials",
+    ];
+    MARKERS.iter().any(|marker| lower.contains(marker))
 }
 
 fn require_repo(path: &Path) -> Result<(), String> {
@@ -1120,7 +1137,7 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{find_gh_in, gh_executable, overwritten_files};
+    use super::{explain_gh_failure, find_gh_in, gh_executable, gh_failure, overwritten_files};
 
     #[test]
     fn overwritten_files_reads_the_paths_git_refuses_to_merge() {
@@ -1160,5 +1177,69 @@ mod tests {
             found.is_some(),
             "gh.exe is installed but ce-git could not resolve it"
         );
+    }
+
+    #[test]
+    fn gh_auth_errors_become_a_sign_in_hint() {
+        let hint = "Not logged in to GitHub CLI. Run gh auth login in a terminal, then try again.";
+        assert_eq!(
+            explain_gh_failure(
+                "To use GitHub CLI in automation, set the GH_TOKEN environment variable."
+            ),
+            hint
+        );
+        assert_eq!(
+            explain_gh_failure(
+                "You are not logged into any GitHub hosts. Run gh auth login to authenticate."
+            ),
+            hint
+        );
+        assert_eq!(explain_gh_failure("not logged in to github.com"), hint);
+        assert_eq!(
+            explain_gh_failure(
+                "HTTP 401: Bad credentials (https://api.github.com/graphql)\nTry authenticating with: gh auth login"
+            ),
+            hint
+        );
+        assert_eq!(explain_gh_failure("error: authentication required"), hint);
+        assert_eq!(
+            explain_gh_failure("HTTP 401: Requires authentication (https://api.github.com/user)"),
+            hint
+        );
+    }
+
+    #[test]
+    fn gh_failures_keep_the_first_line_of_other_errors() {
+        assert_eq!(
+            explain_gh_failure(""),
+            "GitHub CLI could not create the repository"
+        );
+        assert_eq!(
+            explain_gh_failure("graphQL: Name already exists on this account\nmore detail"),
+            "graphQL: Name already exists on this account"
+        );
+    }
+
+    #[test]
+    fn gh_failure_prefers_stderr_and_still_detects_auth() {
+        let stderr = failed_output("", "HTTP 401: Bad credentials");
+        assert!(gh_failure(&stderr).contains("gh auth login"));
+        let stdout = failed_output("To use GitHub CLI in automation, set the GH_TOKEN.", "  ");
+        assert!(gh_failure(&stdout).contains("gh auth login"));
+        let named = failed_output("graphQL: Name already exists", "name taken\nsecond line");
+        assert_eq!(gh_failure(&named), "name taken");
+    }
+
+    fn failed_output(stdout: &str, stderr: &str) -> std::process::Output {
+        #[cfg(unix)]
+        use std::os::unix::process::ExitStatusExt;
+        #[cfg(windows)]
+        use std::os::windows::process::ExitStatusExt;
+
+        std::process::Output {
+            status: ExitStatusExt::from_raw(1),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
     }
 }

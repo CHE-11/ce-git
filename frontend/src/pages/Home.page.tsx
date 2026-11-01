@@ -368,6 +368,11 @@ export function HomePage() {
               void workspace.dropStash(workspace.activePath, id);
             }
           }}
+          onKeepStashFile={(id, path, source) => {
+            if (workspace.activePath) {
+              void workspace.keepStashFile(workspace.activePath, id, path, source);
+            }
+          }}
           fileHandlers={{
             discard: (files) => {
               if (workspace.activePath) {

@@ -378,6 +378,30 @@ async fn drop_stash(repo: String, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn stash_files(repo: String, id: String) -> Result<Vec<git::StashFile>, String> {
+    spawn_git(move || git::stash_files(Path::new(&repo), &id)).await?
+}
+
+#[tauri::command]
+async fn stash_file_sides(
+    repo: String,
+    id: String,
+    path: String,
+) -> Result<git::StashFileView, String> {
+    spawn_git(move || git::stash_file_sides(Path::new(&repo), &id, &path)).await?
+}
+
+#[tauri::command]
+async fn keep_stash_file(
+    repo: String,
+    id: String,
+    path: String,
+    source: String,
+) -> Result<(), String> {
+    spawn_git(move || git::keep_stash_file(Path::new(&repo), &id, &path, &source)).await?
+}
+
+#[tauri::command]
 async fn discard_change(repo: String, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || git::discard_change(Path::new(&repo), &path))
         .await
@@ -514,6 +538,9 @@ pub fn run() {
             show_stash,
             apply_stash,
             drop_stash,
+            stash_files,
+            stash_file_sides,
+            keep_stash_file,
             discard_change,
             restore_commit,
             reset_to_commit,

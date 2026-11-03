@@ -12,18 +12,18 @@ const output = join(nsisDir, setupName);
 const signature = join(nsisDir, `${setupName}.sig`);
 const keyPath = join(homedir(), ".tauri", "ce-git.key");
 
-const env = { ...process.env };
-if (!env.TAURI_SIGNING_PRIVATE_KEY && !env.TAURI_SIGNING_PRIVATE_KEY_PATH) {
-  if (!existsSync(keyPath)) {
-    console.error(`Missing updater signing key at ${keyPath}`);
-    console.error("Generate one with: pnpm tauri signer generate -w %USERPROFILE%\\.tauri\\ce-git.key --ci");
-    process.exit(1);
-  }
-  env.TAURI_SIGNING_PRIVATE_KEY = readFileSync(keyPath, "utf8");
+
+const keyFile = "S:/_keys_/ce-git.key";
+if (!existsSync(keyFile)) {
+  console.error(`No signing key at ${keyFile}`);
+  process.exit(1);
 }
-if (env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD === undefined) {
-  env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "";
-}
+
+const env = {
+  ...process.env,
+  TAURI_SIGNING_PRIVATE_KEY: keyFile,
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? "",
+};
 
 const child = spawn("pnpm tauri build --bundles nsis", {
   cwd: root,

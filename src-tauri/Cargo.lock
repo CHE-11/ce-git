@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "ce-git"
-version = "1.0.38"
+version = "1.0.40"
 dependencies = [
  "futures",
  "keyring",

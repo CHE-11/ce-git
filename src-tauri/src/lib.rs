@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 use batch::CommitRequest;
-use git::{RepoDiff, RepoStatus, TreeNode, repo_diff as read_repo_diff, status_of};
+use git::{RepoDiff, RepoStatus, TreeNode, refresh_status, repo_diff as read_repo_diff, status_of};
 
 #[tauri::command]
 fn git_available() -> bool {
@@ -157,8 +157,9 @@ async fn discover_repos(root: String) -> Result<TreeNode, String> {
 }
 
 #[tauri::command]
-async fn repo_statuses(paths: Vec<String>) -> Result<Vec<RepoStatus>, String> {
-    spawn_git(move || repo_statuses_blocking(paths)).await
+async fn repo_statuses(paths: Vec<String>, fetch: Option<bool>) -> Result<Vec<RepoStatus>, String> {
+    let fetch = fetch.unwrap_or(false);
+    spawn_git(move || repo_statuses_blocking(paths, fetch)).await
 }
 
 #[tauri::command]
@@ -191,7 +192,7 @@ fn status_concurrency(count: usize) -> usize {
     cpus.clamp(8, 32).min(count.max(1))
 }
 
-fn repo_statuses_blocking(paths: Vec<String>) -> Vec<RepoStatus> {
+fn repo_statuses_blocking(paths: Vec<String>, fetch: bool) -> Vec<RepoStatus> {
     let width = status_concurrency(paths.len());
     std::thread::scope(|scope| {
         let mut statuses = Vec::with_capacity(paths.len());
@@ -200,7 +201,13 @@ fn repo_statuses_blocking(paths: Vec<String>) -> Vec<RepoStatus> {
                 .iter()
                 .map(|path| {
                     let path = path.clone();
-                    scope.spawn(move || status_of(Path::new(&path)))
+                    scope.spawn(move || {
+                        if fetch {
+                            refresh_status(Path::new(&path))
+                        } else {
+                            status_of(Path::new(&path))
+                        }
+                    })
                 })
                 .collect();
             for handle in handles {

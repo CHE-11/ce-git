@@ -193,7 +193,7 @@ export function RepoTreeNode({
                   <span
                     id={domId("tree-behind", node.path)}
                     className="text-red-400"
-                    title={`${status.behind} commit${status.behind === 1 ? "" : "s"} to pull`}
+                    title={`${status.behind} remote commit${status.behind === 1 ? "" : "s"} not local`}
                   >
                     {status.behind}
                   </span>

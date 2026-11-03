@@ -249,7 +249,7 @@ export function RepoDetail({
               disabled={busy || refreshing}
               aria-busy={refreshing}
               aria-label="Refresh this repository"
-              title="Refresh this repository"
+              title="Refresh this repository and check for remote commits that are not local"
             >
               {refreshing ? (
                 <Loader2 id="repo-refresh-spinner" className="size-3.5 animate-spin" />

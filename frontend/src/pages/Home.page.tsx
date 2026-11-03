@@ -116,7 +116,7 @@ export function HomePage() {
       id: "refresh",
       label: "Refresh repositories",
       group: "Workspace",
-      keywords: "scan reload",
+      keywords: "scan reload fetch remote behind",
       disabled: busy || !hasRoots,
       run: () => void workspace.refresh(),
     },

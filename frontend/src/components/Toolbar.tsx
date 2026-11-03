@@ -30,10 +30,10 @@ type ToolbarProps = {
 
 function syncTitle(action: "pull" | "push", count: number) {
   if (count === 0) {
-    return action === "pull" ? "No repositories are behind their upstream" : "No repositories are ahead of their upstream";
+    return action === "pull" ? "No repositories are behind the remote default branch" : "No repositories are ahead of their upstream";
   }
   const repos = count === 1 ? "repository is" : "repositories are";
-  return action === "pull" ? `${count} ${repos} behind their upstream` : `${count} ${repos} ahead of their upstream`;
+  return action === "pull" ? `${count} ${repos} behind the remote default branch` : `${count} ${repos} ahead of their upstream`;
 }
 
 function SyncBadge({ id, count, tone }: { id: string; count: number; tone: "pull" | "push" | "dirty" }) {
@@ -119,7 +119,7 @@ export function Toolbar({...props}: ToolbarProps) {
         <ToolbarIconButton id="advanced-search-button" label="Search" onClick={props.onAdvancedSearch} disabled={props.busy || props.rootPaths.length === 0} title="Advanced search" showLabel={props.showLabels}>
           <Search id="advanced-search-icon" className="size-4" />
         </ToolbarIconButton>
-        <ToolbarIconButton id="refresh-button" label="Refresh" onClick={props.onRefresh} disabled={props.busy || props.rootPaths.length === 0} title="Refresh repositories" showLabel={props.showLabels}>
+        <ToolbarIconButton id="refresh-button" label="Refresh" onClick={props.onRefresh} disabled={props.busy || props.rootPaths.length === 0} title="Refresh repositories and check for remote commits that are not local" showLabel={props.showLabels}>
           <RefreshCw id="refresh-icon" className={`size-4 ${props.discovering ? "animate-spin" : ""}`} />
         </ToolbarIconButton>
         <span id="repo-count" className="shrink-0 text-xs text-zinc-500">

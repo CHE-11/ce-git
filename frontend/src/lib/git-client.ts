@@ -137,8 +137,8 @@ export function discoverRepos(root: string) {
   return invoke<TreeNode>("discover_repos", { root });
 }
 
-export function repoStatuses(paths: string[]) {
-  return invoke<RepoStatus[]>("repo_statuses", { paths });
+export function repoStatuses(paths: string[], fetchRemote = false) {
+  return invoke<RepoStatus[]>("repo_statuses", { paths, fetch: fetchRemote });
 }
 
 export function repoDiff(path: string) {

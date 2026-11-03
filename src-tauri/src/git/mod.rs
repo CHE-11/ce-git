@@ -81,7 +81,7 @@ pub use stash::{
     StashEntry, StashFile, StashFileView, StashPatch, apply_stash, drop_stash, keep_stash_file,
     list_stashes, show_stash, stash_file_sides, stash_files, stash_paths,
 };
-pub use status::{RepoStatus, status_of};
+pub use status::{RepoStatus, refresh_status, status_of};
 pub use sync::{
     Outcome, PublishOptions, abort_merge, conflict_files, continue_merge, publish_repo,
     pull_default, push_repo,
@@ -95,7 +95,7 @@ mod tests {
 
     use super::command::git;
     use super::discover::{NodeKind, discover};
-    use super::status::{is_github_url, status_of};
+    use super::status::{is_github_url, refresh_status, status_of};
     use super::sync::{
         Outcome, PublishOptions, abort_merge, continue_merge, publish_repo, pull_default, push_repo,
     };
@@ -248,6 +248,33 @@ mod tests {
         assert_eq!(status.default_branch.as_deref(), Some("main"));
         assert_eq!(status.github, Some(false));
         assert!(!status.dirty);
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn refresh_counts_remote_default_commits_missing_locally() {
+        let (tmp, seed, clone) = tracking_clone("refresh-behind-main");
+        fs::write(seed.join("REMOTE.md"), "remote\n").unwrap();
+        run_git(&seed, &["add", "."]);
+        run_git(&seed, &["commit", "-m", "remote"]);
+        run_git(&seed, &["push"]);
+
+        let stale = status_of(&clone);
+        assert_eq!(stale.behind, 0, "a status read does not contact the remote");
+
+        let fresh = refresh_status(&clone);
+        assert!(fresh.error.is_none(), "{:?}", fresh.error);
+        assert_eq!(fresh.branch, "main");
+        assert_eq!(fresh.behind, 1);
+
+        run_git(&clone, &["checkout", "-b", "feature"]);
+        run_git(&clone, &["push", "-u", "origin", "feature"]);
+        let on_feature = refresh_status(&clone);
+        assert!(on_feature.error.is_none(), "{:?}", on_feature.error);
+        assert_eq!(on_feature.branch, "feature");
+        assert_eq!(on_feature.ahead, 0);
+        assert_eq!(on_feature.behind, 1, "local main is still missing the remote commit");
 
         let _ = fs::remove_dir_all(tmp);
     }

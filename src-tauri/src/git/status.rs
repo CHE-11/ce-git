@@ -92,12 +92,12 @@ fn read_status(path: &Path) -> Result<RepoStatus, String> {
     Ok(RepoStatus {
         path: path.to_string_lossy().into_owned(),
         name: dir_name(path),
-        branch: scan.branch,
+        branch: scan.branch.clone(),
         detached: scan.detached,
-        upstream: scan.upstream,
+        upstream: scan.upstream.clone(),
         github,
         ahead: scan.ahead,
-        behind: scan.behind,
+        behind: behind_count(path, &scan),
         dirty: scan.staged + scan.unstaged + scan.untracked > 0,
         staged: scan.staged,
         unstaged: scan.unstaged,
@@ -199,6 +199,66 @@ pub fn current_branch(path: &Path) -> Result<CurrentBranch, String> {
 pub fn is_dirty(path: &Path) -> Result<bool, String> {
     let output = git(path, &["status", "--porcelain=v1", "-uall"])?;
     Ok(output.lines().any(|line| !line.trim().is_empty()))
+}
+
+/// Download origin's remote-tracking refs so a later status can see commits that
+/// are on the remote and not on a local branch. Repos without origin are unchanged.
+pub fn fetch_origin(path: &Path) -> Result<(), String> {
+    if !super::discover::is_repository(path) {
+        return Err("Not a git repository".into());
+    }
+    if origin_url_from_disk(path).is_none() {
+        return Ok(());
+    }
+    git(path, &["fetch", "--quiet", "origin"]).map(|_| ())
+}
+
+pub fn refresh_status(path: &Path) -> RepoStatus {
+    let fetched = fetch_origin(path);
+    let mut status = status_of(path);
+    if status.error.is_none() {
+        if let Err(error) = fetched {
+            status.error = Some(error);
+        }
+    }
+    status
+}
+
+/// Commits on the remote default branch that the local default branch does not have.
+/// The checked-out branch's own upstream count is kept when it is larger.
+fn behind_count(path: &Path, scan: &ScanStatus) -> u32 {
+    let Some(branch) = local_default_branch(path) else {
+        return scan.behind;
+    };
+    let remote_upstream = format!("origin/{branch}");
+    if !scan.detached
+        && scan.branch == branch
+        && scan.upstream.as_deref() == Some(remote_upstream.as_str())
+    {
+        return scan.behind;
+    }
+    let Some(missing) = commits_on_remote_only(path, &branch) else {
+        return scan.behind;
+    };
+    scan.behind.max(missing)
+}
+
+fn commits_on_remote_only(path: &Path, branch: &str) -> Option<u32> {
+    let remote = format!("refs/remotes/origin/{branch}");
+    if git(path, &["rev-parse", "--verify", "--quiet", &remote]).is_err() {
+        return None;
+    }
+    let local = format!("refs/heads/{branch}");
+    let base = if git(path, &["rev-parse", "--verify", "--quiet", &local]).is_ok() {
+        branch.to_string()
+    } else if git(path, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok() {
+        "HEAD".to_string()
+    } else {
+        return None;
+    };
+    let range = format!("{base}..origin/{branch}");
+    let output = git(path, &["rev-list", "--count", &range]).ok()?;
+    output.trim().parse().ok()
 }
 
 pub fn ahead_behind(path: &Path) -> (u32, u32) {

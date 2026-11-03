@@ -91,7 +91,7 @@ const filterEmpty: Record<RepoTreeFilter, string> = {
   selected: "No repositories are selected.",
   dirty: "No repositories have uncommitted changes.",
   ahead: "No repositories are ahead of their upstream.",
-  behind: "No repositories are behind their upstream.",
+  behind: "No repositories are behind the remote default branch.",
   unpublished: "Every repository already has a remote.",
 };
 
@@ -435,7 +435,7 @@ export function RepoTree({
             value={String(summary.behind)}
             valueClassName={summary.behind > 0 ? "text-amber-300" : undefined}
             pressed={activeFilter === "behind"}
-            title="Show repositories behind their upstream"
+            title="Show repositories behind the remote default branch"
             onClick={() => toggleFilter("behind")}
           />
           <RepoTreeFilterStat

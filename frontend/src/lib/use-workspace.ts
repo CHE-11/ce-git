@@ -280,7 +280,7 @@ export function useWorkspace() {
     statusesRef.current = statuses;
   }, [statuses]);
 
-  const loadStatuses = useCallback(async (paths: string[], quiet = false) => {
+  const loadStatuses = useCallback(async (paths: string[], quiet = false, fetchRemote = false) => {
     if (paths.length === 0) {
       setStatuses((current) => (Object.keys(current).length === 0 ? current : {}));
       return;
@@ -289,8 +289,22 @@ export function useWorkspace() {
       setStatusLoading(true);
     }
     try {
-      const rows = await repoStatuses(paths);
+      const rows = await repoStatuses(paths, fetchRemote);
       setStatuses((current) => (sameStatuses(current, rows) ? current : Object.fromEntries(rows.map((row) => [row.path, row]))));
+      if (fetchRemote) {
+        const failed = rows.filter((row) => row.error?.startsWith("git fetch failed"));
+        if (failed.length === 1) {
+          setError(`${failed[0].name}: ${failed[0].error}`);
+        } else if (failed.length > 1) {
+          setError(
+            `Could not check ${failed.length} repositories for remote commits. ${failed[0].name}: ${failed[0].error}`,
+          );
+        } else {
+          setError((current) =>
+            current?.includes("git fetch failed") || current?.startsWith("Could not check ") ? null : current,
+          );
+        }
+      }
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
@@ -340,7 +354,7 @@ export function useWorkspace() {
   }, []);
 
   const reloadTrees = useCallback(
-    async (roots: string[], quiet = false) => {
+    async (roots: string[], quiet = false, fetchRemote = false) => {
       if (scanRef.current) {
         if (quiet) {
           return repoPathsRef.current;
@@ -398,7 +412,7 @@ export function useWorkspace() {
           }
           const nextTrees = discovered.map((node) => hideRemovedRepos(node, removedRef.current));
           const foundPaths = quiet && sameTrees(sourceTreesRef.current, nextTrees) ? repoPathsRef.current : applyVisibleTrees(nextTrees);
-          await loadStatuses(foundPaths, quiet);
+          await loadStatuses(foundPaths, quiet, fetchRemote);
           return foundPaths;
         } catch (caught) {
           const message = messageOf(caught);
@@ -496,7 +510,7 @@ export function useWorkspace() {
         }
         return;
       }
-      await reloadTrees(roots);
+      await reloadTrees(roots, false, source === "startup");
     },
     [applyVisibleTrees, loadStatuses, refreshThemeCss, reloadTrees],
   );
@@ -781,7 +795,7 @@ export function useWorkspace() {
 
   const refresh = async () => {
     if (rootPathsRef.current.length > 0) {
-      await reloadTrees(rootPathsRef.current);
+      await reloadTrees(rootPathsRef.current, false, true);
       setDetailToken((token) => token + 1);
     }
   };
@@ -1108,7 +1122,7 @@ export function useWorkspace() {
     const epoch = interactionEpoch.current;
     try {
       const [statusResult, diffResult, stashResult] = await Promise.allSettled([
-        repoStatuses([repo]),
+        repoStatuses([repo], true),
         repoDiff(repo),
         listStashes(repo),
       ]);

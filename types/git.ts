@@ -243,6 +243,11 @@ export interface RepoGraph {
   truncated: boolean;
 }
 
+export interface AppRelease {
+  version: string;
+  notes: string;
+}
+
 export interface CommitDiff {
   hash: string;
   message: string;

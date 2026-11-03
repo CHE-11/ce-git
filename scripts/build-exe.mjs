@@ -1,16 +1,35 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const { name } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const output = join(root, "src-tauri", "target", "release", `${name}.exe`);
+const { name, version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const setupName = `${name}_${version}_x64-setup.exe`;
+const nsisDir = join(root, "src-tauri", "target", "release", "bundle", "nsis");
+const output = join(nsisDir, setupName);
+const signature = join(nsisDir, `${setupName}.sig`);
+const keyPath = join(homedir(), ".tauri", "ce-git.key");
 
-const child = spawn("pnpm tauri build --no-bundle", {
+const env = { ...process.env };
+if (!env.TAURI_SIGNING_PRIVATE_KEY && !env.TAURI_SIGNING_PRIVATE_KEY_PATH) {
+  if (!existsSync(keyPath)) {
+    console.error(`Missing updater signing key at ${keyPath}`);
+    console.error("Generate one with: pnpm tauri signer generate -w %USERPROFILE%\\.tauri\\ce-git.key --ci");
+    process.exit(1);
+  }
+  env.TAURI_SIGNING_PRIVATE_KEY = readFileSync(keyPath, "utf8");
+}
+if (env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD === undefined) {
+  env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "";
+}
+
+const child = spawn("pnpm tauri build --bundles nsis", {
   cwd: root,
   stdio: "inherit",
   shell: true,
+  env,
 });
 
 child.on("exit", (code, signal) => {
@@ -23,8 +42,8 @@ child.on("exit", (code, signal) => {
     process.exit(code ?? 1);
   }
 
-  if (!existsSync(output)) {
-    console.error(`Expected build output at ${output}`);
+  if (!existsSync(output) || !existsSync(signature)) {
+    console.error(`Expected installer and signature at ${output}`);
     process.exit(1);
   }
 

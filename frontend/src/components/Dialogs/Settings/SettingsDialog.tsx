@@ -56,9 +56,19 @@ type AppSettingsDialogProps = {
   onClose: () => void;
   onSaved: (settings: AppSettings) => void;
   onAiSaved: () => void;
+  onCheckForUpdates: () => void;
+  checkingUpdates: boolean;
 };
 
-export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, onSaved, onAiSaved }: AppSettingsDialogProps) {
+export function SettingsDialog({
+  selectedPrompt,
+  initialTab = "app",
+  onClose,
+  onSaved,
+  onAiSaved,
+  onCheckForUpdates,
+  checkingUpdates,
+}: AppSettingsDialogProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -629,6 +639,8 @@ export function SettingsDialog({ selectedPrompt, initialTab = "app", onClose, on
           onDefaultEditorChange={setDefaultEditor}
           onMenuEditorChange={showMenuEditor}
           onRevealExe={() => void revealExe()}
+          onCheckForUpdates={onCheckForUpdates}
+          checkingUpdates={checkingUpdates}
           onBrowse={() => void browse()}
           onClearFolder={() => {
             folderPreviewRef.current += 1;

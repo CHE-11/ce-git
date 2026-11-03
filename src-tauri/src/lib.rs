@@ -4,6 +4,7 @@ mod batch;
 mod editor;
 mod files;
 mod git;
+mod update;
 
 use std::path::{Path, PathBuf};
 
@@ -91,6 +92,11 @@ fn save_app_settings(
         prompts,
         folder_ignore,
     )
+}
+
+#[tauri::command]
+async fn app_release() -> Result<update::AppRelease, String> {
+    update::app_release().await
 }
 
 #[tauri::command]
@@ -495,6 +501,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))?;
             if let Some(window) = app.get_webview_window("main") {
@@ -511,6 +519,7 @@ pub fn run() {
             git_cancel_sign_in,
             app_settings,
             save_app_settings,
+            app_release,
             app_executable,
             preview_app_settings,
             theme_css,

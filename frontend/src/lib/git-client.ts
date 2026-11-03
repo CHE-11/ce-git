@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AiSettings,
   AiPrompts,
+  AppRelease,
   AppSettings,
   BatchProgress,
   CommitDiff,
@@ -31,6 +32,10 @@ import type { EditorId } from "./editors";
 
 export function appVersion() {
   return getVersion();
+}
+
+export function appRelease() {
+  return invoke<AppRelease>("app_release");
 }
 
 export function gitAvailable() {

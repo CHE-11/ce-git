@@ -105,28 +105,6 @@
         "reveal": "always"
       }
     },
-    {
-      "label": "Install/Run App",
-      "type": "process",
-      "command": "${workspaceFolder}/src-tauri/target/release/ce-git.exe",
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "options": {
-        "cwd": "${workspaceFolder}/src-tauri/target/release",
-        "statusbar": {
-          "hide": false,
-          "color": "#1afbff"
-        }
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "panel": "dedicated",
-        "reveal": "always",
-        "close": true
-      }
-    },
     // macOS build is disabled for now as I use windows only for development
     // {
     //   "label": "Build macOS",
@@ -144,6 +122,28 @@
     //     "panel": "dedicated",
     //     "reveal": "always"
     //   }
-    // }
+    // },
+    {
+      "label": "Install/Run App",
+      "type": "shell",
+      "command": "pnpm install:exe",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "statusbar": {
+          "hide": false,
+          "color": "#1afbff"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always",
+        "close": true
+      }
+    }
   ]
 }

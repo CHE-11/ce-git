@@ -40,6 +40,8 @@ type AppSettingsTabProps = {
   onBrowse: () => void;
   onClearFolder: () => void;
   onRevealExe: () => void;
+  onCheckForUpdates: () => void;
+  checkingUpdates: boolean;
   onSubmit: () => void;
 };
 
@@ -68,6 +70,8 @@ export function AppSettingsTab({
   onBrowse,
   onClearFolder,
   onRevealExe,
+  onCheckForUpdates,
+  checkingUpdates,
   onSubmit,
 }: AppSettingsTabProps) {
   const settingsFile = settingsFilePath(folder);
@@ -99,6 +103,17 @@ export function AppSettingsTab({
           <p id="app-settings-exe" className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-200 select-all" title={exePath}>
             {exePath || "Looking up this application…"}
           </p>
+          <Button
+            id="app-settings-check-updates"
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            disabled={busy || checkingUpdates}
+            onClick={onCheckForUpdates}
+          >
+            <span id="app-settings-check-updates-label">Check for updates</span>
+          </Button>
           <Button
             id="app-settings-exe-reveal"
             type="button"

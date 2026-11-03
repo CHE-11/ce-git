@@ -4,6 +4,7 @@ import { ActionConfirmDialog } from "../components/Dialogs/ActionConfirmDialog";
 import { AdvancedSearchDialog } from "../components/Dialogs/AdvancedSearchDialog";
 import { AiCommitDialog } from "../components/Dialogs/AiCommitDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
+import { UpdateDialog } from "../components/Dialogs/UpdateDialog";
 import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
@@ -16,11 +17,13 @@ import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
 import { Toolbar } from "../components/Toolbar";
 import { fileOpenMode, openInLabel, editorById } from "../lib/editors";
+import { useAppUpdate } from "../lib/use-app-update";
 import { useWorkspace } from "../lib/use-workspace";
 import { pathEquals, type RepoTreeFilter } from "../lib/tree";
 
 export function HomePage() {
   const workspace = useWorkspace();
+  const updates = useAppUpdate();
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [createRepoOpen, setCreateRepoOpen] = useState(false);
   const [cloneRepoOpen, setCloneRepoOpen] = useState(false);
@@ -163,6 +166,14 @@ export function HomePage() {
       group: "Git",
       disabled: busy || !hasActive,
       run: () => workspace.requestPushActive(),
+    },
+    {
+      id: "check-updates",
+      label: "Check for updates",
+      group: "Settings",
+      keywords: "upgrade whats new release",
+      disabled: updates.installing,
+      run: () => void updates.checkForUpdate(),
     },
     {
       id: "settings-app",
@@ -415,6 +426,8 @@ export function HomePage() {
         branch={workspace.activeStatus?.branch ?? null}
         discovering={workspace.discovering}
         gitReady={workspace.gitReady}
+        updateVersion={updates.availableVersion}
+        onUpdate={updates.showPending}
       />
 
       {/* Dialogs */}
@@ -428,8 +441,21 @@ export function HomePage() {
             void workspace.applyAppSettings(settings);
           }}
           onAiSaved={() => void workspace.refreshAi()}
+          onCheckForUpdates={() => void updates.checkForUpdate()}
+          checkingUpdates={updates.installing}
         />
       ) : null}
+
+      <UpdateDialog
+        open={updates.open}
+        mode={updates.mode}
+        version={updates.version}
+        notes={updates.notes}
+        progress={updates.progress}
+        error={updates.error}
+        onClose={updates.dismiss}
+        onInstall={() => void updates.install()}
+      />
 
       {createRepoOpen ? (
         <CreateRepoDialog 

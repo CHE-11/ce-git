@@ -1,19 +1,21 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const { name, version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const tag = `v${version}`;
-const releaseDir = join(root, "src-tauri", "target", "release");
-const built = join(releaseDir, `${name}.exe`);
-const assetName = `${name}_${String(version).split(".").join("_")}.exe`;
-const assetPath = join(releaseDir, assetName);
+const setupName = `${name}_${version}_x64-setup.exe`;
+const nsisDir = join(root, "src-tauri", "target", "release", "bundle", "nsis");
+const setupPath = join(nsisDir, setupName);
+const signaturePath = join(nsisDir, `${setupName}.sig`);
+const manifestPath = join(nsisDir, "latest.json");
+const notesPath = join(nsisDir, "release-notes.md");
 const versionFiles = ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"];
 
-if (!existsSync(built)) {
-  console.error(`Expected build output at ${built}`);
+if (!existsSync(setupPath) || !existsSync(signaturePath)) {
+  console.error(`Expected installer and signature at ${setupPath}`);
   console.error("Run pnpm build:exe first.");
   process.exit(1);
 }
@@ -53,20 +55,100 @@ if (remote.status !== 0) {
   process.exit(remote.status ?? 1);
 }
 
-copyFileSync(built, assetPath);
+const slug = githubSlug();
+const notes = releaseNotes(slug);
+const signature = readFileSync(signaturePath, "utf8").trim();
+const downloadUrl = `https://github.com/${slug}/releases/download/${tag}/${setupName}`;
+const platform = { signature, url: downloadUrl };
+writeFileSync(notesPath, `${notes}\n`);
+writeFileSync(
+  manifestPath,
+  `${JSON.stringify(
+    {
+      version,
+      notes,
+      pub_date: new Date().toISOString(),
+      platforms: {
+        "windows-x86_64": platform,
+        "windows-x86_64-nsis": platform,
+      },
+    },
+    null,
+    2,
+  )}\n`,
+);
+
 run([
   "release",
   "create",
   tag,
-  assetPath,
+  setupPath,
+  manifestPath,
   "--title",
   tag,
   "--target",
   sha,
-  "--generate-notes",
+  "--notes-file",
+  notesPath,
   "--latest",
 ]);
-console.log(`\nPublished ${tag} with ${assetName}`);
+console.log(`\nPublished ${tag} with ${setupName}`);
+
+function releaseNotes(slug) {
+  const previous = previousTag();
+  const range = previous ? `${previous}..HEAD` : "HEAD";
+  const subjects = git(["log", range, "--pretty=%s"])
+    .split(/\r?\n/)
+    .map((subject) => subject.trim())
+    .filter(Boolean);
+  const bullets = [];
+  for (const subject of subjects) {
+    if (/^chore(\([^)]+\))?: bump version\b/i.test(subject)) {
+      continue;
+    }
+    const match = /^(feat|fix|perf)(\([^)]+\))?(!)?:\s+(.+)$/.exec(subject);
+    if (!match) {
+      continue;
+    }
+    const summary = sentence(match[4]);
+    if (summary) {
+      bullets.push(`- ${summary}`);
+    }
+  }
+  if (bullets.length > 0) {
+    return bullets.join("\n");
+  }
+  if (previous) {
+    return `**Full Changelog**: https://github.com/${slug}/compare/${previous}...${tag}`;
+  }
+  return `**Full Changelog**: https://github.com/${slug}/releases/tag/${tag}`;
+}
+
+function previousTag() {
+  const tags = git(["tag", "--sort=-v:refname"])
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return tags.find((item) => item !== tag) ?? null;
+}
+
+function sentence(value) {
+  const text = value.trim().replace(/\.+$/, "");
+  if (!text) {
+    return "";
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function githubSlug() {
+  const url = git(["remote", "get-url", "origin"]);
+  const match = /github\.com[:/]([^/]+)\/([^/.]+)/.exec(url);
+  if (!match) {
+    console.error(`Origin is not a GitHub repository: ${url}`);
+    process.exit(1);
+  }
+  return `${match[1]}/${match[2]}`;
+}
 
 function git(args) {
   const result = spawnSync("git", args, {

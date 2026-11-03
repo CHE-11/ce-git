@@ -9,13 +9,15 @@ type StatusBarProps = {
   branch: string | null;
   discovering: boolean;
   gitReady: boolean;
+  updateVersion: string | null;
+  onUpdate: () => void;
 };
 
 function Divider({ id }: { id: string }) {
   return <span id={id} className="h-3 w-px shrink-0 bg-zinc-700" aria-hidden="true" />;
 }
 
-export function StatusBar({ rootPaths, branch, discovering, gitReady }: StatusBarProps) {
+export function StatusBar({ rootPaths, branch, discovering, gitReady, updateVersion, onUpdate }: StatusBarProps) {
   const zoom = useFontZoom();
   const [version, setVersion] = useState<string | null>(null);
 
@@ -31,7 +33,20 @@ export function StatusBar({ rootPaths, branch, discovering, gitReady }: StatusBa
       className="flex h-6 shrink-0 items-center gap-2 border-t border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-400 select-none"
     >
       <div id="status-bar-stats" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-        {version ? (
+        {updateVersion ? (
+          <>
+            <button
+              id="status-update"
+              type="button"
+              title={version ? `ce-git ${version}. Update to v${updateVersion}` : `Update to v${updateVersion}`}
+              onClick={onUpdate}
+              className="shrink-0 rounded px-1 text-sky-300 hover:bg-zinc-800 hover:text-sky-200"
+            >
+              <span id="status-update-label">Update to v{updateVersion}</span>
+            </button>
+            <Divider id="status-sep-version" />
+          </>
+        ) : version ? (
           <>
             <span id="status-version" className="shrink-0 text-zinc-500 tabular-nums" title={`ce-git ${version}`}>
               v{version}

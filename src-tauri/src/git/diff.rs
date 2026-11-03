@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -6,7 +7,7 @@ use serde::Serialize;
 use super::command::git;
 
 pub const UI_DIFF_LIMIT: usize = 200_000;
-pub const AI_DIFF_LIMIT: usize = 12_000;
+pub const AI_DIFF_LIMIT: usize = 24_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -162,14 +163,369 @@ fn parse_name_status(output: &str) -> Vec<FileChange> {
 
 pub fn collect_ai_context(path: &Path) -> Result<String, String> {
     ensure_repo(path)?;
-    let (files, patch, _) = change_summary(path, AI_DIFF_LIMIT)?;
+    let porcelain = git(path, &["status", "--porcelain=v1", "-uall"])?;
+    let files = parse_porcelain(&porcelain);
     if files.is_empty() {
         return Err("Nothing to commit".into());
     }
-    if patch.trim().is_empty() {
+    let sections = split_diff_sections(&working_diff(path));
+    let counts = parse_numstat(&working_numstat(path));
+    let excerpts = build_excerpts(path, &files, &sections);
+    let context = assemble_ai_context(&files, &counts, &excerpts, AI_DIFF_LIMIT);
+    if context.trim().is_empty() {
         return Err("Nothing to commit".into());
     }
-    Ok(patch)
+    Ok(context)
+}
+
+struct AiExcerpt {
+    heading: String,
+    body: String,
+}
+
+fn working_numstat(path: &Path) -> String {
+    match git(path, &["diff", "--numstat", "HEAD"]) {
+        Ok(stat) => stat,
+        Err(_) => {
+            let staged = git(path, &["diff", "--numstat", "--cached"]).unwrap_or_default();
+            let unstaged = git(path, &["diff", "--numstat"]).unwrap_or_default();
+            format!("{staged}{unstaged}")
+        }
+    }
+}
+
+fn parse_numstat(text: &str) -> HashMap<String, (Option<u32>, Option<u32>)> {
+    let mut counts = HashMap::new();
+    for line in text.lines() {
+        let Some((path, added, deleted)) = parse_numstat_line(line) else {
+            continue;
+        };
+        counts
+            .entry(path)
+            .and_modify(|current| *current = add_counts(*current, (added, deleted)))
+            .or_insert((added, deleted));
+    }
+    counts
+}
+
+fn parse_numstat_line(line: &str) -> Option<(String, Option<u32>, Option<u32>)> {
+    let mut parts = line.splitn(3, '\t');
+    let added = parts.next()?;
+    let deleted = parts.next()?;
+    let path = numstat_destination(&unquote(parts.next()?.trim()));
+    if path.is_empty() {
+        return None;
+    }
+    Some((path, added.parse().ok(), deleted.parse().ok()))
+}
+
+fn numstat_destination(path: &str) -> String {
+    if let Some(open) = path.find('{') {
+        if let Some(close) = path[open..].find('}') {
+            let close = open + close;
+            let inner = &path[open + 1..close];
+            if let Some((_, destination)) = inner.split_once(" => ") {
+                return format!("{}{destination}{}", &path[..open], &path[close + 1..]);
+            }
+        }
+    }
+    path.split_once(" => ")
+        .map(|(_, destination)| destination.to_string())
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn add_counts(
+    current: (Option<u32>, Option<u32>),
+    next: (Option<u32>, Option<u32>),
+) -> (Option<u32>, Option<u32>) {
+    match (current, next) {
+        ((Some(left_added), Some(left_deleted)), (Some(right_added), Some(right_deleted))) => (
+            Some(left_added.saturating_add(right_added)),
+            Some(left_deleted.saturating_add(right_deleted)),
+        ),
+        _ => (None, None),
+    }
+}
+
+fn counts_for(
+    file: &FileChange,
+    counts: &HashMap<String, (Option<u32>, Option<u32>)>,
+) -> Option<(Option<u32>, Option<u32>)> {
+    let primary = counts.get(&file.path).copied();
+    let previous = file
+        .previous_path
+        .as_ref()
+        .and_then(|path| counts.get(path).copied());
+    match (primary, previous) {
+        (Some(primary), Some(previous)) => Some(add_counts(primary, previous)),
+        (Some(primary), None) => Some(primary),
+        (None, Some(previous)) => Some(previous),
+        (None, None) => None,
+    }
+}
+
+fn split_diff_sections(patch: &str) -> Vec<(String, String)> {
+    if patch.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut sections = Vec::new();
+    let mut path = String::new();
+    let mut body = String::new();
+    let mut started = false;
+    for line in patch.split_inclusive('\n') {
+        if line.starts_with("diff --git ") {
+            if started || !body.trim().is_empty() {
+                sections.push((std::mem::take(&mut path), std::mem::take(&mut body)));
+            }
+            started = true;
+            path = diff_destination(line.trim_end()).unwrap_or_default();
+            body.push_str(line);
+        } else {
+            body.push_str(line);
+        }
+    }
+    if started || !body.trim().is_empty() {
+        sections.push((path, body));
+    }
+    sections
+}
+
+fn diff_destination(header: &str) -> Option<String> {
+    let rest = header.strip_prefix("diff --git ")?;
+    let (_, consumed) = next_diff_token(rest)?;
+    let (destination, _) = next_diff_token(&rest[consumed..])?;
+    let destination = destination.strip_prefix("b/").unwrap_or(&destination);
+    if destination.is_empty() {
+        None
+    } else {
+        Some(destination.to_string())
+    }
+}
+
+fn next_diff_token(input: &str) -> Option<(String, usize)> {
+    let offset = input.find(|ch: char| ch != ' ')?;
+    let rest = &input[offset..];
+    if rest.starts_with('"') {
+        let (token, consumed) = quoted_diff_token(rest)?;
+        return Some((token, offset + consumed));
+    }
+    let end = rest.find(' ').unwrap_or(rest.len());
+    Some((rest[..end].to_string(), offset + end))
+}
+
+fn quoted_diff_token(input: &str) -> Option<(String, usize)> {
+    let bytes = input.as_bytes();
+    let mut token = String::new();
+    let mut index = 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' => {
+                if index + 1 >= bytes.len() {
+                    return None;
+                }
+                match bytes[index + 1] {
+                    b'n' => token.push('\n'),
+                    b't' => token.push('\t'),
+                    b'\\' | b'"' => token.push(bytes[index + 1] as char),
+                    other => token.push(other as char),
+                }
+                index += 2;
+            }
+            b'"' => return Some((token, index + 1)),
+            _ => {
+                let ch = input[index..].chars().next()?;
+                token.push(ch);
+                index += ch.len_utf8();
+            }
+        }
+    }
+    None
+}
+
+fn build_excerpts(
+    repo: &Path,
+    files: &[FileChange],
+    sections: &[(String, String)],
+) -> Vec<AiExcerpt> {
+    let mut used = vec![false; sections.len()];
+    let mut excerpts = Vec::new();
+    for file in files {
+        let mut body = String::new();
+        for (index, (path, section)) in sections.iter().enumerate() {
+            let matches = path == &file.path
+                || file
+                    .previous_path
+                    .as_deref()
+                    .is_some_and(|previous| previous == path);
+            if used[index] || !matches {
+                continue;
+            }
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(section);
+            used[index] = true;
+        }
+        if file.status == "untracked" {
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            body.push_str(&untracked_preview(repo, &file.path));
+        }
+        if body.trim().is_empty() {
+            continue;
+        }
+        excerpts.push(AiExcerpt {
+            heading: format!("### {}\n", file_label(file)),
+            body,
+        });
+    }
+    for (index, (path, section)) in sections.iter().enumerate() {
+        if used[index] || section.trim().is_empty() {
+            continue;
+        }
+        let heading = if path.is_empty() {
+            "### diff\n".to_string()
+        } else {
+            format!("### {path}\n")
+        };
+        excerpts.push(AiExcerpt {
+            heading,
+            body: section.clone(),
+        });
+    }
+    excerpts
+}
+
+fn untracked_preview(repo: &Path, relative: &str) -> String {
+    let mut body = format!("# untracked {relative}\n");
+    if let Some(preview) = preview_file(&repo.join(relative)) {
+        body.push_str(&preview);
+    }
+    body
+}
+
+fn file_label(file: &FileChange) -> String {
+    match &file.previous_path {
+        Some(previous) => format!("{previous} -> {}", file.path),
+        None => file.path.clone(),
+    }
+}
+
+fn file_list_line(file: &FileChange, counts: Option<(Option<u32>, Option<u32>)>) -> String {
+    let label = file_label(file);
+    let mark = status_mark(&file.status);
+    match counts {
+        Some((Some(added), Some(deleted))) => format!("{mark} {label} (+{added} -{deleted})"),
+        _ => format!("{mark} {label}"),
+    }
+}
+
+fn status_mark(status: &str) -> &'static str {
+    match status {
+        "added" => "A",
+        "deleted" => "D",
+        "renamed" => "R",
+        "copied" => "C",
+        "untracked" => "??",
+        "unmerged" => "U",
+        "typechange" => "T",
+        _ => "M",
+    }
+}
+
+fn assemble_ai_context(
+    files: &[FileChange],
+    counts: &HashMap<String, (Option<u32>, Option<u32>)>,
+    excerpts: &[AiExcerpt],
+    limit: usize,
+) -> String {
+    let mut header = format!("Changed files ({}):\n", files.len());
+    for file in files {
+        header.push_str(&file_list_line(file, counts_for(file, counts)));
+        header.push('\n');
+    }
+    if !excerpts.is_empty() {
+        header.push_str("\nDiff excerpts (shortened where marked; the file list is complete):\n");
+    }
+    let budget = limit.saturating_sub(header.chars().count());
+    let lengths: Vec<usize> = excerpts.iter().map(excerpt_chars).collect();
+    let shares = allocate_budget(&lengths, budget);
+    let mut out = header;
+    for (excerpt, share) in excerpts.iter().zip(shares) {
+        let text = render_excerpt(excerpt, share);
+        if text.is_empty() {
+            continue;
+        }
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&text);
+        if !text.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn excerpt_chars(excerpt: &AiExcerpt) -> usize {
+    excerpt.heading.chars().count() + excerpt.body.chars().count()
+}
+
+fn render_excerpt(excerpt: &AiExcerpt, limit: usize) -> String {
+    if limit == 0 {
+        return String::new();
+    }
+    let total = excerpt_chars(excerpt);
+    if total <= limit {
+        return format!("{}{}", excerpt.heading, excerpt.body);
+    }
+    let content: String = excerpt
+        .heading
+        .chars()
+        .chain(excerpt.body.chars())
+        .take(limit)
+        .collect();
+    format!("{content}\n\n[diff truncated]")
+}
+
+fn allocate_budget(lengths: &[usize], budget: usize) -> Vec<usize> {
+    let mut assigned = vec![0usize; lengths.len()];
+    let mut active: Vec<usize> = (0..lengths.len())
+        .filter(|&index| lengths[index] > 0)
+        .collect();
+    let mut remaining = budget;
+    let mut guard = lengths.len().saturating_add(1);
+    while !active.is_empty() && remaining > 0 && guard > 0 {
+        guard -= 1;
+        let share = remaining / active.len();
+        let mut extra = remaining % active.len();
+        if share == 0 && extra == 0 {
+            break;
+        }
+        let mut next = Vec::new();
+        let mut consumed = 0usize;
+        for index in active.iter().copied() {
+            let mut add = share;
+            if extra > 0 {
+                add += 1;
+                extra -= 1;
+            }
+            let room = lengths[index].saturating_sub(assigned[index]);
+            let give = add.min(room);
+            assigned[index] += give;
+            consumed += give;
+            if assigned[index] < lengths[index] {
+                next.push(index);
+            }
+        }
+        if consumed == 0 {
+            break;
+        }
+        remaining -= consumed;
+        active = next;
+    }
+    assigned
 }
 
 fn change_summary(path: &Path, limit: usize) -> Result<(Vec<FileChange>, String, bool), String> {
@@ -503,5 +859,100 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "notes/a -> b.md");
         assert!(files[0].previous_path.is_none());
+    }
+
+    #[test]
+    fn budget_gives_unused_share_to_a_cut_excerpt() {
+        let shares = super::allocate_budget(&[100_000, 20], 1_000);
+        assert_eq!(shares, vec![980, 20]);
+    }
+
+    #[test]
+    fn splits_diff_sections_by_file() {
+        let patch = "diff --git a/a.txt b/a.txt\n+aaa\ndiff --git \"a/z file.txt\" \"b/z file.txt\"\n+ZEBRA\n";
+        let sections = super::split_diff_sections(patch);
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].0, "a.txt");
+        assert!(sections[0].1.contains("+aaa"));
+        assert_eq!(sections[1].0, "z file.txt");
+        assert!(sections[1].1.contains("+ZEBRA"));
+    }
+
+    #[test]
+    fn ai_context_includes_every_file_when_the_first_diff_exceeds_the_limit() {
+        let root = scratch("ai-context-fair");
+        init_repo(&root);
+        fs::write(root.join("a.txt"), "seed\n").unwrap();
+        fs::write(root.join("z.txt"), "seed\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial"]);
+
+        let huge = "A".repeat(super::AI_DIFF_LIMIT + 8_000);
+        fs::write(root.join("a.txt"), huge).unwrap();
+        fs::write(root.join("z.txt"), "seed\nZEBRA_MARKER\n").unwrap();
+
+        let context = super::collect_ai_context(&root).unwrap();
+        assert!(context.contains("Changed files (2):"), "{context}");
+        assert!(context.contains("M a.txt"), "{context}");
+        assert!(context.contains("M z.txt (+1 -0)"), "{context}");
+        assert!(context.contains("ZEBRA_MARKER"), "{context}");
+        assert!(context.contains("[diff truncated]"), "{context}");
+        let marker = context.find("[diff truncated]").expect("truncation mark");
+        let zebra = context.find("ZEBRA_MARKER").expect("later file");
+        assert!(
+            marker < zebra,
+            "the later file should survive after the first file is cut\n{context}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ai_context_keeps_a_short_diff_intact() {
+        let root = scratch("ai-context-short");
+        init_repo(&root);
+        fs::write(root.join("README.md"), "one\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial"]);
+        fs::write(root.join("README.md"), "one\ntwo\n").unwrap();
+
+        let context = super::collect_ai_context(&root).unwrap();
+        assert!(context.contains("Changed files (1):"), "{context}");
+        assert!(context.contains("M README.md (+1 -0)"), "{context}");
+        assert!(context.contains("+two"), "{context}");
+        assert!(!context.contains("[diff truncated]"), "{context}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ai_context_includes_untracked_files() {
+        let root = scratch("ai-context-untracked");
+        init_repo(&root);
+        fs::write(root.join("README.md"), "one\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial"]);
+        fs::write(root.join("notes.md"), "UNTRACKED_NOTE\n").unwrap();
+
+        let context = super::collect_ai_context(&root).unwrap();
+        assert!(context.contains("?? notes.md"), "{context}");
+        assert!(context.contains("UNTRACKED_NOTE"), "{context}");
+        assert!(!context.contains("[diff truncated]"), "{context}");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ai_context_rejects_a_clean_repo() {
+        let root = scratch("ai-context-clean");
+        init_repo(&root);
+        fs::write(root.join("README.md"), "one\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial"]);
+
+        let error = super::collect_ai_context(&root).unwrap_err();
+        assert!(error.contains("Nothing to commit"), "{error}");
+
+        let _ = fs::remove_dir_all(root);
     }
 }

@@ -164,7 +164,7 @@ async fn request_commit_message(
             },
             {
                 "role": "user",
-                "content": format!("Repository: {repo}\n\nChanges:\n{context}")
+                "content": commit_user_message(repo, context)
             }
         ]
     });
@@ -565,8 +565,14 @@ fn env_key() -> Option<String> {
 }
 
 #[cfg(test)]
-const DESCRIPTIVE_PROMPT: &str = "You write git commit messages. Reply with one conventional commit and nothing else. The first line is `type: summary` or `type(scope): summary`, at most 72 characters. After a blank line, write a description of two to six sentences that says what changed and why. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
-const QUICK_PROMPT: &str = "You write git commit messages. Reply with one conventional commit and nothing else. The first line is `type: summary` or `type(scope): summary`, at most 72 characters. After a blank line, write one short sentence that says what changed and why. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
+const DESCRIPTIVE_PROMPT: &str = "You write git commit messages. Reply with one conventional commit and nothing else. The first line is `type: summary` or `type(scope): summary`, at most 72 characters, and names the whole change set. After a blank line, write a description of two to six sentences that covers each distinct change. Group related files. Do not describe only the first file. A shortened diff excerpt is a sample; the changed-files list is complete. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
+const QUICK_PROMPT: &str = "You write git commit messages. Reply with one conventional commit and nothing else. The first line is `type: summary` or `type(scope): summary`, at most 72 characters, and names the whole change set. After a blank line, write one short sentence that covers the whole change set, not only the first file. A shortened diff excerpt is a sample; the changed-files list is complete. Types: feat, fix, docs, style, refactor, test, chore, perf, build, ci. Do not wrap the message in quotes or markdown fences.";
+
+fn commit_user_message(repo: &str, context: &str) -> String {
+    format!(
+        "Repository: {repo}\n\nThe changed-files list is complete. Diff excerpts may be shortened.\n\nChanges:\n{context}"
+    )
+}
 
 fn system_prompt(custom: &str) -> String {
     let custom = custom.trim();
@@ -693,7 +699,25 @@ mod tests {
         assert_eq!(prompt, "Write like a release note.");
         assert_eq!(super::system_prompt("  "), super::QUICK_PROMPT);
         assert!(super::DESCRIPTIVE_PROMPT.contains("two to six sentences"));
+        assert!(super::DESCRIPTIVE_PROMPT.contains("whole change set"));
+        assert!(super::DESCRIPTIVE_PROMPT.contains("Do not describe only the first file"));
+        assert!(super::DESCRIPTIVE_PROMPT.contains("changed-files list is complete"));
         assert!(super::QUICK_PROMPT.contains("one short sentence"));
+        assert!(super::QUICK_PROMPT.contains("whole change set"));
+        assert!(super::QUICK_PROMPT.contains("not only the first file"));
+        assert!(super::QUICK_PROMPT.contains("changed-files list is complete"));
+    }
+
+    #[test]
+    fn user_message_marks_the_file_list_complete() {
+        let message = super::commit_user_message("demo", "Changed files (2):\nM a.txt\nM z.txt\n");
+        assert!(message.contains("Repository: demo"), "{message}");
+        assert!(
+            message.contains("The changed-files list is complete. Diff excerpts may be shortened."),
+            "{message}"
+        );
+        assert!(message.contains("M a.txt"), "{message}");
+        assert!(message.contains("M z.txt"), "{message}");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 {
   "name": "ce-git",
   "private": true,
-  "version": "1.0.43",
+  "version": "1.0.44",
   "scripts": {
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",

@@ -5,7 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -164,6 +164,8 @@ export function ChangedFiles({
   const [changesOpen, setChangesOpen] = useState(true);
   const [stashesOpen, setStashesOpen] = useState(true);
   const anchorRef = useRef<string | null>(null);
+  const selectedPathsRef = useRef(selectedPaths);
+  selectedPathsRef.current = selectedPaths;
   const [query, setQuery] = useState("");
   const searchQuery = query.trim();
   const visibleFiles = useMemo(() => {
@@ -208,6 +210,59 @@ export function ChangedFiles({
       return next.length === current.length ? current : next;
     });
   }, [files]);
+
+  useEffect(() => {
+    function clearFileSelection() {
+      if (selectedPathsRef.current.length === 0) {
+        return false;
+      }
+      anchorRef.current = null;
+      setSelectedPaths([]);
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.closest("[data-changed-file]")) {
+        active.blur();
+      }
+      return true;
+    }
+
+    function keepsSelection(target: EventTarget | null) {
+      const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+      if (!element) {
+        return false;
+      }
+      return Boolean(
+        element.closest(
+          "[data-changed-file], #changed-file-menu, #discard-change-dialog-backdrop, #stash-changes-dialog-backdrop",
+        ),
+      );
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if (event.button !== 0 || keepsSelection(event.target)) {
+        return;
+      }
+      clearFileSelection();
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented || event.repeat) {
+        return;
+      }
+      if (document.querySelector("[role='dialog'], [role='menu']")) {
+        return;
+      }
+      if (clearFileSelection()) {
+        event.preventDefault();
+      }
+    }
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     function onResize() {
@@ -321,7 +376,7 @@ export function ChangedFiles({
     });
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     const step = event.shiftKey ? 48 : 16;
     if (event.key === "ArrowLeft") {
       event.preventDefault();
@@ -413,6 +468,7 @@ export function ChangedFiles({
                 <button
                   id={domId("changed-file", key)}
                   type="button"
+                  data-changed-file=""
                   aria-selected={selected}
                   aria-current={current ? "true" : undefined}
                   onMouseDown={(event) => {
@@ -423,8 +479,8 @@ export function ChangedFiles({
                   onClick={(event) => chooseFiles(file, event)}
                   onContextMenu={(event) => openMenu(file, event)}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-1 text-left text-sm hover:bg-zinc-800/80",
-                    selected && "bg-sky-950/70",
+                    "flex w-full items-center gap-2 px-3 py-1 text-left text-sm hover:bg-zinc-800/80 focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-sky-400",
+                    selected && "row-selected",
                   )}
                 >
                   <span
@@ -438,7 +494,11 @@ export function ChangedFiles({
                   >
                     {mark.letter}
                   </span>
-                  <span id={domId("changed-file-path", key)} className="truncate text-zinc-200" title={file.path}>
+                  <span
+                    id={domId("changed-file-path", key)}
+                    className={cn("truncate", selected ? "text-zinc-50" : "text-zinc-200")}
+                    title={file.path}
+                  >
                     {file.path}
                   </span>
                 </button>

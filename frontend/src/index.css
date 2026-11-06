@@ -529,11 +529,22 @@ textarea {
 }
 
 .tree-folder-active {
-  background-color: color-mix(in oklch, var(--app-sky-950) 72%, var(--tree-folder));
+  background-color: color-mix(in oklch, var(--app-sky-400) 42%, var(--tree-folder));
+  box-shadow: inset 3px 0 0 var(--app-sky-400);
 }
 
 .tree-folder-active:hover {
-  background-color: color-mix(in oklch, var(--app-sky-950) 58%, var(--tree-folder));
+  background-color: color-mix(in oklch, var(--app-sky-400) 55%, var(--tree-folder));
+}
+
+/* sky-950 is a near-page wash on some themes, so selection uses the accent instead. */
+.row-selected {
+  background-color: color-mix(in oklch, var(--app-sky-400) 36%, var(--app-zinc-950));
+  box-shadow: inset 3px 0 0 var(--app-sky-400);
+}
+
+.row-selected:hover {
+  background-color: color-mix(in oklch, var(--app-sky-400) 48%, var(--app-zinc-950));
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -120,7 +120,7 @@ export function RepoTreeNode({
           "flex items-center gap-1.5 rounded-md py-1 pr-2 text-sm select-none",
           !tintBackground && "hover:bg-zinc-800/80",
           (isRepo || (canToggle && depth > 0)) && "cursor-pointer",
-          !tintBackground && active && "bg-sky-950/70",
+          !tintBackground && active && "row-selected",
           tintBackground && "tree-folder-bg",
           tintBackground && active && "tree-folder-active",
           targeted && "ring-1 ring-inset ring-sky-800",
@@ -160,7 +160,11 @@ export function RepoTreeNode({
         ) : null}
         <span
           id={domId("tree-name", node.path)}
-          className={cn("shrink-0", !tintFont && "text-zinc-100", depth === 0 && canToggle && "cursor-pointer")}
+          className={cn(
+            "shrink-0",
+            !tintFont && (active ? "text-zinc-50" : "text-zinc-100"),
+            depth === 0 && canToggle && "cursor-pointer",
+          )}
           style={tintFont ? { color: "var(--tree-folder)" } : undefined}
           title={node.path}
           onClick={depth === 0 ? onRootLabelClick : undefined}

@@ -90,21 +90,25 @@ pub(crate) fn git_output(dir: &Path, args: &[&str]) -> Result<GitOutput, String>
 }
 
 pub fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let stdout = git_stdout(dir, args)?;
+    Ok(String::from_utf8_lossy(&stdout).into_owned())
+}
+
+/// Stdout bytes, so a binary patch is not damaged by a text conversion.
+pub(crate) fn git_stdout(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let output = prepare(dir, args, false)
         .output()
         .map_err(|error| map_start_error(error, dir))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if output.status.success() {
-        return Ok(stdout);
+        return Ok(output.stdout);
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout_trim = stdout.trim();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let detail = if !stderr.is_empty() {
         stderr
-    } else if !stdout_trim.is_empty() {
-        stdout_trim.to_string()
+    } else if !stdout.is_empty() {
+        stdout
     } else {
         format!("exit {}", output.status)
     };

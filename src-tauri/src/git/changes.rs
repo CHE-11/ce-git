@@ -2,8 +2,11 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::command::git;
+use super::command::{git, git_stdout};
 use super::diff::{ensure_repo, parse_porcelain};
+
+/// Well-known hash of an empty tree. A root commit is diffed against it.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 struct RelativePath {
     git: String,
@@ -79,27 +82,21 @@ pub fn discard_change(repo: &Path, relative: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Make the index and worktree match `hash`.
+/// Undo the changes `hash` introduced and leave the result unstaged.
 ///
-/// `paths` restores those files and leaves everything else alone. A file that
-/// does not exist in the commit is removed. `None` matches the whole tracked
-/// tree. The branch stays where it is, so the result shows up as changes.
+/// The branch stays where it is, so the undone changes show up in the working
+/// tree. `paths` undoes those files and leaves every other file alone. `None`
+/// undoes the whole commit. Lines changed again since that commit can make the
+/// undo fail; the worktree is left as it was.
 pub fn restore_commit(repo: &Path, hash: &str, paths: Option<&[String]>) -> Result<(), String> {
     ensure_repo(repo)?;
     ensure_history_idle(repo)?;
     let hash = verified_commit(repo, hash)?;
+    let parents = parent_hashes(repo, &hash)?;
     match paths {
-        None => restore_tree(repo, &hash),
+        None => undo_commit(repo, &hash, &parents),
         Some(paths) if paths.is_empty() => Err("Choose a file to restore.".into()),
-        Some(paths) => {
-            let mut seen = HashSet::new();
-            for path in paths {
-                if seen.insert(path) {
-                    restore_path(repo, &hash, path)?;
-                }
-            }
-            Ok(())
-        }
+        Some(paths) => undo_paths(repo, &hash, &parents, paths),
     }
 }
 
@@ -114,108 +111,364 @@ pub fn reset_to_commit(repo: &Path, hash: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn restore_tree(repo: &Path, hash: &str) -> Result<(), String> {
-    let source = format!("--source={hash}");
-    match git(
-        repo,
-        &["restore", &source, "--staged", "--worktree", "--", "."],
-    ) {
-        Ok(_) => {}
-        Err(error)
-            if error
-                .to_ascii_lowercase()
-                .contains("did not match any file") => {}
-        Err(error) => return Err(error),
-    }
-
-    let target = tree_paths(repo, hash)?;
-    let extra: Vec<String> = index_paths(repo)?
-        .into_iter()
-        .filter(|path| !target.contains(path))
-        .collect();
-    remove_tracked(repo, &extra)
+struct CommitTouch {
+    path: String,
+    previous: Option<String>,
 }
 
-fn restore_path(repo: &Path, hash: &str, path: &str) -> Result<(), String> {
-    let relative = safe_relative(path)?;
-    let _ = join_inside(repo, &relative)?;
-    if blob_in_commit(repo, hash, &relative.git)? {
-        let source = format!("--source={hash}");
+struct WorktreeBackup {
+    relative: String,
+    bytes: Option<Vec<u8>>,
+}
+
+fn undo_commit(repo: &Path, hash: &str, parents: &[String]) -> Result<(), String> {
+    if parents.is_empty() {
+        let touched = name_status_paths(repo, None, hash)?;
+        let patch = commit_patch(repo, None, hash, None)?;
+        return apply_reverse(repo, &patch, &touched);
+    }
+
+    let mut args = vec!["revert", "--no-commit", "--no-edit"];
+    if parents.len() > 1 {
+        args.extend(["-m", "1"]);
+    }
+    args.push(hash);
+    if let Err(error) = git(repo, &args) {
+        abort_revert(repo);
+        return Err(undo_error(error));
+    }
+
+    let changed = cached_paths(repo)?;
+    if changed.is_empty() {
+        end_revert(repo);
+        return Err("That commit's changes are already gone.".into());
+    }
+    let unstaged = unstage(repo, &changed);
+    end_revert(repo);
+    unstaged
+}
+
+fn undo_paths(
+    repo: &Path,
+    hash: &str,
+    parents: &[String],
+    requested: &[String],
+) -> Result<(), String> {
+    let parent = parents.first().map(String::as_str);
+    let touches = name_status(repo, parent, hash)?;
+    let touched = affected_paths(repo, &touches, requested)?;
+    let patch = commit_patch(repo, parent, hash, Some(&touched))?;
+    apply_reverse(repo, &patch, &touched)
+}
+
+fn affected_paths(
+    repo: &Path,
+    touches: &[CommitTouch],
+    requested: &[String],
+) -> Result<Vec<String>, String> {
+    let mut seen = HashSet::new();
+    let mut touched = Vec::new();
+    for path in requested {
+        let relative = safe_relative(path)?;
+        let _ = join_inside(repo, &relative)?;
+        let mut hit = false;
+        for change in touches {
+            let matches = change.path == relative.git
+                || change.previous.as_deref() == Some(relative.git.as_str());
+            if !matches {
+                continue;
+            }
+            hit = true;
+            for side in [&change.path].into_iter().chain(change.previous.as_ref()) {
+                if seen.insert(side.clone()) {
+                    touched.push(side.clone());
+                }
+            }
+        }
+        if !hit {
+            return Err(format!("{} was not changed in that commit.", relative.git));
+        }
+    }
+    Ok(touched)
+}
+
+fn parent_hashes(repo: &Path, hash: &str) -> Result<Vec<String>, String> {
+    let line = git(repo, &["rev-list", "--parents", "-n", "1", hash])?;
+    Ok(line
+        .split_whitespace()
+        .skip(1)
+        .map(str::to_string)
+        .collect())
+}
+
+fn name_status(repo: &Path, parent: Option<&str>, hash: &str) -> Result<Vec<CommitTouch>, String> {
+    let output = if let Some(parent) = parent {
+        git(repo, &["diff", "--name-status", "-z", "-M", parent, hash])?
+    } else {
         git(
             repo,
+            &["diff", "--name-status", "-z", "-M", EMPTY_TREE, hash],
+        )?
+    };
+    Ok(parse_name_status_z(&output))
+}
+
+fn name_status_paths(repo: &Path, parent: Option<&str>, hash: &str) -> Result<Vec<String>, String> {
+    let mut paths = Vec::new();
+    for touch in name_status(repo, parent, hash)? {
+        paths.push(touch.path);
+        if let Some(previous) = touch.previous {
+            paths.push(previous);
+        }
+    }
+    Ok(paths)
+}
+
+fn parse_name_status_z(output: &str) -> Vec<CommitTouch> {
+    let mut tokens = output.split('\0').filter(|token| !token.is_empty());
+    let mut touches = Vec::new();
+    while let Some(code) = tokens.next() {
+        let Some(letter) = code.chars().next() else {
+            continue;
+        };
+        let paired = letter == 'R' || letter == 'C';
+        let previous = if paired {
+            tokens.next().map(str::to_string)
+        } else {
+            None
+        };
+        let Some(path) = tokens.next() else {
+            break;
+        };
+        if path.is_empty() {
+            continue;
+        }
+        touches.push(CommitTouch {
+            path: path.to_string(),
+            previous: previous.filter(|previous| !previous.is_empty()),
+        });
+    }
+    touches
+}
+
+fn cached_paths(repo: &Path) -> Result<Vec<String>, String> {
+    let output = git(repo, &["diff", "--name-status", "-z", "-M", "--cached"])?;
+    let mut paths = Vec::new();
+    for touch in parse_name_status_z(&output) {
+        paths.push(touch.path);
+        if let Some(previous) = touch.previous {
+            paths.push(previous);
+        }
+    }
+    Ok(paths)
+}
+
+fn commit_patch(
+    repo: &Path,
+    parent: Option<&str>,
+    hash: &str,
+    paths: Option<&[String]>,
+) -> Result<Vec<u8>, String> {
+    let from = parent.unwrap_or(EMPTY_TREE);
+    let mut args = vec![
+        "diff",
+        "--full-index",
+        "--binary",
+        "--no-color",
+        "--no-ext-diff",
+        "-M",
+        from,
+        hash,
+    ];
+    if let Some(paths) = paths {
+        args.push("--");
+        args.extend(paths.iter().map(String::as_str));
+    }
+    let patch = git_stdout(repo, &args)?;
+    if patch.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Err("That commit's changes are already gone.".into());
+    }
+    Ok(patch)
+}
+
+fn apply_reverse(repo: &Path, patch: &[u8], touched: &[String]) -> Result<(), String> {
+    if touched.is_empty() {
+        return Err("That commit didn't change any files.".into());
+    }
+    let patch_path = write_patch(patch)?;
+    let patch_arg = patch_path.to_string_lossy().into_owned();
+    let check = git(
+        repo,
+        &[
+            "apply",
+            "--reverse",
+            "--check",
+            "--whitespace=nowarn",
+            &patch_arg,
+        ],
+    );
+    let backups = snapshot(repo, touched);
+    let result = if check.is_ok() {
+        let applied = git(
+            repo,
+            &["apply", "--reverse", "--whitespace=nowarn", &patch_arg],
+        );
+        if applied.is_err() {
+            restore_worktree(repo, &backups);
+        }
+        applied.map(|_| ()).map_err(undo_error)
+    } else {
+        let before = git(repo, &["status", "--porcelain=v1"]).unwrap_or_default();
+        match git(
+            repo,
             &[
-                "restore",
-                &source,
-                "--staged",
-                "--worktree",
-                "--",
-                &relative.git,
+                "apply",
+                "--reverse",
+                "--3way",
+                "--whitespace=nowarn",
+                &patch_arg,
             ],
-        )?;
-        return Ok(());
-    }
-    remove_tracked(repo, &[relative.git.clone()])?;
-    let full = join_inside(repo, &relative)?;
-    if full.is_file() {
-        fs::remove_file(&full)
-            .map_err(|error| format!("Could not delete {}: {error}", relative.git))?;
-    } else if full.is_dir() {
-        return Err(format!("{} is a folder.", relative.git));
-    }
-    Ok(())
-}
-
-fn blob_in_commit(repo: &Path, hash: &str, path: &str) -> Result<bool, String> {
-    let spec = format!("{hash}:{path}");
-    match git(repo, &["cat-file", "-t", &spec]) {
-        Ok(kind) => {
-            if kind.trim() == "blob" {
-                Ok(true)
-            } else {
-                Err(format!("{path} is not a file in that commit."))
+        ) {
+            Ok(_) if !index_conflicts(repo) => unstage(repo, touched).map_err(undo_error),
+            Ok(_) => {
+                rollback_apply(repo, touched, &backups, &before);
+                Err("Those changes don't apply cleanly on top of the current files.".into())
+            }
+            Err(error) => {
+                rollback_apply(repo, touched, &backups, &before);
+                Err(undo_error(error))
             }
         }
-        Err(error) => {
-            let lower = error.to_ascii_lowercase();
-            if lower.contains("not in") || lower.contains("does not exist") {
-                Ok(false)
-            } else {
-                Err(error)
+    };
+    let _ = fs::remove_file(&patch_path);
+    result
+}
+
+fn write_patch(patch: &[u8]) -> Result<PathBuf, String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!("ce-git-restore-{nanos}.patch"));
+    fs::write(&path, patch).map_err(|error| format!("Could not write the patch: {error}"))?;
+    Ok(path)
+}
+
+fn snapshot(repo: &Path, paths: &[String]) -> Vec<WorktreeBackup> {
+    paths
+        .iter()
+        .map(|relative| WorktreeBackup {
+            relative: relative.clone(),
+            bytes: fs::read(repo.join(relative)).ok(),
+        })
+        .collect()
+}
+
+fn rollback_apply(repo: &Path, paths: &[String], backups: &[WorktreeBackup], before: &str) {
+    let after = git(repo, &["status", "--porcelain=v1"]).unwrap_or_default();
+    if after == before {
+        return;
+    }
+    let _ = git_with_paths(repo, &["reset", "-q"], paths);
+    let _ = git_with_paths(
+        repo,
+        &["restore", "--source=HEAD", "--staged", "--worktree"],
+        paths,
+    );
+    restore_worktree(repo, backups);
+}
+
+fn restore_worktree(repo: &Path, backups: &[WorktreeBackup]) {
+    for backup in backups {
+        let full = repo.join(&backup.relative);
+        match &backup.bytes {
+            Some(bytes) => {
+                if let Some(parent) = full.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(&full, bytes);
+            }
+            None => {
+                if full.is_file() {
+                    let _ = fs::remove_file(&full);
+                }
             }
         }
     }
 }
 
-fn tree_paths(repo: &Path, hash: &str) -> Result<HashSet<String>, String> {
-    Ok(
-        split_z(&git(repo, &["ls-tree", "-r", "-z", "--name-only", hash])?)
-            .into_iter()
-            .collect(),
-    )
+fn index_conflicts(repo: &Path) -> bool {
+    let Ok(porcelain) = git(repo, &["status", "--porcelain=v1"]) else {
+        return false;
+    };
+    porcelain.lines().any(|line| {
+        let mut chars = line.chars();
+        let first = chars.next();
+        let second = chars.next();
+        matches!(
+            (first, second),
+            (Some('U'), _) | (_, Some('U')) | (Some('A'), Some('A')) | (Some('D'), Some('D'))
+        )
+    })
 }
 
-fn index_paths(repo: &Path) -> Result<Vec<String>, String> {
-    Ok(split_z(&git(repo, &["ls-files", "-z"])?))
+fn unstage(repo: &Path, paths: &[String]) -> Result<(), String> {
+    git_with_paths(repo, &["restore", "--staged"], paths)
 }
 
-fn remove_tracked(repo: &Path, paths: &[String]) -> Result<(), String> {
+fn git_with_paths(repo: &Path, prefix: &[&str], paths: &[String]) -> Result<(), String> {
     for chunk in paths.chunks(40) {
         if chunk.is_empty() {
             continue;
         }
-        let mut args = vec!["rm", "-f", "--ignore-unmatch", "--"];
+        let mut args = prefix.to_vec();
+        args.push("--");
         args.extend(chunk.iter().map(String::as_str));
-        git(repo, &args)?;
+        match git(repo, &args) {
+            Ok(_) => {}
+            Err(error)
+                if error
+                    .to_ascii_lowercase()
+                    .contains("did not match any file") => {}
+            Err(error) => return Err(error),
+        }
     }
     Ok(())
 }
 
-fn split_z(output: &str) -> Vec<String> {
-    output
-        .split('\0')
-        .filter(|part| !part.is_empty())
-        .map(str::to_string)
-        .collect()
+fn end_revert(repo: &Path) {
+    if git(repo, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]).is_ok()
+        || git_path_exists(repo, "sequencer")
+    {
+        let _ = git(repo, &["revert", "--quit"]);
+    }
+}
+
+fn abort_revert(repo: &Path) {
+    let _ = git(repo, &["revert", "--abort"]);
+}
+
+fn undo_error(error: String) -> String {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("would be overwritten")
+        || lower.contains("local changes")
+        || lower.contains("please commit or stash")
+    {
+        return "Commit or stash your changes before undoing that commit.".into();
+    }
+    if lower.contains("conflict")
+        || lower.contains("could not revert")
+        || lower.contains("patch does not apply")
+        || lower.contains("patch failed")
+        || lower.contains("does not apply")
+        || lower.contains("with conflicts")
+    {
+        return "Those changes don't apply cleanly on top of the current files.".into();
+    }
+    if lower.contains("empty commit") || lower.contains("nothing to commit") {
+        return "That commit's changes are already gone.".into();
+    }
+    error
 }
 
 fn verified_commit(repo: &Path, hash: &str) -> Result<String, String> {
@@ -513,18 +766,25 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    fn head_of(path: &Path) -> String {
+        git(path, &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_string()
+    }
+
+    fn porcelain(path: &Path) -> String {
+        git(path, &["status", "--porcelain"]).unwrap()
+    }
+
     #[test]
-    fn restore_commit_puts_files_and_the_branch_back() {
+    fn restore_commit_puts_that_commits_changes_back_in_the_worktree() {
         let root = scratch("restore-commit");
         init_repo(&root);
         fs::write(root.join("keep.txt"), "keep-1\n").unwrap();
         fs::write(root.join("gone.txt"), "gone-1\n").unwrap();
         run_git(&root, &["add", "."]);
         run_git(&root, &["commit", "-m", "first"]);
-        let first = git(&root, &["rev-parse", "HEAD"])
-            .unwrap()
-            .trim()
-            .to_string();
 
         fs::write(root.join("keep.txt"), "keep-2\n").unwrap();
         fs::write(root.join("other.txt"), "other-2\n").unwrap();
@@ -532,51 +792,121 @@ mod tests {
         fs::remove_file(root.join("gone.txt")).unwrap();
         run_git(&root, &["add", "-A"]);
         run_git(&root, &["commit", "-m", "second"]);
-        let second = git(&root, &["rev-parse", "HEAD"])
-            .unwrap()
-            .trim()
-            .to_string();
+        let second = head_of(&root);
 
-        fs::write(root.join("keep.txt"), "dirty-keep\n").unwrap();
-        fs::write(root.join("other.txt"), "dirty-other\n").unwrap();
+        fs::write(root.join("keep.txt"), "keep-3\n").unwrap();
+        run_git(&root, &["commit", "-am", "third"]);
+        let third = head_of(&root);
 
         assert!(restore_commit(&root, "not a hash", None).is_err());
-        assert!(restore_commit(&root, &first, Some(&["../outside.txt".into()])).is_err());
+        assert!(restore_commit(&root, &second, Some(&["../outside.txt".into()])).is_err());
+        assert!(restore_commit(&root, &second, Some(&["missing.txt".into()])).is_err());
 
-        restore_commit(&root, &first[..7], Some(&["keep.txt".into()])).unwrap();
-        assert_eq!(normalized(&root.join("keep.txt")), "keep-1\n");
+        let blocked = restore_commit(&root, &second, Some(&["keep.txt".into()]));
+        assert!(blocked.is_err(), "{blocked:?}");
+        assert_eq!(normalized(&root.join("keep.txt")), "keep-3\n");
+        assert_eq!(normalized(&root.join("other.txt")), "other-2\n");
+        assert_eq!(porcelain(&root).trim(), "");
+        assert!(git(&root, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]).is_err());
+
+        fs::write(root.join("keep.txt"), "dirty-keep\n").unwrap();
+        let blocked = restore_commit(&root, &third, None);
+        assert!(blocked.is_err(), "{blocked:?}");
+        assert_eq!(normalized(&root.join("keep.txt")), "dirty-keep\n");
+        run_git(&root, &["checkout", "--", "keep.txt"]);
+
+        restore_commit(&root, &third[..7], Some(&["keep.txt".into()])).unwrap();
+        assert_eq!(normalized(&root.join("keep.txt")), "keep-2\n");
+        assert_eq!(normalized(&root.join("other.txt")), "other-2\n");
+        assert!(root.join("added.txt").is_file());
+        assert!(!root.join("gone.txt").exists());
+        assert_eq!(head_of(&root), third);
+        let status = porcelain(&root);
+        assert!(status.contains("keep.txt"), "{status}");
+        assert!(!status.contains("other.txt"), "{status}");
+        assert!(git(&root, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]).is_err());
+
+        run_git(&root, &["checkout", "--", "."]);
+        fs::write(root.join("other.txt"), "dirty-other\n").unwrap();
+        restore_commit(&root, &second, Some(&["added.txt".into()])).unwrap();
+        assert!(!root.join("added.txt").exists());
+        assert_eq!(normalized(&root.join("keep.txt")), "keep-3\n");
+        assert_eq!(normalized(&root.join("other.txt")), "dirty-other\n");
+        assert_eq!(head_of(&root), third);
+
+        restore_commit(&root, &second, Some(&["gone.txt".into()])).unwrap();
+        assert_eq!(normalized(&root.join("gone.txt")), "gone-1\n");
+        assert_eq!(normalized(&root.join("other.txt")), "dirty-other\n");
+        assert_eq!(head_of(&root), third);
+
+        run_git(&root, &["clean", "-fd"]);
+        run_git(&root, &["reset", "--hard", &third]);
+        fs::write(root.join("other.txt"), "dirty-other\n").unwrap();
+        restore_commit(&root, &third, None).unwrap();
+        assert_eq!(normalized(&root.join("keep.txt")), "keep-2\n");
         assert_eq!(normalized(&root.join("other.txt")), "dirty-other\n");
         assert!(root.join("added.txt").is_file());
         assert!(!root.join("gone.txt").exists());
+        assert_eq!(head_of(&root), third);
+        assert!(git(&root, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]).is_err());
 
-        restore_commit(&root, &first, Some(&["gone.txt".into()])).unwrap();
-        assert_eq!(normalized(&root.join("gone.txt")), "gone-1\n");
-        assert_eq!(normalized(&root.join("other.txt")), "dirty-other\n");
-
-        restore_commit(&root, &first, Some(&["added.txt".into()])).unwrap();
-        assert!(!root.join("added.txt").exists());
-        assert_eq!(normalized(&root.join("other.txt")), "dirty-other\n");
-        assert_eq!(git(&root, &["rev-parse", "HEAD"]).unwrap().trim(), second);
-
-        restore_commit(&root, &first, None).unwrap();
+        run_git(&root, &["clean", "-fd"]);
+        run_git(&root, &["reset", "--hard", &second]);
+        fs::write(root.join("scratch.txt"), "note\n").unwrap();
+        restore_commit(&root, &second, None).unwrap();
         assert_eq!(normalized(&root.join("keep.txt")), "keep-1\n");
         assert_eq!(normalized(&root.join("gone.txt")), "gone-1\n");
         assert!(!root.join("added.txt").exists());
         assert!(!root.join("other.txt").exists());
-        assert_eq!(git(&root, &["rev-parse", "HEAD"]).unwrap().trim(), second);
+        assert_eq!(normalized(&root.join("scratch.txt")), "note\n");
+        assert_eq!(head_of(&root), second);
+        assert!(
+            porcelain(&root).contains("scratch.txt"),
+            "{}",
+            porcelain(&root)
+        );
+        assert!(git(&root, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]).is_err());
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn restore_commit_undoes_a_rename_without_moving_the_branch() {
+        let root = scratch("restore-rename");
+        init_repo(&root);
+        fs::write(root.join("old.txt"), "hello\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-m", "first"]);
+        run_git(&root, &["mv", "old.txt", "new.txt"]);
+        run_git(&root, &["commit", "-m", "rename"]);
+        let rename = head_of(&root);
+
+        restore_commit(&root, &rename, Some(&["new.txt".into()])).unwrap();
+        assert_eq!(normalized(&root.join("old.txt")), "hello\n");
+        assert!(!root.join("new.txt").exists());
+        assert_eq!(head_of(&root), rename);
+        assert!(!porcelain(&root).trim().is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reset_to_commit_moves_the_branch() {
+        let root = scratch("reset-commit");
+        init_repo(&root);
+        fs::write(root.join("keep.txt"), "keep-1\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-m", "first"]);
+        let first = head_of(&root);
+        fs::write(root.join("keep.txt"), "keep-2\n").unwrap();
+        run_git(&root, &["commit", "-am", "second"]);
         fs::write(root.join("scratch.txt"), "note\n").unwrap();
-        restore_commit(&root, &first, None).unwrap();
-        assert_eq!(normalized(&root.join("scratch.txt")), "note\n");
 
-        fs::write(root.join("keep.txt"), "dirty-again\n").unwrap();
         reset_to_commit(&root, &first).unwrap();
-        assert_eq!(git(&root, &["rev-parse", "HEAD"]).unwrap().trim(), first);
+        assert_eq!(head_of(&root), first);
         assert_eq!(normalized(&root.join("keep.txt")), "keep-1\n");
-        assert_eq!(normalized(&root.join("gone.txt")), "gone-1\n");
         assert_eq!(normalized(&root.join("scratch.txt")), "note\n");
-        let status = git(&root, &["status", "--porcelain"]).unwrap();
-        assert_eq!(status.trim(), "?? scratch.txt");
+        assert_eq!(porcelain(&root).trim(), "?? scratch.txt");
 
         let _ = fs::remove_dir_all(root);
     }

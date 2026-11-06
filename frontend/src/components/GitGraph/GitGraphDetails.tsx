@@ -199,11 +199,11 @@ export function GitGraphDetails({ path, commit, head, onFilesRestored, onBranchM
             variant="secondary"
             size="xs"
             disabled={working}
-            title="Make every tracked file match this commit. The branch stays where it is."
+            title="Undo this commit and leave the changes in the working tree. The branch stays where it is."
             onClick={() => openRestore({ kind: "tree" })}
           >
             <Undo2 id="restore-repo-icon" className="size-3.5" />
-            <span id="restore-repo-label">Restore repo</span>
+            <span id="restore-repo-label">Restore commit</span>
           </Button>
           <Button
             id="move-branch"
@@ -218,7 +218,7 @@ export function GitGraphDetails({ path, commit, head, onFilesRestored, onBranchM
           </Button>
         </div>
         <p id="git-graph-details-restore-hint" className="mt-1.5 text-xs text-zinc-500">
-          Restore keeps this branch so you can commit the result. Moving the branch drops the commits after this one.
+          Restore undoes that commit and leaves the result uncommitted. Moving the branch drops the commits after this one.
         </p>
       </header>
       {notice ? (
@@ -277,7 +277,7 @@ export function GitGraphDetails({ path, commit, head, onFilesRestored, onBranchM
               variant="secondary"
               size="xs"
               disabled={working || restorePaths.length === 0}
-              title={checked.length > 0 ? "Make the checked files match this commit" : "Make the open file match this commit"}
+              title={checked.length > 0 ? "Undo this commit's changes to the checked files and leave them in the working tree" : "Undo this commit's changes to the open file and leave them in the working tree"}
               onClick={() => openRestore({ kind: "files", paths: restorePaths })}
             >
               <Undo2 id="commit-files-restore-icon" className="size-3.5" />
@@ -357,7 +357,7 @@ export function GitGraphDetails({ path, commit, head, onFilesRestored, onBranchM
                       variant="ghost"
                       size="xs"
                       className="h-6 shrink-0 px-1"
-                      title={`Make ${file.path} match this commit`}
+                      title={`Undo this commit's changes to ${file.path}`}
                       aria-label={`Restore ${file.path}`}
                       disabled={working}
                       onClick={() => openRestore({ kind: "files", paths: [file.path] })}

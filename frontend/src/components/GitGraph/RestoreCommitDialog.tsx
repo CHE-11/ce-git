@@ -20,13 +20,13 @@ function shortHash(hash: string) {
 
 function title(request: RestoreRequest) {
   if (request.kind === "branch") return "Move branch to this commit";
-  if (request.kind === "tree") return "Restore the repo to this commit";
+  if (request.kind === "tree") return "Restore this commit";
   return request.paths.length === 1 ? "Restore this file" : "Restore these files";
 }
 
 function confirmLabel(request: RestoreRequest) {
   if (request.kind === "branch") return "Move branch";
-  if (request.kind === "tree") return "Restore repo";
+  if (request.kind === "tree") return "Restore commit";
   return request.paths.length === 1 ? "Restore file" : `Restore ${request.paths.length} files`;
 }
 
@@ -51,13 +51,12 @@ export function RestoreCommitDialog({ request, hash, subject, isHead, working, e
         </p>
       ) : request?.kind === "tree" ? (
         <p id="restore-commit-dialog-copy" className="text-sm wrap-break-word text-zinc-300">
-          Every tracked file will match {shortHash(hash)}, “{label}”. The branch stays where it is, so you can review the result and commit it. Uncommitted edits to tracked files are replaced. Files that
-          were never committed stay on disk.
+          The changes from {shortHash(hash)}, “{label}”, will be undone and left uncommitted in the working tree. The branch stays where it is. Later commits stay. Commit or stash uncommitted edits that overlap
+          those changes first.
         </p>
       ) : (
         <p id="restore-commit-dialog-copy" className="text-sm wrap-break-word text-zinc-300">
-          {request?.paths.length === 1 ? "This file will match" : "These files will match"} {shortHash(hash)}. Everything else stays as it is. A file that did not exist in that commit is removed, including
-          uncommitted edits to it.
+          This commit's changes to {request?.paths.length === 1 ? "this file" : "these files"} will be undone and left uncommitted in the working tree. Everything else stays as it is.
         </p>
       )}
       {request?.kind === "files" ? (

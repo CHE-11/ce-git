@@ -1,6 +1,6 @@
 [package]
 name = "ce-git"
-version = "1.0.42"
+version = "1.0.43"
 description = "Nested git client"
 authors = ["you"]
 edition = "2024"

@@ -172,7 +172,7 @@ export function GitSyncProgress({ id, label, total, logs, running, error }: GitS
           </p>
         ) : (
           visibleLogs.map((entry, index) => (
-            <p id={`${id}-line-${index}`} key={`${entry.action}-${entry.repo}-${index}`} className="truncate py-0.5">
+            <p id={`${id}-line-${index}`} key={`${entry.action}-${entry.repo}-${index}`} className="py-0.5 whitespace-pre-wrap wrap-break-word">
               <span id={`${id}-repo-${index}`} className="text-zinc-200">
                 {entry.repo}
               </span>{" "}

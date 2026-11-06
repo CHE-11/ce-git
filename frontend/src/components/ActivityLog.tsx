@@ -230,7 +230,7 @@ export function ActivityLog({ logs, onClear }: Props) {
           </p>
         ) : (
           logs.map((entry, index) => (
-            <p id={`batch-log-line-${index}`} key={`${entry.action}-${entry.repo}-${index}`} className="truncate">
+            <p id={`batch-log-line-${index}`} key={`${entry.action}-${entry.repo}-${index}`} className="py-0.5 whitespace-pre-wrap wrap-break-word">
               <span id={`batch-log-action-${index}`} className="text-zinc-500">
                 {entry.action}
               </span>{" "}

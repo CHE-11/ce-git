@@ -8,6 +8,7 @@ import { UpdateDialog } from "../components/Dialogs/UpdateDialog";
 import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
+import { InternetDownBar } from "../components/InternetDownBar";
 import { GitPullConfirmationDialog } from "../components/Dialogs/GitPullConfirmationDialog";
 import { GitPushConfirmationDialog } from "../components/Dialogs/GitPushConfirmationDialog";
 import { RestoreDialog } from "../components/Dialogs/RestoreDialog";
@@ -295,6 +296,7 @@ export function HomePage() {
           Install Git and make sure `git` is on your PATH, then restart ce-git.
         </p>
       ) : null}
+      <InternetDownBar />
       <div id="workspace" className="flex min-h-0 flex-1">
         <RepoTree
           trees={workspace.trees}

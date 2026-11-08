@@ -39,6 +39,16 @@ export interface RepoStatus {
   error: string | null;
 }
 
+export type BranchKind = "local" | "remote";
+
+export interface RepoBranch {
+  name: string;
+  kind: BranchKind;
+  current: boolean;
+  /** Upstream of a local branch, such as `origin/main`. */
+  upstream: string | null;
+}
+
 export interface FileChange {
   path: string;
   previousPath?: string | null;

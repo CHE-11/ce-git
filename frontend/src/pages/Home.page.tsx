@@ -6,6 +6,7 @@ import { AiCommitDialog } from "../components/Dialogs/AiCommitDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
 import { UpdateDialog } from "../components/Dialogs/UpdateDialog";
 import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
+import { BranchDialog } from "../components/Dialogs/BranchDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
 import { InternetDownBar } from "../components/InternetDownBar";
@@ -35,6 +36,7 @@ export function HomePage() {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [explorerPath, setExplorerPath] = useState<string | null>(null);
+  const [branchRepo, setBranchRepo] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "ce-git";
@@ -54,7 +56,24 @@ export function HomePage() {
     }
   }, [explorerPath, workspace.repos]);
 
+  useEffect(() => {
+    if (!branchRepo) {
+      return;
+    }
+    if (!workspace.repos.some((repo) => pathEquals(repo.path, branchRepo))) {
+      setBranchRepo(null);
+    }
+  }, [branchRepo, workspace.repos]);
+
   const busy = workspace.busyAction !== null;
+  const openBranches = (path: string) => {
+    if (busy) {
+      return;
+    }
+    setExplorerPath(null);
+    workspace.selectRepo(path, "replace");
+    setBranchRepo(path);
+  };
   const hasRoots = workspace.rootPaths.length > 0;
   const hasRepos = workspace.repos.length > 0;
   const hasActive = workspace.activePath !== null;
@@ -209,6 +228,18 @@ export function HomePage() {
       run: () => setSettingsTab("ignore"),
     },
     {
+      id: "switch-branch",
+      label: "Switch or create branch",
+      group: "Active repo",
+      keywords: "checkout new branch changes",
+      disabled: busy || !hasActive,
+      run: () => {
+        if (workspace.activePath) {
+          openBranches(workspace.activePath);
+        }
+      },
+    },
+    {
       id: "open-editor",
       label: openInLabel(editorById(workspace.defaultEditor)),
       group: "Active repo",
@@ -309,6 +340,7 @@ export function HomePage() {
             setExplorerPath(null);
             workspace.selectRepo(path, "replace");
           }}
+          onOpenBranch={openBranches}
           onViewRepo={(path) => {
             workspace.selectRepo(path, "replace");
             setExplorerPath(path);
@@ -365,6 +397,11 @@ export function HomePage() {
           menuEditors={workspace.menuEditors}
           graphOpen={graphOpen}
           onToggleGraph={() => setGraphOpen((open) => !open)}
+          onOpenBranches={() => {
+            if (workspace.activePath) {
+              openBranches(workspace.activePath);
+            }
+          }}
           stashes={workspace.stashes}
           onRestoreStash={(id) => {
             if (workspace.activePath) {
@@ -430,6 +467,17 @@ export function HomePage() {
         gitReady={workspace.gitReady}
         updateVersion={updates.availableVersion}
         onUpdate={updates.showPending}
+        onBranch={
+          workspace.activePath
+            ? () => {
+                const path = workspace.activePath;
+                if (path) {
+                  openBranches(path);
+                }
+              }
+            : undefined
+        }
+        branchDisabled={busy}
       />
 
       {/* Dialogs */}
@@ -458,6 +506,19 @@ export function HomePage() {
         onClose={updates.dismiss}
         onInstall={() => void updates.install()}
       />
+
+      {branchRepo ? (
+        <BranchDialog
+          key={branchRepo}
+          repoPath={branchRepo}
+          dirty={workspace.statuses[branchRepo]?.dirty ?? false}
+          detached={workspace.statuses[branchRepo]?.detached ?? false}
+          busy={busy}
+          onClose={() => setBranchRepo(null)}
+          onCheckout={(name) => workspace.checkoutBranch(branchRepo, name)}
+          onCreate={(name) => workspace.createBranch(branchRepo, name)}
+        />
+      ) : null}
 
       {createRepoOpen ? (
         <CreateRepoDialog 

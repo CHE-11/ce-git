@@ -183,6 +183,21 @@ async fn commit_diff(path: String, hash: String) -> Result<git::CommitDiff, Stri
     spawn_git(move || git::commit_diff(Path::new(&path), &hash)).await?
 }
 
+#[tauri::command]
+async fn list_branches(repo: String) -> Result<Vec<git::RepoBranch>, String> {
+    spawn_git(move || git::list_branches(Path::new(&repo))).await?
+}
+
+#[tauri::command]
+async fn checkout_branch(repo: String, name: String) -> Result<(), String> {
+    spawn_git(move || git::checkout_branch(Path::new(&repo), &name)).await?
+}
+
+#[tauri::command]
+async fn create_branch(repo: String, name: String) -> Result<(), String> {
+    spawn_git(move || git::create_branch(Path::new(&repo), &name)).await?
+}
+
 async fn spawn_git<T: Send + 'static>(
     work: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, String> {
@@ -533,6 +548,9 @@ pub fn run() {
             repo_diff,
             repo_graph,
             commit_diff,
+            list_branches,
+            checkout_branch,
+            create_branch,
             search_repos,
             generate_commit_message,
             batch_pull,

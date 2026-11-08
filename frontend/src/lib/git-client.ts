@@ -16,6 +16,7 @@ import type {
   GitSettings,
   OpenAiModel,
   PublishOptions,
+  RepoBranch,
   RepoDiff,
   RepoGraph,
   RepoSearchResult,
@@ -148,6 +149,18 @@ export function repoStatuses(paths: string[], fetchRemote = false) {
 
 export function repoDiff(path: string) {
   return invoke<RepoDiff>("repo_diff", { path });
+}
+
+export function listBranches(repo: string) {
+  return invoke<RepoBranch[]>("list_branches", { repo });
+}
+
+export function checkoutBranch(repo: string, name: string) {
+  return invoke<void>("checkout_branch", { repo, name });
+}
+
+export function createBranch(repo: string, name: string) {
+  return invoke<void>("create_branch", { repo, name });
 }
 
 export function repoGraph(path: string, limit: number) {

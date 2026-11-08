@@ -1,3 +1,4 @@
+mod branch;
 mod changes;
 mod command;
 mod commit;
@@ -11,6 +12,7 @@ mod stash;
 mod status;
 mod sync;
 
+pub use branch::{RepoBranch, checkout_branch, create_branch, list_branches};
 pub use changes::{contained_path, discard_change, ignore_change, reset_to_commit, restore_commit};
 pub use command::git_available;
 

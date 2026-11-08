@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, GitGraph as GitGraphIcon, Loader2, RefreshCw, Upload } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, GitGraph as GitGraphIcon, Loader2, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus, StashEntry, StashFile, StashFileView, StashKeepSource } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
@@ -65,6 +65,7 @@ type RepoDetailProps = {
   menuEditors: readonly EditorId[];
   graphOpen: boolean;
   onToggleGraph: () => void;
+  onOpenBranches: () => void;
 };
 
 export function RepoDetail({
@@ -98,6 +99,7 @@ export function RepoDetail({
   menuEditors,
   graphOpen,
   onToggleGraph,
+  onOpenBranches,
 }: RepoDetailProps) {
   const files = diff?.files ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -297,9 +299,18 @@ export function RepoDetail({
             <GitGraphIcon className="size-3.5" />
             <span className="ml-1 text-[8px] ">Commit Graph</span>
           </Badge>
-          <Badge id="badge-branch" tone="blue">
-            {status?.branch ?? "…"}
-          </Badge>
+          <button
+            id="badge-branch"
+            type="button"
+            title="Switch branch or create a new one for the current changes"
+            aria-haspopup="dialog"
+            disabled={busy}
+            onClick={onOpenBranches}
+            className="inline-flex items-center gap-0.5 rounded bg-sky-950 px-1.5 py-0.5 text-xs font-medium text-sky-300 hover:bg-sky-900 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span id="badge-branch-name">{status?.branch ?? "…"}</span>
+            <ChevronDown id="badge-branch-chevron" className="size-3" />
+          </button>
           {status?.upstream ? (
             <Badge id="badge-upstream">{status.upstream}</Badge>
           ) : (

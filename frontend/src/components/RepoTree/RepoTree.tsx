@@ -71,6 +71,7 @@ type RepoTreeProps = {
   discovering: boolean;
   onOpen: (path: string) => void;
   onViewRepo: (path: string) => void;
+  onOpenBranch: (path: string) => void;
   busy: boolean;
   removedRepos: string[];
   onOpenInEditor: (path: string, editor: EditorId) => void;
@@ -188,6 +189,7 @@ export function RepoTree({
   discovering,
   onOpen,
   onViewRepo,
+  onOpenBranch,
   busy,
   removedRepos,
   onOpenInEditor,
@@ -493,6 +495,8 @@ export function RepoTree({
                   }}
                   onOpen={onOpen}
                   onViewRepo={onViewRepo}
+                  onOpenBranch={onOpenBranch}
+                  actionsDisabled={busy}
                   allowRootCollapse={rootsCollapsible}
                   onContextMenu={(next, x, y) => setMenu({ node: next, x, y })}
                   folderVars={folderVars}

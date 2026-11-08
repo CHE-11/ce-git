@@ -9,6 +9,8 @@ import {
   batchCommit,
   batchPull,
   batchPush,
+  checkoutBranch as checkoutBranchRequest,
+  createBranch as createBranchRequest,
   dropStash,
   keepStashFile as keepStashFileRequest,
   publishRepo,
@@ -1160,6 +1162,36 @@ export function useWorkspace() {
     }
   };
 
+  const checkoutBranch = async (repo: string, name: string) => {
+    const branch = name.trim();
+    if (!repo || !branch) {
+      return;
+    }
+    beginWork("branch");
+    setError(null);
+    try {
+      await checkoutBranchRequest(repo, branch);
+      await refreshRepo(repo);
+    } finally {
+      endWork();
+    }
+  };
+
+  const createBranch = async (repo: string, name: string) => {
+    const branch = name.trim();
+    if (!repo || !branch) {
+      return;
+    }
+    beginWork("branch");
+    setError(null);
+    try {
+      await createBranchRequest(repo, branch);
+      await refreshRepo(repo);
+    } finally {
+      endWork();
+    }
+  };
+
   const discardChanges = async (repo: string, files: FileChange[]) => {
     if (!repo || files.length === 0) {
       return;
@@ -1702,6 +1734,8 @@ export function useWorkspace() {
     cloneRepo,
     refresh,
     refreshActive,
+    checkoutBranch,
+    createBranch,
     refreshingActive: refreshingPath !== null && activePath !== null && pathEquals(refreshingPath, activePath),
     selectRepo,
     selectRepos,

@@ -11,13 +11,15 @@ type StatusBarProps = {
   gitReady: boolean;
   updateVersion: string | null;
   onUpdate: () => void;
+  onBranch?: () => void;
+  branchDisabled?: boolean;
 };
 
 function Divider({ id }: { id: string }) {
   return <span id={id} className="h-3 w-px shrink-0 bg-zinc-700" aria-hidden="true" />;
 }
 
-export function StatusBar({ rootPaths, branch, discovering, gitReady, updateVersion, onUpdate }: StatusBarProps) {
+export function StatusBar({ rootPaths, branch, discovering, gitReady, updateVersion, onUpdate, onBranch, branchDisabled = false }: StatusBarProps) {
   const zoom = useFontZoom();
   const [version, setVersion] = useState<string | null>(null);
 
@@ -68,9 +70,23 @@ export function StatusBar({ rootPaths, branch, discovering, gitReady, updateVers
         {branch ? (
           <>
             <Divider id="status-sep-branch" />
-            <span id="status-branch" className="shrink-0 truncate text-sky-300" title={branch}>
-              {branch}
-            </span>
+            {onBranch ? (
+              <button
+                id="status-branch"
+                type="button"
+                title="Switch branch or create a new one"
+                aria-haspopup="dialog"
+                disabled={branchDisabled}
+                onClick={onBranch}
+                className="shrink-0 truncate border-0 bg-transparent p-0 text-xs text-sky-300 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {branch}
+              </button>
+            ) : (
+              <span id="status-branch" className="shrink-0 truncate text-sky-300" title={branch}>
+                {branch}
+              </span>
+            )}
           </>
         ) : null}
         {discovering ? (

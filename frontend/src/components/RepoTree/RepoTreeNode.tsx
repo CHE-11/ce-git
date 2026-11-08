@@ -32,6 +32,8 @@ type RepoTreeNodeProps = {
   dirtyFolders: ReadonlySet<string>;
   behindFolders: ReadonlySet<string>;
   trailing?: ReactNode;
+  onOpenBranch: (path: string) => void;
+  actionsDisabled?: boolean;
 };
 
 export function RepoTreeNode({
@@ -53,6 +55,8 @@ export function RepoTreeNode({
   dirtyFolders,
   behindFolders,
   trailing,
+  onOpenBranch,
+  actionsDisabled = false,
   allowRootCollapse = true,
 }: RepoTreeNodeProps) {
   const rowId = domId("tree-row", node.path);
@@ -185,9 +189,21 @@ export function RepoTreeNode({
             ) : null}
             {status ? (
               <span id={domId("tree-meta", node.path)} className="flex shrink-0 items-center gap-1.5 text-xs">
-                <span id={domId("tree-branch", node.path)} className="text-zinc-500">
+                <button
+                  id={domId("tree-branch", node.path)}
+                  type="button"
+                  title="Switch branch or create a new one for the current changes"
+                  aria-haspopup="dialog"
+                  disabled={actionsDisabled}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenBranch(node.path);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  className="cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-xs text-zinc-400 hover:text-sky-300 hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-zinc-400 disabled:hover:no-underline"
+                >
                   {status.branch}
-                </span>
+                </button>
                 {status.ahead > 0 ? (
                   <span id={domId("tree-ahead", node.path)} className="text-emerald-400">
                     ↑{status.ahead}
@@ -278,6 +294,8 @@ export function RepoTreeNode({
               folderIndicator={folderIndicator}
               dirtyFolders={dirtyFolders}
               behindFolders={behindFolders}
+              onOpenBranch={onOpenBranch}
+              actionsDisabled={actionsDisabled}
             />
           ))}
         </div>

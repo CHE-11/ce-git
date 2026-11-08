@@ -1,0 +1,15 @@
+---
+description: Read the running ce-git window through the dev feedback MCP while building.
+alwaysApply: true
+---
+
+# Dev feedback
+
+When ce-git is running from `pnpm tauri dev` (VS Code task **Run Dev**), use the `ce-git` MCP tools to check UI work:
+
+- `app_status` — whether the debug window is up, and how old the snapshot is
+- `workspace` — roots, selection, active repo, dialogs, activity log
+- `ui_tree` — visible elements and their ids. Pass `idPrefix` to narrow the list
+- `console` — recent warnings and errors
+
+Do not open the Vite URL, use browser tools, or run `vite preview`. These tools are read-only. They do not click, commit, push, or change settings. If `app_status` says the app is not running, ask for the Run Dev task instead of guessing what the window shows.

@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "ce-git": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp/dev-server.mjs"]
+    }
+  }
+}

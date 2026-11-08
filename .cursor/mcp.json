@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ce-git": {
+      "command": "node",
+      "args": ["mcp/dev-server.mjs"]
+    }
+  }
+}

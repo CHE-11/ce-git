@@ -1,7 +1,7 @@
 {
   "name": "ce-git",
   "private": true,
-  "version": "1.0.46",
+  "version": "1.0.47",
   "scripts": {
     "dev": "pnpm --dir frontend dev",
     "build": "pnpm --dir frontend build",
@@ -9,6 +9,7 @@
     "build:exe": "node scripts/build-exe.mjs",
     "publish:exe": "node scripts/publish-exe.mjs",
     "build:app": "node scripts/build-macos.mjs",
+    "build:linux": "node scripts/build-linux.mjs",
     "install:exe": "node scripts/install.mjs",
     "tauri": "tauri"
   },

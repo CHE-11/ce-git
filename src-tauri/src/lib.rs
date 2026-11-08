@@ -1,14 +1,18 @@
 mod ai;
 mod app_settings;
 mod batch;
+mod dev_feedback;
 mod editor;
 mod files;
 mod git;
 mod update;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tauri::Manager;
+
+use dev_feedback::{dev_feedback_probe, dev_feedback_push};
 
 use batch::CommitRequest;
 use git::{RepoDiff, RepoStatus, TreeNode, refresh_status, repo_diff as read_repo_diff, status_of};
@@ -523,6 +527,18 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 window.set_icon(icon)?;
             }
+            #[cfg(debug_assertions)]
+            {
+                let feedback = Arc::new(dev_feedback::DevFeedback::enabled());
+                if let Err(error) = dev_feedback::start(Arc::clone(&feedback)) {
+                    eprintln!("ce-git dev feedback bridge did not start: {error}");
+                }
+                app.manage(feedback);
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                app.manage(Arc::new(dev_feedback::DevFeedback::disabled()));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -582,8 +598,16 @@ pub fn run() {
             reveal_change,
             open_change,
             list_directory,
-            search_directory
+            search_directory,
+            dev_feedback_probe,
+            dev_feedback_push
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                #[cfg(debug_assertions)]
+                dev_feedback::clear_port_file();
+            }
+        });
 }

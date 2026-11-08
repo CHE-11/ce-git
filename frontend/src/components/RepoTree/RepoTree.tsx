@@ -380,7 +380,7 @@ export function RepoTree({
   return (
     <aside
       id="repo-tree-panel"
-      style={{ width }}
+      style={{ minWidth: '290px', width: width }}
       className="relative z-10 flex shrink-0 flex-col border-r border-zinc-800 bg-zinc-950"
     >
       <form

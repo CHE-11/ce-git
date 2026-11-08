@@ -50,3 +50,24 @@ To install dependencies, run `pnpm install` in the project root.
 To run in development mode, run `pnpm dev` in the project root.
 To build the Windows exe, run `pnpm build:exe` in the project root.
 To build the macOS app, run `pnpm build:app` in the project root.
+To build the Linux app, run `pnpm build:linux` in the project root.
+
+## MCP
+
+The debug build can show Cursor or VS Code what is on screen: the workspace, the visible elements, and recent console errors. It is read-only. It does not click, commit, or push. Start the app with `pnpm tauri dev` (the **Run Dev** task). `pnpm dev` only starts the web page, and that page is not the app.
+
+`pnpm install` in the project root also installs the small server in `mcp/`.
+
+### Cursor
+
+This repo includes [`.cursor/mcp.json`](.cursor/mcp.json), which registers a server named `ce-git`.
+
+Open **Cursor Settings**, go to **MCP**, and enable **ce-git**. If the server is not listed, reload the window. It stays disconnected until the debug app is running.
+
+### VS Code
+
+VS Code reads [`.vscode/mcp.json`](.vscode/mcp.json) instead. This repo includes that file, with the same `ce-git` server.
+
+Open the Command Palette and run **MCP: List Servers**, then start **ce-git**. You can also open `.vscode/mcp.json` and start it from the control above the server entry. In chat, turn the server on in the tools list if it is off.
+
+

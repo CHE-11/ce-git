@@ -18,6 +18,7 @@ import { RepoDetail } from "../components/RepoDetails/RepoDetail";
 import { RepoTree } from "../components/RepoTree/RepoTree";
 import { StatusBar } from "../components/StatusBar";
 import { Toolbar } from "../components/Toolbar";
+import { useDevFeedback } from "../lib/dev-feedback";
 import { fileOpenMode, openInLabel, editorById } from "../lib/editors";
 import { useAppUpdate } from "../lib/use-app-update";
 import { useWorkspace } from "../lib/use-workspace";
@@ -41,6 +42,40 @@ export function HomePage() {
   useEffect(() => {
     document.title = "ce-git";
   }, []);
+
+  useDevFeedback({
+    rootPaths: workspace.rootPaths,
+    repoCount: workspace.repos.length,
+    selectedPaths: workspace.selectedPaths,
+    activePath: workspace.activePath,
+    activeStatus: workspace.activeStatus,
+    statuses: workspace.statuses,
+    busyAction: workspace.busyAction,
+    error: workspace.error,
+    discovering: workspace.discovering,
+    statusLoading: workspace.statusLoading,
+    diffLoading: workspace.diffLoading,
+    gitReady: workspace.gitReady,
+    diffFiles: workspace.diff?.files ?? [],
+    diffTruncated: workspace.diff?.truncated ?? false,
+    logs: workspace.logs,
+    dialogs: {
+      settings: settingsTab,
+      createRepo: createRepoOpen,
+      cloneRepo: cloneRepoOpen,
+      advancedSearch: advancedSearchOpen,
+      commands: commandsOpen,
+      restore: restoreOpen,
+      graph: graphOpen,
+      explorer: explorerPath,
+      branch: branchRepo,
+      aiReview: workspace.aiOpen,
+      pullConfirm: workspace.pullPaths !== null,
+      pushConfirm: workspace.pushPaths !== null,
+      clearCommits: pendingAction === "clear",
+      update: updates.open,
+    },
+  });
 
   useEffect(() => {
     if (!explorerPath) {

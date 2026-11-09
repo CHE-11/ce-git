@@ -75,7 +75,6 @@ export function CommitBox({
         value={message}
         onChange={(event) => onChange(event.target.value)}
         placeholder={dirty ? "type: summary" : "Working tree clean"}
-        disabled={locked}
         rows={2}
         className="w-full resize-none rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-600"
       />
@@ -87,7 +86,6 @@ export function CommitBox({
         value={description}
         onChange={(event) => onDescription(event.target.value)}
         placeholder={dirty ? "What changed and why" : "Working tree clean"}
-        disabled={locked}
         rows={4}
         className="w-full resize-none rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-600"
       />
@@ -95,7 +93,7 @@ export function CommitBox({
         <p id="openai-hint" className="mr-auto max-w-sm text-left text-xs text-zinc-500">
           {openaiReady === false
             ? "Add an API key in AI settings."
-            : "AI fills the message. Nothing is committed until you press Commit."}
+            : "Edit or clear the message and description. Nothing is committed until you press Commit."}
         </p>
         {filledPrompts.length > 0 ? (
           <div id="commit-prompts" className="flex rounded-md border border-zinc-700" role="group" aria-label="Commit prompt">

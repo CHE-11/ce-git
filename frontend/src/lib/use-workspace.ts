@@ -234,6 +234,12 @@ export function useWorkspace() {
   const stashRepoRef = useRef<string | null>(null);
   const pointerDownRef = useRef(0);
   const savedCommitsRef = useRef<Record<string, SavedCommit>>({});
+  const commitDraftRef = useRef<{ path: string | null; message: string; description: string }>({
+    path: null,
+    message: "",
+    description: "",
+  });
+  const draftTouchRef = useRef(0);
   const aiRunRef = useRef(0);
 
   const repos = useMemo(() => trees.flatMap((node) => collectRepos(node)), [trees]);
@@ -620,14 +626,12 @@ export function useWorkspace() {
   };
 
   const showSaved = (path: string | null) => {
-    if (!path) {
-      setCommitMessage("");
-      setCommitDescription("");
-      return;
-    }
-    const saved = readSaved(path);
-    setCommitMessage(saved?.message ?? "");
-    setCommitDescription(saved?.description ?? "");
+    const saved = path ? readSaved(path) : null;
+    const message = saved?.message ?? "";
+    const description = saved?.description ?? "";
+    commitDraftRef.current = { path, message, description };
+    setCommitMessage(message);
+    setCommitDescription(description);
   };
 
   useEffect(() => {
@@ -1441,12 +1445,14 @@ export function useWorkspace() {
       setError("Enter a commit message.");
       return;
     }
+    draftTouchRef.current += 1;
     logGeneration.current += 1;
     beginWork("commit");
     setError(null);
     try {
       await batchCommit([{ path: activePath, message }]);
       forgetSaved(activePath);
+      commitDraftRef.current = { path: activePath, message: "", description: "" };
       setCommitMessage("");
       setCommitDescription("");
       await finishBatch();
@@ -1463,6 +1469,7 @@ export function useWorkspace() {
   };
 
   const generateIntoBox = async (path: string, prompt = activePrompt()) => {
+    const touch = draftTouchRef.current;
     interactionEpoch.current += 1;
     activePathRef.current = path;
     selectedPathsRef.current = [path];
@@ -1472,8 +1479,12 @@ export function useWorkspace() {
     setError(null);
     try {
       const generated = await generateCommitMessage(path, prompt);
+      if (draftTouchRef.current !== touch) {
+        return;
+      }
       writeSaved(path, generated.subject, generated.description);
       if (activePathRef.current && pathEquals(activePathRef.current, path)) {
+        commitDraftRef.current = { path, message: generated.subject, description: generated.description };
         setCommitMessage(generated.subject);
         setCommitDescription(generated.description);
       }
@@ -1573,9 +1584,13 @@ export function useWorkspace() {
     }
     const path = activePathRef.current;
     if (path && chosen.some((draft) => pathEquals(draft.path, path))) {
+      draftTouchRef.current += 1;
       const saved = readSaved(path);
-      setCommitMessage(saved?.message ?? "");
-      setCommitDescription(saved?.description ?? "");
+      const message = saved?.message ?? "";
+      const description = saved?.description ?? "";
+      commitDraftRef.current = { path, message, description };
+      setCommitMessage(message);
+      setCommitDescription(description);
     }
     setReviewError(null);
     setDrafts([]);
@@ -1645,7 +1660,9 @@ export function useWorkspace() {
 
   const clearCommitDrafts = () => {
     aiRunRef.current += 1;
+    draftTouchRef.current += 1;
     savedCommitsRef.current = {};
+    commitDraftRef.current = { path: activePathRef.current, message: "", description: "" };
     setCommitMessage("");
     setCommitDescription("");
     setGenerating(false);
@@ -1675,21 +1692,29 @@ export function useWorkspace() {
     stashes,
     commitMessage,
     setCommitMessage: (message: string) => {
-      setCommitMessage(message);
+      draftTouchRef.current += 1;
       const path = activePathRef.current;
+      const sameDraft = path !== null && commitDraftRef.current.path !== null && pathEquals(commitDraftRef.current.path, path);
+      const description = sameDraft ? commitDraftRef.current.description : path ? (readSaved(path)?.description ?? "") : "";
+      commitDraftRef.current = { path, message, description };
+      setCommitMessage(message);
       if (!path) {
         return;
       }
-      writeSaved(path, message, readSaved(path)?.description ?? "");
+      writeSaved(path, message, description);
     },
     commitDescription,
     setCommitDescription: (description: string) => {
-      setCommitDescription(description);
+      draftTouchRef.current += 1;
       const path = activePathRef.current;
+      const sameDraft = path !== null && commitDraftRef.current.path !== null && pathEquals(commitDraftRef.current.path, path);
+      const message = sameDraft ? commitDraftRef.current.message : path ? (readSaved(path)?.message ?? "") : "";
+      commitDraftRef.current = { path, message, description };
+      setCommitDescription(description);
       if (!path) {
         return;
       }
-      writeSaved(path, readSaved(path)?.message ?? "", description);
+      writeSaved(path, message, description);
     },
     commitPrompts,
     selectedPrompt,

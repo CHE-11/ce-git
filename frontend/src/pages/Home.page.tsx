@@ -227,7 +227,7 @@ export function HomePage() {
       label: "Check for updates",
       group: "Settings",
       keywords: "upgrade whats new release",
-      disabled: updates.installing,
+      disabled: updates.checking || updates.installing,
       run: () => void updates.checkForUpdate(),
     },
     {
@@ -527,7 +527,7 @@ export function HomePage() {
           }}
           onAiSaved={() => void workspace.refreshAi()}
           onCheckForUpdates={() => void updates.checkForUpdate()}
-          checkingUpdates={updates.installing}
+          checkingUpdates={updates.checking || updates.installing}
         />
       ) : null}
 

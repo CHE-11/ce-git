@@ -1,4 +1,4 @@
-import { FolderSearch } from "lucide-react";
+import { FolderSearch, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   COLOR_MODE_OPTIONS,
@@ -108,11 +108,15 @@ export function AppSettingsTab({
             type="button"
             size="sm"
             variant="outline"
-            className="shrink-0"
+            className={cn("shrink-0", checkingUpdates && "disabled:opacity-100")}
             disabled={busy || checkingUpdates}
+            aria-busy={checkingUpdates}
             onClick={onCheckForUpdates}
           >
-            <span id="app-settings-check-updates-label">Check for updates</span>
+            {checkingUpdates ? (
+              <Loader2 id="app-settings-check-updates-spinner" className="size-3.5 animate-spin" aria-hidden="true" />
+            ) : null}
+            <span id="app-settings-check-updates-label">{checkingUpdates ? "Checking…" : "Check for updates"}</span>
           </Button>
           <Button
             id="app-settings-exe-reveal"

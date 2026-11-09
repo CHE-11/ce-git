@@ -31,6 +31,7 @@ export function useAppUpdate() {
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const updateRef = useRef<Update | null>(null);
   const notesVersionRef = useRef<string | null>(null);
   const checkingRef = useRef(false);
@@ -95,6 +96,7 @@ export function useAppUpdate() {
       return;
     }
     checkingRef.current = true;
+    setChecking(true);
     try {
       const next = await check();
       if (next) {
@@ -126,6 +128,7 @@ export function useAppUpdate() {
       }
     } finally {
       checkingRef.current = false;
+      setChecking(false);
     }
   }, [closeUpdate, showRelease, showWhatsNew]);
 
@@ -197,6 +200,7 @@ export function useAppUpdate() {
     progress,
     error,
     availableVersion,
+    checking,
     installing: mode === "downloading",
     checkForUpdate: () => checkForUpdate(true),
     install,

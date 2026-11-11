@@ -13,7 +13,7 @@ const signature = join(nsisDir, `${setupName}.sig`);
 const keyPath = join(homedir(), ".tauri", "ce-git.key");
 
 
-const keyFile = "S:/_keys_/ce-git.key";
+const keyFile = "S:/_keys_/ce-git/ce-git.key";
 if (!existsSync(keyFile)) {
   console.error(`No signing key at ${keyFile}`);
   process.exit(1);

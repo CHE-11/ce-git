@@ -1,4 +1,4 @@
-import { FolderSearch, Loader2 } from "lucide-react";
+import { FolderSearch, Loader2, RefreshCcw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   COLOR_MODE_OPTIONS,
@@ -104,6 +104,18 @@ export function AppSettingsTab({
             {exePath || "Looking up this application…"}
           </p>
           <Button
+            id="app-settings-exe-reveal"
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            title={revealLabel}
+            disabled={busy || exePath.length === 0}
+            onClick={onRevealExe}
+          >
+            <FolderSearch id="app-settings-exe-reveal-icon" className="size-3.5" aria-hidden="true" />
+          </Button>
+          <Button
             id="app-settings-check-updates"
             type="button"
             size="sm"
@@ -115,21 +127,10 @@ export function AppSettingsTab({
           >
             {checkingUpdates ? (
               <Loader2 id="app-settings-check-updates-spinner" className="size-3.5 animate-spin" aria-hidden="true" />
-            ) : null}
+            ) : (
+              <RefreshCcw id="app-settings-check-updates-icon" className="size-3.5" aria-hidden="true" />
+            )}
             <span id="app-settings-check-updates-label">{checkingUpdates ? "Checking…" : "Check for updates"}</span>
-          </Button>
-          <Button
-            id="app-settings-exe-reveal"
-            type="button"
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            title={revealLabel}
-            disabled={busy || exePath.length === 0}
-            onClick={onRevealExe}
-          >
-            <FolderSearch id="app-settings-exe-reveal-icon" className="size-3.5" aria-hidden="true" />
-            <span id="app-settings-exe-reveal-label">{revealLabel}</span>
           </Button>
         </section>
 
@@ -159,11 +160,13 @@ export function AppSettingsTab({
               placeholder="\\\\server\\share\\ce-git"
               className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50"
             />
-            <Button id="app-settings-browse" type="button" onClick={onBrowse} disabled={busy}>
-              <span id="app-settings-browse-label">Browse</span>
-            </Button>
             <Button id="app-settings-clear" type="button" variant="ghost" onClick={onClearFolder} disabled={busy || folder.trim().length === 0}>
+              <Trash2 id="app-settings-clear-icon" className="size-3.5" aria-hidden="true" />
               <span id="app-settings-clear-label">Clear</span>
+            </Button>
+            <Button id="app-settings-browse" type="button" onClick={onBrowse} disabled={busy}>
+              <FolderSearch id="app-settings-browse-icon" className="size-3.5" aria-hidden="true" />
+              <span id="app-settings-browse-label">Browse</span>
             </Button>
           </div>
           <p id="app-settings-folder-file" className="mt-2 truncate font-mono text-xs text-zinc-500" title={settingsFile || undefined}>

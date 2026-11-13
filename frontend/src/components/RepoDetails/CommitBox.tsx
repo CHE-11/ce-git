@@ -1,4 +1,4 @@
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown, EraserIcon, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../Button";
 import { AiPrompts } from "../../../../types/git";
@@ -39,6 +39,11 @@ export function CommitBox({
   const locked = !dirty || busy;
   const filledPrompts = PROMPT_SLOTS.filter((slot) => prompts[slot - 1]?.trim());
   const [collapsed, setCollapsed] = useState(false);
+
+  const onClearCommit = () => {
+    onChange("");
+    onDescription("");
+  };
 
   return (
     <form
@@ -134,6 +139,9 @@ export function CommitBox({
             })}
           </div>
         ) : null}
+        <Button id="clear-commit" onClick={onClearCommit} disabled={locked || generating}>
+          <EraserIcon id="clear-commit-icon" className="size-4" />
+        </Button>
         <Button id="generate-commit" onClick={onGenerate} disabled={locked || generating}>
           <Sparkles id="generate-commit-icon" className="size-4" />
           <span id="generate-commit-label">{generating ? "Generating…" : "Generate with AI"}</span>

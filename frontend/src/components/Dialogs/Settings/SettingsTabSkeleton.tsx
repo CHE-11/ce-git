@@ -44,9 +44,14 @@ function AppSkeleton() {
       >
         <LineBone id="settings-skeleton-app-folder-label" text="Folder" className="mb-1" textClassName="text-xs" width="w-12" />
         <div id="settings-skeleton-app-folder-row" className="flex items-center gap-2">
-          <ControlSkeleton id="settings-skeleton-app-folder-input" className="min-w-0 flex-1" />
+          <div
+            id="settings-skeleton-app-folder-field"
+            className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-zinc-700 bg-zinc-950 pr-1 pl-3"
+          >
+            <Bone id="settings-skeleton-app-folder-input" className="h-3 min-w-0 flex-1" />
+            <Bone id="settings-skeleton-app-clear" className="ml-2 h-6 w-16 shrink-0" />
+          </div>
           <Bone id="settings-skeleton-app-browse" className="h-8 w-16 shrink-0" />
-          <Bone id="settings-skeleton-app-clear" className="h-8 w-14 shrink-0" />
         </div>
         <LineBone
           id="settings-skeleton-app-folder-file"

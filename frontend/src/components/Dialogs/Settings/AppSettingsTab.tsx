@@ -142,28 +142,38 @@ export function AppSettingsTab({
           <label id="app-settings-folder-label" htmlFor="app-settings-folder-input" className="mb-1 block text-xs font-medium text-zinc-400">
             Folder
           </label>
-          <div id="app-settings-folder-row" className="flex gap-2">
-            <input
-              id="app-settings-folder-input"
-              value={folder}
-              onChange={(event) => onFolderChange(event.target.value)}
-              onBlur={(event) => {
-                const next = event.relatedTarget;
-                if (next instanceof HTMLElement && (next.id === "app-settings-browse" || next.id === "app-settings-clear")) {
-                  return;
-                }
-                onFolderCommit();
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy}
-              placeholder="\\\\server\\share\\ce-git"
-              className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50"
-            />
-            <Button id="app-settings-clear" type="button" variant="ghost" onClick={onClearFolder} disabled={busy || folder.trim().length === 0}>
-              <Trash2 id="app-settings-clear-icon" className="size-3.5" aria-hidden="true" />
-              <span id="app-settings-clear-label">Clear</span>
-            </Button>
+          <div id="app-settings-folder-row" className="flex items-center gap-2">
+            <div id="app-settings-folder-field" className="relative min-w-0 flex-1">
+              <input
+                id="app-settings-folder-input"
+                value={folder}
+                onChange={(event) => onFolderChange(event.target.value)}
+                onBlur={(event) => {
+                  const next = event.relatedTarget;
+                  if (next instanceof HTMLElement && (next.id === "app-settings-browse" || next.id === "app-settings-clear")) {
+                    return;
+                  }
+                  onFolderCommit();
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+                placeholder="\\\\server\\share\\ce-git"
+                className="h-8 w-full rounded-md border border-zinc-700 bg-zinc-950 pr-20 pl-3 font-mono text-sm text-zinc-100 outline-none focus:border-sky-500 disabled:opacity-50"
+              />
+              <Button
+                id="app-settings-clear"
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="absolute top-1/2 right-1 -translate-y-1/2"
+                onClick={onClearFolder}
+                disabled={busy || folder.trim().length === 0}
+              >
+                <Trash2 id="app-settings-clear-icon" className="size-3.5" aria-hidden="true" />
+                <span id="app-settings-clear-label">Clear</span>
+              </Button>
+            </div>
             <Button id="app-settings-browse" type="button" onClick={onBrowse} disabled={busy}>
               <FolderSearch id="app-settings-browse-icon" className="size-3.5" aria-hidden="true" />
               <span id="app-settings-browse-label">Browse</span>

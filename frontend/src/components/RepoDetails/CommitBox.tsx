@@ -139,7 +139,7 @@ export function CommitBox({
             })}
           </div>
         ) : null}
-        <Button id="clear-commit" onClick={onClearCommit} disabled={locked || generating}>
+        <Button id="clear-commit" onClick={onClearCommit} disabled={locked || generating || message.trim().length === 0}>
           <EraserIcon id="clear-commit-icon" className="size-4" />
         </Button>
         <Button id="generate-commit" onClick={onGenerate} disabled={locked || generating}>

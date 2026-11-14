@@ -71,8 +71,10 @@ pub fn clone_repo(url: &str, destination: &std::path::Path) -> Result<(), String
 pub use commit::commit_repo;
 pub use diff::{CommitDiff, RepoDiff, collect_ai_context, commit_diff, repo_diff};
 pub use discover::{TreeNode, discover};
-pub use github::GithubRepos;
-pub(crate) use github::{clone_url_for_account, fetch_github_repos, prepare_github_repos};
+pub use github::{GithubGists, GithubRepos};
+pub(crate) use github::{
+    clone_url_for_account, fetch_github_gists, fetch_github_repos, prepare_github_repos, publish_gist,
+};
 pub use graph::{RepoGraph, repo_graph};
 pub use search::{RepoSearchResult, search_repos};
 pub use settings::{
@@ -85,8 +87,8 @@ pub use stash::{
 };
 pub use status::{RepoStatus, refresh_status, status_of};
 pub use sync::{
-    Outcome, PublishOptions, abort_merge, conflict_files, continue_merge, publish_repo,
-    pull_default, push_repo,
+    GistPublishOptions, Outcome, PublishOptions, abort_merge, conflict_files, continue_merge,
+    publish_repo, pull_default, push_repo,
 };
 
 #[cfg(test)]
@@ -99,7 +101,8 @@ mod tests {
     use super::discover::{NodeKind, discover};
     use super::status::{is_github_url, refresh_status, status_of};
     use super::sync::{
-        Outcome, PublishOptions, abort_merge, continue_merge, publish_repo, pull_default, push_repo,
+        GistPublishOptions, Outcome, PublishOptions, abort_merge, continue_merge,
+        prepare_gist_publish, publish_repo, pull_default, push_repo,
     };
     use super::{TreeNode, commit_repo};
 
@@ -725,6 +728,15 @@ mod tests {
     fn unpublished_repos_push_only_to_github() {
         assert!(is_github_url("https://github.com/acme/widget.git"));
         assert!(is_github_url("git@github.com:acme/widget.git"));
+        assert!(is_github_url(
+            "https://gist.github.com/aaaaaaaaaaaaaaaaaaaa.git"
+        ));
+        assert!(is_github_url(
+            "https://alice@gist.github.com/aaaaaaaaaaaaaaaaaaaa.git"
+        ));
+        assert!(is_github_url(
+            "git@gist.github.com:aaaaaaaaaaaaaaaaaaaa.git"
+        ));
         assert!(!is_github_url("https://gitlab.com/acme/widget.git"));
 
         let tmp = scratch("unpublished");
@@ -735,6 +747,7 @@ mod tests {
         run_git(&local, &["commit", "-m", "initial"]);
         let status = status_of(&local);
         assert_eq!(status.github, None);
+        assert!(!status.gist);
 
         let bare = tmp.join("origin.git");
         run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
@@ -746,6 +759,94 @@ mod tests {
         );
         let after = status_of(&local);
         assert_eq!(after.github, Some(false));
+        assert!(!after.gist);
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn gist_origin_counts_as_github() {
+        let tmp = scratch("gist-origin");
+        let local = tmp.join("local");
+        init_repo(&local);
+        fs::write(local.join("README.md"), "one\n").unwrap();
+        run_git(&local, &["add", "."]);
+        run_git(&local, &["commit", "-m", "initial"]);
+        run_git(
+            &local,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://gist.github.com/aaaaaaaaaaaaaaaaaaaa.git",
+            ],
+        );
+        let status = status_of(&local);
+        assert_eq!(status.github, Some(true));
+        assert!(status.gist);
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+
+    #[test]
+    fn gist_publish_rejects_invalid_repos_before_calling_github() {
+        let tmp = scratch("gist-publish");
+        let missing = prepare_gist_publish(
+            &tmp.join("missing"),
+            &GistPublishOptions {
+                description: String::new(),
+                secret: true,
+            },
+        );
+        assert!(
+            matches!(missing, Err(ref message) if message.contains("not a git repository")),
+            "{missing:?}"
+        );
+
+        let local = tmp.join("local");
+        init_repo(&local);
+        let empty = prepare_gist_publish(
+            &local,
+            &GistPublishOptions {
+                description: String::new(),
+                secret: true,
+            },
+        );
+        assert!(
+            matches!(empty, Err(ref message) if message.contains("Commit")),
+            "{empty:?}"
+        );
+
+        fs::write(local.join("README.md"), "one\n").unwrap();
+        run_git(&local, &["add", "."]);
+        run_git(&local, &["commit", "-m", "initial"]);
+        let long = "a".repeat(257);
+        let described = prepare_gist_publish(
+            &local,
+            &GistPublishOptions {
+                description: long,
+                secret: false,
+            },
+        );
+        assert!(
+            matches!(described, Err(ref message) if message.contains("256")),
+            "{described:?}"
+        );
+
+        let bare = tmp.join("origin.git");
+        run_git(&tmp, &["init", "--bare", "-b", "main", "origin.git"]);
+        run_git(&local, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        let exists = prepare_gist_publish(
+            &local,
+            &GistPublishOptions {
+                description: "notes".into(),
+                secret: true,
+            },
+        );
+        assert!(
+            matches!(exists, Err(ref message) if message.contains("origin")),
+            "{exists:?}"
+        );
 
         let _ = fs::remove_dir_all(tmp);
     }

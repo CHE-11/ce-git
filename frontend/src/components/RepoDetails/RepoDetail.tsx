@@ -1,6 +1,6 @@
 import { ArrowDownToLine, ArrowUpToLine, ChevronDown, GitGraph as GitGraphIcon, Loader2, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { AiPrompts, PublishOptions, RepoDiff, RepoStatus, StashEntry, StashFile, StashFileView, StashKeepSource } from "../../../../types/git";
+import type { AiPrompts, PublishRequest, RepoDiff, RepoStatus, StashEntry, StashFile, StashFileView, StashKeepSource } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
 import { stashFileSides, stashFiles as listStashFiles } from "../../lib/git-client";
 import { patchForPath } from "../../lib/diff";
@@ -55,7 +55,7 @@ type RepoDetailProps = {
   refreshing: boolean;
   onPull: () => void;
   onPush: () => void;
-  onPublish: (options: PublishOptions) => Promise<void>;
+  onPublish: (request: PublishRequest) => Promise<void>;
   fileHandlers: ChangeFileHandlers;
   stashes: StashEntry[];
   onRestoreStash: (id: string) => void;
@@ -217,7 +217,7 @@ export function RepoDetail({
   const unpublished = status !== null && status.github === null && !status.error;
   const published = status !== null && status.github !== null && !status.error;
   const canPublish = unpublished && Boolean(status?.hasCommits) && !busy;
-  const publishTitle = status !== null && !status.hasCommits ? "Commit something before publishing" : "Create this repository on GitHub";
+  const publishTitle = status !== null && !status.hasCommits ? "Commit something before publishing" : "Publish to GitHub or as a gist";
   const ahead = status?.ahead ?? 0;
   const behind = status?.behind ?? 0;
   const untrackedBranch = Boolean(status?.hasCommits) && status?.upstream == null && !status?.detached;
@@ -311,6 +311,11 @@ export function RepoDetail({
             <span id="badge-branch-name">{status?.branch ?? "…"}</span>
             <ChevronDown id="badge-branch-chevron" className="size-3" />
           </button>
+          {status?.gist ? (
+            <Badge id="badge-gist" tone="violet" title="Origin is a GitHub gist">
+              Gist
+            </Badge>
+          ) : null}
           {status?.upstream ? (
             <Badge id="badge-upstream">{status.upstream}</Badge>
           ) : (

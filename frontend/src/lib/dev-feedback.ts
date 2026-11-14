@@ -13,6 +13,7 @@ const MESSAGE_LIMIT = 2000;
 export type DevDialogs = {
   settings: string | null;
   createRepo: boolean;
+  createGist: boolean;
   cloneRepo: boolean;
   advancedSearch: boolean;
   commands: boolean;

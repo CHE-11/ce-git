@@ -54,7 +54,7 @@ export function AiCommitDialog({
     onClose();
   }
 
-  const title = pushing ? "Pushing repositories" : pushPhase === "done" ? "Push finished" : "Review AI commit messages";
+  const title = pushing ? "Pushing repositories and gists" : pushPhase === "done" ? "Push finished" : "Review AI commit messages";
 
   return (
     <Dialog

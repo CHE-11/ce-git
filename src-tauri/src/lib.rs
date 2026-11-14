@@ -298,6 +298,15 @@ async fn publish_repo(
 }
 
 #[tauri::command]
+async fn publish_gist(
+    app: tauri::AppHandle,
+    path: String,
+    options: git::GistPublishOptions,
+) -> Result<(), String> {
+    batch::run_publish_gist(app, path, options).await
+}
+
+#[tauri::command]
 fn init_repo(path: String) -> Result<(), String> {
     git::init_repo(Path::new(&path))
 }
@@ -331,6 +340,33 @@ async fn list_github_repos(account: String) -> Result<git::GithubRepos, String> 
         accounts: prepared.accounts,
         account: prepared.account,
         repos,
+        truncated,
+        notice: prepared.notice,
+    })
+}
+
+#[tauri::command]
+async fn list_github_gists(account: String) -> Result<git::GithubGists, String> {
+    let prepared =
+        tauri::async_runtime::spawn_blocking(move || git::prepare_github_repos(&account))
+            .await
+            .map_err(|error| error.to_string())??;
+    let (gists, truncated) = match prepared.token {
+        Some(token) => git::fetch_github_gists(&token).await?,
+        None => (Vec::new(), false),
+    };
+    let account = prepared.account.clone();
+    let gists = gists
+        .into_iter()
+        .map(|mut gist| {
+            gist.url = git::clone_url_for_account(&gist.url, &account);
+            gist
+        })
+        .collect();
+    Ok(git::GithubGists {
+        accounts: prepared.accounts,
+        account: prepared.account,
+        gists,
         truncated,
         notice: prepared.notice,
     })
@@ -573,6 +609,7 @@ pub fn run() {
             batch_push,
             batch_commit,
             publish_repo,
+            publish_gist,
             open_in_editor,
             open_merge_in_editor,
             finish_merge,
@@ -582,6 +619,7 @@ pub fn run() {
             init_repo,
             clone_repo,
             list_github_repos,
+            list_github_gists,
             delete_path,
             list_stashes,
             stash_paths,

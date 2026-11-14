@@ -13,8 +13,10 @@ pub struct RepoStatus {
     pub branch: String,
     pub detached: bool,
     pub upstream: Option<String>,
-    /// True when origin is GitHub, false for another host, none when origin is missing.
+    /// True when origin is GitHub or a GitHub gist, false for another host, none when origin is missing.
     pub github: Option<bool>,
+    /// True when origin is a GitHub gist.
+    pub gist: bool,
     pub ahead: u32,
     pub behind: u32,
     pub dirty: bool,
@@ -44,6 +46,7 @@ pub fn status_of(path: &Path) -> RepoStatus {
             detached: false,
             upstream: None,
             github: None,
+            gist: false,
             ahead: 0,
             behind: 0,
             dirty: false,
@@ -87,7 +90,9 @@ fn read_status(path: &Path) -> Result<RepoStatus, String> {
         ],
     )?;
     let scan = parse_scan_status(&porcelain);
-    let github = origin_url_from_disk(path).map(|url| is_github_url(&url));
+    let origin = origin_url_from_disk(path);
+    let github = origin.as_deref().map(is_github_url);
+    let gist = origin.as_deref().is_some_and(is_gist_url);
 
     Ok(RepoStatus {
         path: path.to_string_lossy().into_owned(),
@@ -96,6 +101,7 @@ fn read_status(path: &Path) -> Result<RepoStatus, String> {
         detached: scan.detached,
         upstream: scan.upstream.clone(),
         github,
+        gist,
         ahead: scan.ahead,
         behind: behind_count(path, &scan),
         dirty: scan.staged + scan.unstaged + scan.untracked > 0,
@@ -443,6 +449,15 @@ pub fn is_github_url(url: &str) -> bool {
         || lower.contains("@github.com:")
         || lower.contains("@github.com/")
         || lower.starts_with("github.com/")
+        || is_gist_url(&lower)
+}
+
+pub fn is_gist_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("://gist.github.com/")
+        || lower.contains("@gist.github.com:")
+        || lower.contains("@gist.github.com/")
+        || lower.starts_with("gist.github.com/")
 }
 
 fn origin_head(path: &Path) -> Option<String> {

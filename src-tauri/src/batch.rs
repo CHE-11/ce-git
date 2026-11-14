@@ -5,7 +5,10 @@ use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::git::{Outcome, PublishOptions, commit_repo, publish_repo, pull_default, push_repo};
+use crate::git::{
+    GistPublishOptions, Outcome, PublishOptions, commit_repo, publish_gist, publish_repo,
+    pull_default, push_repo,
+};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +73,44 @@ pub async fn run_publish(
         tauri::async_runtime::spawn_blocking(move || publish_repo(Path::new(&path), &options))
             .await
             .unwrap_or_else(|error| Outcome::Failed(error.to_string()));
+    let (status, message, failed) = match &outcome {
+        Outcome::Ok(message) => ("ok", message.clone(), false),
+        Outcome::Skipped(message) => ("skipped", message.clone(), true),
+        Outcome::Conflict(message) => ("conflict", message.clone(), true),
+        Outcome::Failed(message) => ("failed", message.clone(), true),
+    };
+    let _ = app.emit(
+        "batch-progress",
+        BatchProgress {
+            repo,
+            path: repo_path,
+            action: "publish".into(),
+            status: status.into(),
+            message: message.clone(),
+        },
+    );
+    if failed { Err(message) } else { Ok(()) }
+}
+
+pub async fn run_publish_gist(
+    app: AppHandle,
+    path: String,
+    options: GistPublishOptions,
+) -> Result<(), String> {
+    let repo = base_name(&path);
+    let repo_path = path.clone();
+    let _ = app.emit(
+        "batch-progress",
+        BatchProgress {
+            repo: repo.clone(),
+            path: path.clone(),
+            action: "publish".into(),
+            status: "running".into(),
+            message: "Working…".into(),
+        },
+    );
+
+    let outcome = publish_gist(Path::new(&path), &options).await;
     let (status, message, failed) = match &outcome {
         Outcome::Ok(message) => ("ok", message.clone(), false),
         Outcome::Skipped(message) => ("skipped", message.clone(), true),

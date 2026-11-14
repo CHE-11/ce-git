@@ -12,7 +12,9 @@ import type {
   DirEntry,
   DirSearch,
   GeneratedCommit,
+  GithubGists,
   GithubRepos,
+  GistPublishOptions,
   GitSettings,
   OpenAiModel,
   PublishOptions,
@@ -198,6 +200,10 @@ export function publishRepo(path: string, options: PublishOptions) {
   return invoke<void>("publish_repo", { path, options });
 }
 
+export function publishGist(path: string, options: GistPublishOptions) {
+  return invoke<void>("publish_gist", { path, options });
+}
+
 export function batchCommit(commits: CommitRequest[]) {
   return invoke<BatchProgress[]>("batch_commit", { commits });
 }
@@ -246,6 +252,10 @@ export function cloneRepo(url: string, path: string) {
 
 export function listGithubRepos(account: string) {
   return invoke<GithubRepos>("list_github_repos", { account });
+}
+
+export function listGithubGists(account: string) {
+  return invoke<GithubGists>("list_github_gists", { account });
 }
 
 export function deletePath(root: string, path: string) {

@@ -50,7 +50,7 @@ export function GitPushConfirmationDialog({ pushPaths, logs, error, onClose, onC
   return (
     <Dialog
       id="push-confirm-dialog"
-      title={running ? "Pushing repositories" : phase === "done" ? "Push finished" : "Push repositories"}
+      title={running ? "Pushing repositories and gists" : phase === "done" ? "Push finished" : "Push repositories and gists"}
       open={open}
       onClose={close}
       onEnter={running ? undefined : phase === "done" ? onClose : () => void confirm()}
@@ -58,7 +58,8 @@ export function GitPushConfirmationDialog({ pushPaths, logs, error, onClose, onC
       {phase === "confirm" ? (
         <p id="push-confirm-copy" className="text-sm text-zinc-300">
           Push {count} repositories to GitHub. Repos with nothing to push are skipped. A repository with no remote is created as a
-          private GitHub repo when the GitHub CLI is signed in. Remotes that are not GitHub are skipped.
+          private GitHub repo when the GitHub CLI is signed in. GitHub gists are pushed with other GitHub remotes. Remotes on
+          other hosts are skipped.
         </p>
       ) : (
         <GitSyncProgress id="push-confirm-progress" label="Pushing" total={count} logs={entries} running={running} error={error} />

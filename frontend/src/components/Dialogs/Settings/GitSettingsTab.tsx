@@ -91,7 +91,7 @@ export function GitSettingsTab({
           }}
         >
           <p id="git-settings-intro" className="mt-4 text-sm text-zinc-300">
-            Sign in to GitHub for pull and push, and set the name and email Git writes on new commits.
+            Sign in to GitHub for pull, push, and gists, and set the name and email Git writes on new commits.
           </p>
 
           <section id="git-account-section" className="mt-4">

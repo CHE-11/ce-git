@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, PublishOptions, RepoDiff, RepoStatus, StashEntry, StashKeepSource, TreeNode } from "../../../types/git";
+import type { AiCommitDraft, AiPrompts, AiSettings, AppSettings, BatchProgress, BatchStatus, FileChange, GistPublishOptions, PublishRequest, RepoDiff, RepoStatus, StashEntry, StashKeepSource, TreeNode } from "../../../types/git";
 import {
   aiSettings,
   applyStash,
@@ -13,6 +13,7 @@ import {
   createBranch as createBranchRequest,
   dropStash,
   keepStashFile as keepStashFileRequest,
+  publishGist,
   publishRepo,
   deleteFolder as deleteFolderOnDisk,
   discardChange as discardFile,
@@ -114,6 +115,7 @@ function statusKey(status: RepoStatus) {
     status.detached,
     status.upstream ?? "",
     status.github,
+    status.gist,
     status.ahead,
     status.behind,
     status.dirty,
@@ -745,6 +747,69 @@ export function useWorkspace() {
     selectedPathsRef.current = [created];
     setActivePath(created);
     setSelectedPaths([created]);
+  };
+
+  const createNewGist = async (picked: string, options: GistPublishOptions) => {
+    const path = picked.trim();
+    if (!path) {
+      throw new Error("Choose a folder on disk.");
+    }
+    logGeneration.current += 1;
+    seenGeneration.current = logGeneration.current;
+    setLogs([]);
+    beginWork("publish");
+    setError(null);
+    try {
+      try {
+        await initRepo(path);
+      } catch (caught) {
+        if (!messageOf(caught).toLowerCase().includes("already a git repository")) {
+          throw caught;
+        }
+      }
+      const rows = await repoStatuses([path], false);
+      const status = rows[0];
+      if (!status || status.error) {
+        throw new Error(status?.error ?? "Could not read the repository.");
+      }
+      if (status.github !== null) {
+        throw new Error("This folder already has an origin remote.");
+      }
+      if (!status.hasCommits) {
+        const message = options.description.trim() || "Create gist";
+        const progress = await batchCommit([{ path, message }]);
+        const problem = progress.find((row) => row.status === "failed" || row.status === "skipped");
+        if (problem) {
+          if (problem.message.includes("Nothing to commit")) {
+            throw new Error("Add at least one file before creating a gist.");
+          }
+          throw new Error(problem.message);
+        }
+      }
+      await publishGist(path, options);
+      await finishBatch();
+      const current = rootPathsRef.current;
+      const roots = containingRoot(current, path)
+        ? current
+        : [...current.filter((root) => !pathIsInside(path, root)), path];
+      if (roots !== current) {
+        await persistRoots(roots);
+      }
+      const found = await reloadTrees(roots);
+      const created = found.find((repo) => pathEquals(repo, path)) ?? path;
+      anchorRef.current = created;
+      interactionEpoch.current += 1;
+      activePathRef.current = created;
+      selectedPathsRef.current = [created];
+      setActivePath(created);
+      setSelectedPaths([created]);
+    } catch (caught) {
+      const message = messageOf(caught);
+      setError(message);
+      throw new Error(message);
+    } finally {
+      endWork();
+    }
   };
 
   const cloneRepo = async (url: string, destination: string) => {
@@ -1413,7 +1478,7 @@ export function useWorkspace() {
     await runBatch("push", pushPaths ?? []);
   };
 
-  const publishActive = async (options: PublishOptions) => {
+  const publishActive = async (request: PublishRequest) => {
     if (!activePath) {
       const message = "Select a repository to publish.";
       setError(message);
@@ -1425,7 +1490,11 @@ export function useWorkspace() {
     beginWork("publish");
     setError(null);
     try {
-      await publishRepo(activePath, options);
+      if (request.kind === "gist") {
+        await publishGist(activePath, request.options);
+      } else {
+        await publishRepo(activePath, request.options);
+      }
       await finishBatch();
     } catch (caught) {
       const message = messageOf(caught);
@@ -1756,6 +1825,7 @@ export function useWorkspace() {
     chooseFolder,
     addRootFolder,
     createNewRepo,
+    createNewGist,
     cloneRepo,
     refresh,
     refreshActive,

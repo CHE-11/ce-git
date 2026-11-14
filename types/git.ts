@@ -26,8 +26,10 @@ export interface RepoStatus {
   branch: string;
   detached: boolean;
   upstream: string | null;
-  /** True when origin is GitHub, false for another host, null when origin is missing. */
+  /** True when origin is GitHub or a GitHub gist, false for another host, null when origin is missing. */
   github: boolean | null;
+  /** True when origin is a GitHub gist. */
+  gist: boolean;
   ahead: number;
   behind: number;
   dirty: boolean;
@@ -122,6 +124,15 @@ export interface PublishOptions {
   visibility: RepoVisibility;
   homepage: string;
 }
+
+export interface GistPublishOptions {
+  description: string;
+  secret: boolean;
+}
+
+export type PublishRequest =
+  | { kind: "repository"; options: PublishOptions }
+  | { kind: "gist"; options: GistPublishOptions };
 export type BatchStatus = "running" | "ok" | "skipped" | "failed" | "conflict";
 
 export interface BatchProgress {
@@ -172,6 +183,23 @@ export interface GithubRepos {
   accounts: string[];
   account: string;
   repos: GithubRepo[];
+  truncated: boolean;
+  notice: string | null;
+}
+
+export interface GithubGist {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
+  public: boolean;
+  folder: string;
+}
+
+export interface GithubGists {
+  accounts: string[];
+  account: string;
+  gists: GithubGist[];
   truncated: boolean;
   notice: string | null;
 }

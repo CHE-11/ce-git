@@ -19,6 +19,48 @@ pub struct PublishOptions {
     pub homepage: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GistPublishOptions {
+    pub description: String,
+    /// Secret gists are unlisted. Missing values stay secret.
+    #[serde(default = "default_secret")]
+    pub secret: bool,
+}
+
+fn default_secret() -> bool {
+    true
+}
+
+pub(crate) fn prepare_gist_publish(path: &Path, options: &GistPublishOptions) -> Result<String, String> {
+    require_repo(path)?;
+    if origin_url(path).is_some() {
+        return Err("This repository already has an origin remote".into());
+    }
+    let head = current_branch(path)?;
+    if !head.has_commits {
+        return Err("Commit something before publishing".into());
+    }
+    if head.detached {
+        return Err("Detached HEAD".into());
+    }
+    if options.description.trim().chars().count() > 256 {
+        return Err("Description must be 256 characters or fewer.".into());
+    }
+    Ok(head.name)
+}
+
+pub(crate) fn push_new_gist(path: &Path, url: &str) -> Result<(), String> {
+    if origin_url(path).is_some() {
+        return Err("This repository already has an origin remote".into());
+    }
+    if !is_github_url(url) || !super::status::is_gist_url(url) {
+        return Err("GitHub returned an unexpected gist URL.".into());
+    }
+    git(path, &["remote", "add", "origin", url])?;
+    git(path, &["push", "--force", "-u", "origin", "HEAD"]).map(|_| ())
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
     Ok(String),

@@ -7,6 +7,7 @@ import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings
 import { UpdateDialog } from "../components/Dialogs/UpdateDialog";
 import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
 import { BranchDialog } from "../components/Dialogs/BranchDialog";
+import { CreateGistDialog } from "../components/Dialogs/CreateGistDialog";
 import { CreateRepoDialog } from "../components/Dialogs/CreateRepoDialog";
 import { ActivityLog } from "../components/ActivityLog";
 import { InternetDownBar } from "../components/InternetDownBar";
@@ -29,6 +30,7 @@ export function HomePage() {
   const updates = useAppUpdate();
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [createRepoOpen, setCreateRepoOpen] = useState(false);
+  const [createGistOpen, setCreateGistOpen] = useState(false);
   const [cloneRepoOpen, setCloneRepoOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [treeFilter, setTreeFilter] = useState<RepoTreeFilter | null>(null);
@@ -62,6 +64,7 @@ export function HomePage() {
     dialogs: {
       settings: settingsTab,
       createRepo: createRepoOpen,
+      createGist: createGistOpen,
       cloneRepo: cloneRepoOpen,
       advancedSearch: advancedSearchOpen,
       commands: commandsOpen,
@@ -155,8 +158,16 @@ export function HomePage() {
       run: () => setCreateRepoOpen(true),
     },
     {
+      id: "create-gist",
+      label: "Create gist",
+      group: "Workspace",
+      keywords: "new gist",
+      disabled: busy,
+      run: () => setCreateGistOpen(true),
+    },
+    {
       id: "clone-repo",
-      label: "Clone repository",
+      label: "Clone",
       group: "Workspace",
       keywords: "git clone",
       disabled: busy,
@@ -559,6 +570,13 @@ export function HomePage() {
         <CreateRepoDialog 
           onClose={() => setCreateRepoOpen(false)} 
           onCreate={workspace.createNewRepo} 
+        />
+      ) : null}
+
+      {createGistOpen ? (
+        <CreateGistDialog
+          onClose={() => setCreateGistOpen(false)}
+          onCreate={workspace.createNewGist}
         />
       ) : null}
 

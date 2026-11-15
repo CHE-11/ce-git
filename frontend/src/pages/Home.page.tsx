@@ -5,6 +5,7 @@ import { AdvancedSearchDialog } from "../components/Dialogs/AdvancedSearchDialog
 import { AiCommitDialog } from "../components/Dialogs/AiCommitDialog";
 import { SettingsDialog, type SettingsTab } from "../components/Dialogs/Settings/SettingsDialog";
 import { UpdateDialog } from "../components/Dialogs/UpdateDialog";
+import { CloneGistDialog } from "../components/Dialogs/CloneGistDialog";
 import { CloneRepoDialog } from "../components/Dialogs/CloneRepoDialog";
 import { BranchDialog } from "../components/Dialogs/BranchDialog";
 import { CreateGistDialog } from "../components/Dialogs/CreateGistDialog";
@@ -32,6 +33,7 @@ export function HomePage() {
   const [createRepoOpen, setCreateRepoOpen] = useState(false);
   const [createGistOpen, setCreateGistOpen] = useState(false);
   const [cloneRepoOpen, setCloneRepoOpen] = useState(false);
+  const [cloneGistOpen, setCloneGistOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [treeFilter, setTreeFilter] = useState<RepoTreeFilter | null>(null);
   const [pendingAction, setPendingAction] = useState<"clear" | null>(null);
@@ -66,6 +68,7 @@ export function HomePage() {
       createRepo: createRepoOpen,
       createGist: createGistOpen,
       cloneRepo: cloneRepoOpen,
+      cloneGist: cloneGistOpen,
       advancedSearch: advancedSearchOpen,
       commands: commandsOpen,
       restore: restoreOpen,
@@ -167,11 +170,19 @@ export function HomePage() {
     },
     {
       id: "clone-repo",
-      label: "Clone",
+      label: "Clone repository",
       group: "Workspace",
       keywords: "git clone",
       disabled: busy,
       run: () => setCloneRepoOpen(true),
+    },
+    {
+      id: "clone-gist",
+      label: "Clone gist",
+      group: "Workspace",
+      keywords: "git clone gist",
+      disabled: busy,
+      run: () => setCloneGistOpen(true),
     },
     {
       id: "advanced-search",
@@ -354,6 +365,8 @@ export function HomePage() {
         onAddRoot={() => void workspace.addRootFolder()}
         onCreateNewRepo={() => setCreateRepoOpen(true)}
         onCloneRepo={() => setCloneRepoOpen(true)}
+        onCreateNewGist={() => setCreateGistOpen(true)}
+        onCloneGist={() => setCloneGistOpen(true)}
         onCommitClear={() => setPendingAction("clear")}
         onAdvancedSearch={() => setAdvancedSearchOpen(true)}
         onOpenCommands={() => setCommandsOpen(true)}
@@ -586,6 +599,23 @@ export function HomePage() {
           defaultParent={workspace.rootPaths[0] ?? ""}
           onClose={() => setCloneRepoOpen(false)}
           onClone={workspace.cloneRepo}
+          onOpenGist={() => {
+            setCloneRepoOpen(false);
+            setCloneGistOpen(true);
+          }}
+        />
+      ) : null}
+
+      {cloneGistOpen ? (
+        <CloneGistDialog
+          trees={workspace.trees}
+          defaultParent={workspace.rootPaths[0] ?? ""}
+          onClose={() => setCloneGistOpen(false)}
+          onClone={workspace.cloneRepo}
+          onOpenRepo={() => {
+            setCloneGistOpen(false);
+            setCloneRepoOpen(true);
+          }}
         />
       ) : null}
 

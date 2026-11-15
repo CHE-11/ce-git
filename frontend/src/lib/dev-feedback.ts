@@ -15,6 +15,7 @@ export type DevDialogs = {
   createRepo: boolean;
   createGist: boolean;
   cloneRepo: boolean;
+  cloneGist: boolean;
   advancedSearch: boolean;
   commands: boolean;
   restore: boolean;

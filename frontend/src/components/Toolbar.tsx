@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, PlusSquare, RefreshCw, Search, Settings, Sparkles } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, SquareCode, PlusSquare, RefreshCw, Search, Settings, Sparkles } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { Button } from "./Button";
 
@@ -18,6 +18,8 @@ type ToolbarProps = {
   onAddRoot: () => void;
   onCreateNewRepo: () => void;
   onCloneRepo: () => void;
+  onCreateNewGist: () => void;
+  onCloneGist: () => void;
   onCommitClear: () => void;
   onAdvancedSearch: () => void;
   onOpenCommands: () => void;
@@ -114,6 +116,13 @@ export function Toolbar({...props}: ToolbarProps) {
         </ToolbarIconButton>
         <ToolbarIconButton id="clone-repo-button" label="Clone Repo" onClick={props.onCloneRepo} disabled={props.busy} title="Clone a repository" showLabel={props.showLabels}>
           <FolderGit2 id="clone-repo-icon" className="size-4" />
+        </ToolbarIconButton>
+        <div className="mx-2 border-l border-zinc-700 h-4"></div>
+        <ToolbarIconButton id="create-gist-button" label="New Gist" onClick={props.onCreateNewGist} disabled={props.busy} title="Create a new gist" showLabel={props.showLabels}>
+          <PlusSquare id="create-gist-icon" className="size-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton id="clone-gist-button" label="Clone Gist" onClick={props.onCloneGist} disabled={props.busy} title="Clone a   gist" showLabel={props.showLabels}>
+          <SquareCode id="clone-gist-icon" className="size-4" />
         </ToolbarIconButton>
         <div className="mx-2 border-l border-zinc-700 h-4"></div>
         <ToolbarIconButton id="advanced-search-button" label="Search" onClick={props.onAdvancedSearch} disabled={props.busy || props.rootPaths.length === 0} title="Advanced search" showLabel={props.showLabels}>

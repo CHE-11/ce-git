@@ -18,6 +18,7 @@ import { Button } from "../../Button";
 type AppSettingsTabProps = {
   busy: boolean;
   exePath: string;
+  version: string;
   folder: string;
   zoom: number;
   theme: ThemeId;
@@ -48,6 +49,7 @@ type AppSettingsTabProps = {
 export function AppSettingsTab({
   busy,
   exePath,
+  version,
   folder,
   zoom,
   theme,
@@ -115,6 +117,16 @@ export function AppSettingsTab({
           >
             <FolderSearch id="app-settings-exe-reveal-icon" className="size-3.5" aria-hidden="true" />
           </Button>
+          {version ? (
+            <p id="app-settings-version" className="shrink-0 text-xs text-zinc-400 tabular-nums" title={`ce-git ${version}`}>
+              <span id="app-settings-version-label" className="text-zinc-500">
+                Version{" "}
+              </span>
+              <span id="app-settings-version-value" className="text-zinc-200">
+                {version}
+              </span>
+            </p>
+          ) : null}
           <Button
             id="app-settings-check-updates"
             type="button"

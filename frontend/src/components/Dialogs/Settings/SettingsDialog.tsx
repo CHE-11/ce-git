@@ -16,6 +16,7 @@ import {
   aiSettings,
   appExecutable,
   appSettings,
+  appVersion,
   gitCancelSignIn,
   gitSettings,
   gitSignIn,
@@ -103,6 +104,7 @@ export function SettingsDialog({
   const [defaultEditor, setDefaultEditor] = useState(readDefaultEditor);
   const [menuEditors, setMenuEditors] = useState(readMenuEditors);
   const [exePath, setExePath] = useState("");
+  const [version, setVersion] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
   const [appError, setAppError] = useState<string | null>(null);
   const [folderIgnore, setFolderIgnore] = useState("");
@@ -149,6 +151,17 @@ export function SettingsDialog({
       .catch((caught) => {
         if (!cancelled && mountedRef.current) {
           setAppError(messageOf(caught));
+        }
+      });
+    void appVersion()
+      .then((current) => {
+        if (!cancelled) {
+          setVersion(current.trim().replace(/^v/i, ""));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVersion("");
         }
       });
     return () => {
@@ -710,6 +723,7 @@ export function SettingsDialog({
           defaultEditor={defaultEditor}
           menuEditors={menuEditors}
           exePath={exePath}
+          version={version}
           warning={warning}
           error={appError}
           onFolderChange={(value) => {

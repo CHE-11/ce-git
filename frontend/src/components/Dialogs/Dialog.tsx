@@ -10,6 +10,7 @@ type DialogProps = {
   children: ReactNode;
   panelClassName?: string;
   bodyClassName?: string;
+  headerActions?: ReactNode;
 };
 
 function isTypingTarget(target: EventTarget | null) {
@@ -20,7 +21,7 @@ function isTypingTarget(target: EventTarget | null) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
-export function Dialog({ id, title, open, onClose, onEnter, children, panelClassName, bodyClassName }: DialogProps) {
+export function Dialog({ id, title, open, onClose, onEnter, children, panelClassName, bodyClassName, headerActions }: DialogProps) {
   const ignoreBackdropUntil = useRef(0);
 
   useEffect(() => {
@@ -82,10 +83,15 @@ export function Dialog({ id, title, open, onClose, onEnter, children, panelClass
         )}
         onClick={(event) => event.stopPropagation()}
       >
-        <div id={`${id}-header`} className="border-b border-zinc-800 px-4 py-3">
+        <div id={`${id}-header`} className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
           <h2 id={`${id}-title`} className="text-base font-semibold text-zinc-100">
             {title}
           </h2>
+          {headerActions ? (
+            <div id={`${id}-header-actions`} className="flex shrink-0 items-center gap-2">
+              {headerActions}
+            </div>
+          ) : null}
         </div>
         <div id={`${id}-body`} className={cn("min-h-0 flex-1 overflow-auto px-4 py-3", bodyClassName)}>
           {children}

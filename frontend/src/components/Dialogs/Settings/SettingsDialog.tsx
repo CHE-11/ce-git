@@ -50,6 +50,25 @@ const SETTINGS_TABS = [
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 
+type SettingsSnapshot = {
+  folder: string;
+  zoom: number;
+  theme: ThemeId;
+  colorMode: ColorMode;
+  toolbarLabels: boolean;
+  treeStyle: TreeStyle;
+  defaultEditor: EditorId;
+  menuEditors: readonly EditorId[];
+  name: string;
+  email: string;
+  defaultBranch: string;
+  autocrlf: string;
+  model: string;
+  thinking: ThinkingMode;
+  prompts: AiPrompts;
+  folderIgnore: string;
+};
+
 type AppSettingsDialogProps = {
   selectedPrompt: number;
   initialTab?: SettingsTab;
@@ -71,6 +90,7 @@ export function SettingsDialog({
 }: AppSettingsDialogProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [loading, setLoading] = useState(true);
+  const [baseline, setBaseline] = useState<SettingsSnapshot | null>(null);
   const [saving, setSaving] = useState(false);
   const [pickingFolder, setPickingFolder] = useState(false);
   const [folder, setFolder] = useState("");
@@ -149,6 +169,7 @@ export function SettingsDialog({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const snapshot = openedSnapshot(openedAppearance.current.theme, openedAppearance.current.colorMode);
       const [appResult, gitResult, aiResult] = await Promise.allSettled([appSettings(), gitSettings(), aiSettings()]);
       if (cancelled) {
         return;
@@ -160,6 +181,9 @@ export function SettingsDialog({
         setWarning(settings.warning);
         setFolderIgnore(settings.folderIgnore ?? "");
         setPrompts(withDefaultPrompts(settings.prompts));
+        snapshot.folder = settings.settingsFolder;
+        snapshot.folderIgnore = settings.folderIgnore ?? "";
+        snapshot.prompts = withDefaultPrompts(settings.prompts);
         const appearance = settings.shared
           ? {
               theme: normalizeTheme(settings.theme),
@@ -169,12 +193,23 @@ export function SettingsDialog({
         openedAppearance.current = appearance;
         setTheme(appearance.theme);
         setColorMode(appearance.colorMode);
+        snapshot.theme = appearance.theme;
+        snapshot.colorMode = appearance.colorMode;
         if (settings.shared) {
-          setZoom(clampDialogZoom(settings.fontZoom));
+          const nextZoom = clampDialogZoom(settings.fontZoom);
+          const nextTree = treeStyleFrom(settings);
+          const nextEditor = normalizeEditor(settings.defaultEditor);
+          const nextMenuEditors = normalizeMenuEditors(settings.menuEditors);
+          setZoom(nextZoom);
           setToolbarLabels(settings.toolbarLabels);
-          setTreeStyle(treeStyleFrom(settings));
-          setDefaultEditor(normalizeEditor(settings.defaultEditor));
-          setMenuEditors(normalizeMenuEditors(settings.menuEditors));
+          setTreeStyle(nextTree);
+          setDefaultEditor(nextEditor);
+          setMenuEditors(nextMenuEditors);
+          snapshot.zoom = nextZoom;
+          snapshot.toolbarLabels = settings.toolbarLabels;
+          snapshot.treeStyle = nextTree;
+          snapshot.defaultEditor = nextEditor;
+          snapshot.menuEditors = nextMenuEditors;
           applyAppearance(appearance.theme, appearance.colorMode);
         }
       } else {
@@ -183,22 +218,33 @@ export function SettingsDialog({
 
       if (gitResult.status === "fulfilled") {
         applyAll(gitResult.value);
+        snapshot.name = gitResult.value.name;
+        snapshot.email = gitResult.value.email;
+        snapshot.defaultBranch = gitResult.value.defaultBranch;
+        snapshot.autocrlf = gitResult.value.autocrlf;
       } else {
         setGitError(messageOf(gitResult.reason));
       }
 
       if (aiResult.status === "fulfilled") {
         const settings = aiResult.value;
+        const nextPrompts = withDefaultPrompts(settings.prompts);
+        const nextThinking = settings.thinking || "low";
         setConfigured(settings.configured);
         setModel(settings.model);
-        setThinking(settings.thinking || "low");
-        setPrompts(withDefaultPrompts(settings.prompts));
+        setThinking(nextThinking);
+        setPrompts(nextPrompts);
+        snapshot.model = settings.model;
+        snapshot.thinking = nextThinking;
+        snapshot.prompts = nextPrompts;
         if (settings.configured) {
           setLoadingModels(true);
           try {
             const listed = await listOpenAiModels("", settings.model);
             if (!cancelled) {
+              const nextModel = chosenModel(listed, settings.model);
               applyModels(listed, settings.model, setModels, setModel);
+              snapshot.model = nextModel;
             }
           } catch (caught) {
             if (!cancelled) {
@@ -215,6 +261,7 @@ export function SettingsDialog({
       }
 
       if (!cancelled) {
+        setBaseline(snapshot);
         setLoading(false);
       }
     })();
@@ -564,7 +611,26 @@ export function SettingsDialog({
     }
   };
 
-  const showSave = loading || tab !== "git" || gitAvailable;
+  const showSave = tab !== "git" || gitAvailable;
+  const changed = baseline !== null && tabHasChanges(tab, baseline, {
+    folder,
+    zoom,
+    theme,
+    colorMode,
+    toolbarLabels,
+    treeStyle,
+    defaultEditor,
+    menuEditors,
+    name,
+    email,
+    defaultBranch,
+    autocrlf,
+    apiKey: key,
+    model,
+    thinking,
+    prompts,
+    folderIgnore,
+  });
 
   const revealExe = async () => {
     if (!exePath) {
@@ -588,7 +654,27 @@ export function SettingsDialog({
   };
 
   return (
-    <Dialog id="app-settings-dialog" title="Settings" open onClose={requestClose} panelClassName="max-w-3xl">
+    <Dialog
+      id="app-settings-dialog"
+      title="Settings"
+      open
+      onClose={requestClose}
+      panelClassName="max-w-3xl"
+      headerActions={
+        changed ? (
+          <>
+            <Button id="app-settings-cancel" variant="ghost" onClick={requestClose} disabled={saving || pickingFolder || signingOut !== null}>
+              <span id="app-settings-cancel-label">Cancel</span>
+            </Button>
+            {showSave ? (
+              <Button id="app-settings-save" type="submit" form={panelId(tab)} variant="primary" disabled={busy || (tab === "ai" && loadingModels)}>
+                <span id="app-settings-save-label">{saving ? "Saving…" : "Save"}</span>
+              </Button>
+            ) : null}
+          </>
+        ) : null
+      }
+    >
       <div id="settings-tabs" className="flex overflow-hidden rounded-md border border-zinc-700" role="tablist" aria-label="Settings">
         {SETTINGS_TABS.map((item) => {
           const selected = tab === item.id;
@@ -724,28 +810,86 @@ export function SettingsDialog({
       ) : null}
 
 
-      <div id="app-settings-actions" className="mt-4 flex justify-between gap-2">
-        <div id="app-settings-actions-start">
-          {!loading && tab === "ai" && configured ? (
-            <Button id="ai-clear-key" variant="ghost" onClick={() => void clearKey()} disabled={saving}>
-              <Trash2 id="ai-clear-key-icon" className="mr-1 size-4 text-red-400" />
-              <span id="ai-clear-key-label">Clear saved key</span>
-            </Button>
-          ) : null}
-        </div>
-        <div id="app-settings-actions-end" className="flex items-center gap-2">
-          <Button id="app-settings-cancel" variant="ghost" onClick={requestClose} disabled={saving || pickingFolder || signingOut !== null}>
-            <span id="app-settings-cancel-label">Cancel</span>
+      {!loading && tab === "ai" && configured ? (
+        <div id="app-settings-actions" className="mt-4 flex">
+          <Button id="ai-clear-key" variant="ghost" onClick={() => void clearKey()} disabled={saving}>
+            <Trash2 id="ai-clear-key-icon" className="mr-1 size-4 text-red-400" />
+            <span id="ai-clear-key-label">Clear saved key</span>
           </Button>
-          {showSave ? (
-            <Button id="app-settings-save" type="submit" form={panelId(tab)} variant="primary" disabled={loading || busy || (tab === "ai" && loadingModels)}>
-              <span id="app-settings-save-label">{saving ? "Saving…" : "Save"}</span>
-            </Button>
-          ) : null}
         </div>
-      </div>
+      ) : null}
     </Dialog>
   );
+}
+
+function openedSnapshot(theme: ThemeId, colorMode: ColorMode): SettingsSnapshot {
+  return {
+    folder: "",
+    zoom: readZoom(),
+    theme,
+    colorMode,
+    toolbarLabels: readToolbarLabels(),
+    treeStyle: readTreeStyle(),
+    defaultEditor: readDefaultEditor(),
+    menuEditors: readMenuEditors(),
+    name: "",
+    email: "",
+    defaultBranch: "",
+    autocrlf: "",
+    model: "",
+    thinking: "low",
+    prompts: withDefaultPrompts(undefined),
+    folderIgnore: "",
+  };
+}
+
+function tabHasChanges(
+  tab: SettingsTab,
+  saved: SettingsSnapshot,
+  draft: SettingsSnapshot & { apiKey: string },
+) {
+  if (tab === "app") {
+    return (
+      draft.folder !== saved.folder ||
+      draft.zoom !== saved.zoom ||
+      draft.theme !== saved.theme ||
+      draft.colorMode !== saved.colorMode ||
+      draft.toolbarLabels !== saved.toolbarLabels ||
+      !treeStylesMatch(draft.treeStyle, saved.treeStyle) ||
+      draft.defaultEditor !== saved.defaultEditor ||
+      !listsMatch(draft.menuEditors, saved.menuEditors)
+    );
+  }
+  if (tab === "git") {
+    return (
+      draft.name !== saved.name ||
+      draft.email !== saved.email ||
+      draft.defaultBranch !== saved.defaultBranch ||
+      draft.autocrlf !== saved.autocrlf
+    );
+  }
+  if (tab === "ai") {
+    return draft.apiKey.trim() !== "" || draft.model !== saved.model || draft.thinking !== saved.thinking || !promptsMatch(draft.prompts, saved.prompts);
+  }
+  return draft.folderIgnore !== saved.folderIgnore;
+}
+
+function treeStylesMatch(left: TreeStyle, right: TreeStyle) {
+  return (
+    left.folderColorBackground === right.folderColorBackground &&
+    left.folderColorBackgroundUnique === right.folderColorBackgroundUnique &&
+    left.folderFontColor === right.folderFontColor &&
+    left.folderFontColorUnique === right.folderFontColorUnique &&
+    left.folderIndicator === right.folderIndicator
+  );
+}
+
+function listsMatch(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function promptsMatch(left: AiPrompts, right: AiPrompts) {
+  return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
 }
 
 function signInNotice(before: string[], after: string[], requested: string) {
@@ -769,6 +913,13 @@ function signInNotice(before: string[], after: string[], requested: string) {
   return `Signed in as ${added.join(", ")}.`;
 }
 
+function chosenModel(listed: OpenAiModel[], current: string) {
+  if ((!current || !listed.some((item) => item.id === current)) && listed[0]) {
+    return listed[0].id;
+  }
+  return current;
+}
+
 function applyModels(
   listed: OpenAiModel[],
   current: string,
@@ -776,8 +927,9 @@ function applyModels(
   setModel: (model: string) => void,
 ) {
   setModels(listed);
-  if ((!current || !listed.some((item) => item.id === current)) && listed[0]) {
-    setModel(listed[0].id);
+  const next = chosenModel(listed, current);
+  if (next !== current) {
+    setModel(next);
   }
 }
 

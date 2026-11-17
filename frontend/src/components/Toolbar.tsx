@@ -31,6 +31,7 @@ type ToolbarProps = {
   onPushAll: () => void;
   syncActivity: "pull" | "push" | null;
   syncRunning: boolean;
+  syncFailed: boolean;
   onOpenActivity: () => void;
 };
 
@@ -265,13 +266,18 @@ export function Toolbar({...props}: ToolbarProps) {
             onClick={props.onOpenActivity}
             aria-busy={props.syncRunning}
             title={
-              props.syncRunning
-                ? `Show the ${props.syncActivity} in progress`
-                : `Show the last ${props.syncActivity}`
+              props.syncFailed
+                ? props.syncRunning
+                  ? `Show the ${props.syncActivity} in progress. A repository failed.`
+                  : `Show the last ${props.syncActivity}. A repository failed.`
+                : props.syncRunning
+                  ? `Show the ${props.syncActivity} in progress`
+                  : `Show the last ${props.syncActivity}`
             }
             className={cn(
               "inline-flex h-8 items-center gap-2 rounded-md border bg-zinc-900 px-2.5 text-sm transition-colors hover:bg-zinc-800",
-              props.syncRunning ? "border-sky-800 text-sky-100 hover:text-sky-50" : "border-zinc-700 text-zinc-300 hover:text-zinc-100",
+              props.syncFailed ? "border-red-500" : props.syncRunning ? "border-sky-800" : "border-zinc-700",
+              props.syncRunning ? "text-sky-100 hover:text-sky-50" : "text-zinc-300 hover:text-zinc-100",
             )}
           >
             {props.syncRunning ? (

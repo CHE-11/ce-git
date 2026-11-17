@@ -148,6 +148,8 @@ export function HomePage() {
           : pushPhase === "done" && workspace.pushPaths !== null
             ? "push"
             : null;
+  const syncFailed =
+    syncActivity !== null && workspace.logs.some((entry) => entry.action === syncActivity && entry.status === "failed");
   const openSyncActivity = () => {
     if (syncActivity === "pull") {
       workspace.showPullDialog();
@@ -397,6 +399,7 @@ export function HomePage() {
         onPushAll={workspace.requestPushAll}
         syncActivity={syncActivity}
         syncRunning={syncRunning}
+        syncFailed={syncFailed}
         onOpenActivity={openSyncActivity}
       />
       {workspace.error ? (

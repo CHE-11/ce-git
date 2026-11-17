@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, SquareCode, PlusSquare, RefreshCw, Search, Settings, Sparkles } from "lucide-react";
+import { Activity, ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, Loader2, SquareCode, PlusSquare, RefreshCw, Search, Settings, Sparkles } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
+import { cn } from "../lib/cn";
 import { Button } from "./Button";
 
 type ToolbarProps = {
@@ -28,6 +29,9 @@ type ToolbarProps = {
   dirtyCount: number;
   onPullAll: () => void;
   onPushAll: () => void;
+  syncActivity: "pull" | "push" | null;
+  syncRunning: boolean;
+  onOpenActivity: () => void;
 };
 
 function syncTitle(action: "pull" | "push", count: number) {
@@ -253,18 +257,47 @@ export function Toolbar({...props}: ToolbarProps) {
         </Button>
       </div>
 
-      <button
-        id="command-palette-button"
-        type="button"
-        onClick={props.onOpenCommands}
-        title="Commands"
-        className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-      >
-        <Search id="command-palette-button-icon" className="size-3.5" />
-        <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
-          Ctrl + K
-        </kbd>
-      </button>
+      <div id="toolbar-right" className="flex items-center gap-2">
+        {props.syncActivity ? (
+          <button
+            id="sync-activity-button"
+            type="button"
+            onClick={props.onOpenActivity}
+            aria-busy={props.syncRunning}
+            title={
+              props.syncRunning
+                ? `Show the ${props.syncActivity} in progress`
+                : `Show the last ${props.syncActivity}`
+            }
+            className={cn(
+              "inline-flex h-8 items-center gap-2 rounded-md border bg-zinc-900 px-2.5 text-sm transition-colors hover:bg-zinc-800",
+              props.syncRunning ? "border-sky-800 text-sky-100 hover:text-sky-50" : "border-zinc-700 text-zinc-300 hover:text-zinc-100",
+            )}
+          >
+            {props.syncRunning ? (
+              <Loader2 id="sync-activity-spinner" className="size-3.5 animate-spin" />
+            ) : (
+              <Activity id="sync-activity-icon" className="size-3.5" />
+            )}
+            <span id="sync-activity-label">Activity</span>
+            <span id="sync-activity-kind" className="text-xs capitalize text-zinc-400">
+              {props.syncActivity}
+            </span>
+          </button>
+        ) : null}
+        <button
+          id="command-palette-button"
+          type="button"
+          onClick={props.onOpenCommands}
+          title="Commands"
+          className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        >
+          <Search id="command-palette-button-icon" className="size-3.5" />
+          <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
+            Ctrl + K
+          </kbd>
+        </button>
+      </div>
 
     </header>
   );

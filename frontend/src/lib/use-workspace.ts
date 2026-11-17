@@ -201,6 +201,8 @@ export function useWorkspace() {
   const [drafts, setDrafts] = useState<AiCommitDraft[]>([]);
   const [pullPaths, setPullPaths] = useState<string[] | null>(null);
   const [pushPaths, setPushPaths] = useState<string[] | null>(null);
+  const [pullDialogOpen, setPullDialogOpen] = useState(false);
+  const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [removedRepos, setRemovedRepos] = useState<string[]>([]);
   const [toolbarLabels, setToolbarLabels] = useState(readToolbarLabels);
   const [treeStyle, setTreeStyle] = useState<TreeStyle>(readTreeStyle);
@@ -1401,6 +1403,13 @@ export function useWorkspace() {
     logGeneration.current += 1;
     seenGeneration.current = logGeneration.current;
     setLogs([]);
+    if (action === "pull") {
+      setPushPaths(null);
+      setPushDialogOpen(false);
+    } else {
+      setPullPaths(null);
+      setPullDialogOpen(false);
+    }
     beginWork(action);
     setError(null);
     try {
@@ -1423,6 +1432,22 @@ export function useWorkspace() {
       return;
     }
     setPullPaths(paths);
+    setPullDialogOpen(true);
+    setPushDialogOpen(false);
+  };
+
+  const cancelPull = () => {
+    setPullPaths(null);
+    setPullDialogOpen(false);
+  };
+
+  const hidePullDialog = () => {
+    setPullDialogOpen(false);
+  };
+
+  const showPullDialog = () => {
+    setPullDialogOpen(true);
+    setPushDialogOpen(false);
   };
 
   const confirmPull = async () => {
@@ -1472,6 +1497,22 @@ export function useWorkspace() {
       return;
     }
     setPushPaths(paths);
+    setPushDialogOpen(true);
+    setPullDialogOpen(false);
+  };
+
+  const cancelPush = () => {
+    setPushPaths(null);
+    setPushDialogOpen(false);
+  };
+
+  const hidePushDialog = () => {
+    setPushDialogOpen(false);
+  };
+
+  const showPushDialog = () => {
+    setPushDialogOpen(true);
+    setPullDialogOpen(false);
   };
 
   const confirmPush = async () => {
@@ -1819,9 +1860,15 @@ export function useWorkspace() {
     drafts,
     setDrafts,
     pullPaths,
-    setPullPaths,
+    pullDialogOpen,
+    cancelPull,
+    hidePullDialog,
+    showPullDialog,
     pushPaths,
-    setPushPaths,
+    pushDialogOpen,
+    cancelPush,
+    hidePushDialog,
+    showPushDialog,
     chooseFolder,
     addRootFolder,
     createNewRepo,

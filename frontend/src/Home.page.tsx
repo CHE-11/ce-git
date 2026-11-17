@@ -42,6 +42,8 @@ export function HomePage() {
   const [graphOpen, setGraphOpen] = useState(false);
   const [explorerPath, setExplorerPath] = useState<string | null>(null);
   const [branchRepo, setBranchRepo] = useState<string | null>(null);
+  const [pullPhase, setPullPhase] = useState<"confirm" | "running" | "done">("confirm");
+  const [pushPhase, setPushPhase] = useState<"confirm" | "running" | "done">("confirm");
 
   useEffect(() => {
     document.title = "ce-git";
@@ -76,8 +78,8 @@ export function HomePage() {
       explorer: explorerPath,
       branch: branchRepo,
       aiReview: workspace.aiOpen,
-      pullConfirm: workspace.pullPaths !== null,
-      pushConfirm: workspace.pushPaths !== null,
+      pullConfirm: workspace.pullDialogOpen && workspace.pullPaths !== null,
+      pushConfirm: workspace.pushDialogOpen && workspace.pushPaths !== null,
       clearCommits: pendingAction === "clear",
       update: updates.open,
     },
@@ -135,6 +137,24 @@ export function HomePage() {
       pushCount += 1;
     }
   }
+  const syncRunning = pullPhase === "running" || pushPhase === "running";
+  const syncActivity: "pull" | "push" | null =
+    pullPhase === "running"
+      ? "pull"
+      : pushPhase === "running"
+        ? "push"
+        : pullPhase === "done" && workspace.pullPaths !== null
+          ? "pull"
+          : pushPhase === "done" && workspace.pushPaths !== null
+            ? "push"
+            : null;
+  const openSyncActivity = () => {
+    if (syncActivity === "pull") {
+      workspace.showPullDialog();
+    } else if (syncActivity === "push") {
+      workspace.showPushDialog();
+    }
+  };
   const commands: CommandItem[] = [
     {
       id: "open-folder",
@@ -375,6 +395,9 @@ export function HomePage() {
         dirtyCount={dirtyCount}
         onPullAll={workspace.requestPullAll}
         onPushAll={workspace.requestPushAll}
+        syncActivity={syncActivity}
+        syncRunning={syncRunning}
+        onOpenActivity={openSyncActivity}
       />
       {workspace.error ? (
         <p id="app-error" className="border-b border-red-900 bg-red-950/60 px-3 py-2 text-sm text-red-300">
@@ -651,10 +674,13 @@ export function HomePage() {
 
       <GitPullConfirmationDialog
         pullPaths={workspace.pullPaths}
+        visible={workspace.pullDialogOpen}
         logs={workspace.logs}
         error={workspace.error}
         editor={workspace.defaultEditor}
-        onClose={() => workspace.setPullPaths(null)}
+        onClose={workspace.cancelPull}
+        onHide={workspace.hidePullDialog}
+        onPhaseChange={setPullPhase}
         onConfirm={workspace.confirmPull}
         onOpenConflict={(path) => void workspace.openMergeInEditor(path)}
         onFinishMerge={(path) => void workspace.finishMerge(path)}
@@ -663,9 +689,12 @@ export function HomePage() {
 
       <GitPushConfirmationDialog
         pushPaths={workspace.pushPaths}
+        visible={workspace.pushDialogOpen}
         logs={workspace.logs}
         error={workspace.error}
-        onClose={() => workspace.setPushPaths(null)}
+        onClose={workspace.cancelPush}
+        onHide={workspace.hidePushDialog}
+        onPhaseChange={setPushPhase}
         onConfirm={workspace.confirmPush}
       />
 

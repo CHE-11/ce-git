@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { Activity, ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, Loader2, SquareCode, PlusSquare, RefreshCw, Search, Settings, Sparkles } from "lucide-react";
+import { Activity, ArrowDownToLine, ArrowUpToLine, ChevronDown, FolderGit2, FolderPlus, FolderRoot, Loader2, SquareCode, PlusSquare, RefreshCw, Search, Settings, Sparkles, Command } from "lucide-react";
 import type { AiPrompts } from "../../../types/git";
 import { cn } from "../lib/cn";
 import { Button } from "./Button";
@@ -285,7 +285,6 @@ export function Toolbar({...props}: ToolbarProps) {
             ) : (
               <Activity id="sync-activity-icon" className="size-3.5" />
             )}
-            <span id="sync-activity-label">Activity</span>
             <span id="sync-activity-kind" className="text-xs capitalize text-zinc-400">
               {props.syncActivity}
             </span>
@@ -298,10 +297,7 @@ export function Toolbar({...props}: ToolbarProps) {
           title="Commands"
           className="inline-flex h-8 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
         >
-          <Search id="command-palette-button-icon" className="size-3.5" />
-          <kbd id="command-palette-shortcut" className="rounded border border-zinc-700 bg-zinc-950 px-1 font-mono text-[10px] text-zinc-500">
-            Ctrl + K
-          </kbd>
+          <Command id="command-palette-button-icon" className="size-3.5" />
         </button>
       </div>
 

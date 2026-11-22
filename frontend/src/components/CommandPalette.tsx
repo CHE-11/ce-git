@@ -208,6 +208,18 @@ export function CommandPalette({ open, commands, onOpenChange }: CommandPaletteP
             })
           )}
         </div>
+        <div
+          id="command-palette-footer"
+          className="border-t border-zinc-800 px-3 py-2 text-center text-[11px] text-zinc-500"
+        >
+          Trigger the Command Palette with{" "}
+          <kbd
+            id="command-palette-footer-shortcut"
+            className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+          >
+            Ctrl + K
+          </kbd>
+        </div>
       </div>
     </div>
   );

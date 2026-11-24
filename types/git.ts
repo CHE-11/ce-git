@@ -114,6 +114,12 @@ export interface RepoDiff {
   truncated: boolean;
 }
 
+export interface FilePatch {
+  path: string;
+  patch: string;
+  truncated: boolean;
+}
+
 export type BatchAction = "pull" | "push" | "commit" | "publish";
 
 export type RepoVisibility = "private" | "public" | "internal";

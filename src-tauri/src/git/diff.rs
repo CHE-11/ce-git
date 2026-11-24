@@ -2,20 +2,21 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::command::git;
 
 pub const UI_DIFF_LIMIT: usize = 200_000;
 pub const AI_DIFF_LIMIT: usize = 24_000;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_path: Option<String>,
     pub status: String,
+    #[serde(default)]
     pub staged: bool,
 }
 
@@ -551,6 +552,60 @@ fn working_diff(path: &Path) -> String {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilePatch {
+    pub path: String,
+    pub patch: String,
+    pub truncated: bool,
+}
+
+/// The diff for one changed file. The repository patch is cut at `UI_DIFF_LIMIT`,
+/// so files late in a large change set have to be read on their own.
+pub fn file_diff(repo: &Path, file: &FileChange) -> Result<FilePatch, String> {
+    ensure_repo(repo)?;
+    if file.path.trim().is_empty() {
+        return Err("No file selected".into());
+    }
+    let patch = if file.status == "untracked" {
+        untracked_preview(repo, &file.path)
+    } else {
+        let mut specs = vec![literal_pathspec(&file.path)];
+        if let Some(previous) = file.previous_path.as_deref().filter(|path| !path.is_empty()) {
+            specs.push(literal_pathspec(previous));
+        }
+        tracked_file_diff(repo, &specs)?
+    };
+    let (patch, truncated) = truncate_text(&patch, UI_DIFF_LIMIT);
+    Ok(FilePatch {
+        path: file.path.clone(),
+        patch,
+        truncated,
+    })
+}
+
+fn literal_pathspec(path: &str) -> String {
+    format!(":(literal){}", path.replace('\\', "/"))
+}
+
+fn tracked_file_diff(repo: &Path, specs: &[String]) -> Result<String, String> {
+    const BASE: [&str; 4] = ["diff", "--no-color", "--no-ext-diff", "--no-renames"];
+    let with = |extra: &[&str]| {
+        let mut args: Vec<&str> = BASE.to_vec();
+        args.extend_from_slice(extra);
+        args.push("--");
+        args.extend(specs.iter().map(String::as_str));
+        git(repo, &args)
+    };
+    let has_head = git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok();
+    if has_head {
+        return with(&["HEAD"]);
+    }
+    let staged = with(&["--cached"])?;
+    let unstaged = with(&[])?;
+    Ok(format!("{staged}{unstaged}"))
+}
+
 fn append_untracked(repo: &Path, porcelain: &str, patch: &mut String) {
     for line in porcelain.lines() {
         if !line.starts_with("?? ") {
@@ -695,7 +750,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::super::command::git;
-    use super::{commit_diff, parse_name_status, parse_porcelain};
+    use super::{commit_diff, file_diff, parse_name_status, parse_porcelain, repo_diff};
 
     fn scratch(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -865,6 +920,60 @@ mod tests {
     fn budget_gives_unused_share_to_a_cut_excerpt() {
         let shares = super::allocate_budget(&[100_000, 20], 1_000);
         assert_eq!(shares, vec![980, 20]);
+    }
+
+    #[test]
+    fn file_diff_shows_a_deleted_file_past_the_repo_patch_limit() {
+        let root = scratch("file-diff-deleted");
+        init_repo(&root);
+        let big = "A".repeat(super::UI_DIFF_LIMIT + 10_000);
+        fs::write(root.join("a big.txt"), &big).unwrap();
+        fs::write(root.join("z gone.txt"), "alpha\nbeta\ngamma\n").unwrap();
+        fs::write(root.join("old.txt"), "one\ntwo\nthree\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "-m", "initial"]);
+        fs::remove_file(root.join("a big.txt")).unwrap();
+        fs::remove_file(root.join("z gone.txt")).unwrap();
+        fs::remove_file(root.join("old.txt")).unwrap();
+        fs::write(root.join("new.txt"), "one\ntwo\nthree\n").unwrap();
+        run(&root, &["add", "--", "new.txt"]);
+        fs::write(root.join("fresh.txt"), "UNTRACKED\n").unwrap();
+
+        let diff = repo_diff(&root).unwrap();
+        assert!(diff.truncated);
+        assert!(!diff.patch.contains("-gamma"));
+        let gone = diff
+            .files
+            .iter()
+            .find(|file| file.path == "z gone.txt")
+            .expect("deleted file listed");
+        assert_eq!(gone.status, "deleted");
+
+        let patch = file_diff(&root, gone).unwrap();
+        assert!(!patch.truncated);
+        assert!(patch.patch.contains("deleted file mode"), "{}", patch.patch);
+        for line in ["-alpha", "-beta", "-gamma"] {
+            assert!(patch.patch.contains(line), "{}", patch.patch);
+        }
+        assert!(!patch.patch.contains("AAAA"), "{}", patch.patch);
+
+        let old = diff
+            .files
+            .iter()
+            .find(|file| file.path == "old.txt")
+            .expect("old file listed");
+        let paired = file_diff(&root, old).unwrap();
+        assert!(paired.patch.contains("-three"), "{}", paired.patch);
+
+        let fresh = diff
+            .files
+            .iter()
+            .find(|file| file.path == "fresh.txt")
+            .expect("untracked file listed");
+        let untracked = file_diff(&root, fresh).unwrap();
+        assert!(untracked.patch.contains("UNTRACKED"), "{}", untracked.patch);
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

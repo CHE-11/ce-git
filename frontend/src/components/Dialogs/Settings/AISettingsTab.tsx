@@ -75,7 +75,7 @@ export function AISettingsTab({
           <input
             id="ai-key-input"
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
             value={apiKey}
             onChange={(event) => onApiKeyChange(event.target.value)}
             placeholder={configured ? "Saved key" : "sk-..."}

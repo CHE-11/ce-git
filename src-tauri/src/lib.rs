@@ -178,6 +178,11 @@ async fn repo_diff(path: String) -> Result<RepoDiff, String> {
 }
 
 #[tauri::command]
+async fn file_diff(path: String, file: git::FileChange) -> Result<git::FilePatch, String> {
+    spawn_git(move || git::file_diff(Path::new(&path), &file)).await?
+}
+
+#[tauri::command]
 async fn repo_graph(path: String, limit: u32) -> Result<git::RepoGraph, String> {
     spawn_git(move || git::repo_graph(Path::new(&path), limit)).await?
 }
@@ -598,6 +603,7 @@ pub fn run() {
             discover_repos,
             repo_statuses,
             repo_diff,
+            file_diff,
             repo_graph,
             commit_diff,
             list_branches,

@@ -11,6 +11,8 @@ import type {
   CommitVerbosity,
   DirEntry,
   DirSearch,
+  FileChange,
+  FilePatch,
   GeneratedCommit,
   GithubGists,
   GithubRepos,
@@ -151,6 +153,10 @@ export function repoStatuses(paths: string[], fetchRemote = false) {
 
 export function repoDiff(path: string) {
   return invoke<RepoDiff>("repo_diff", { path });
+}
+
+export function fileDiff(path: string, file: FileChange) {
+  return invoke<FilePatch>("file_diff", { path, file });
 }
 
 export function listBranches(repo: string) {

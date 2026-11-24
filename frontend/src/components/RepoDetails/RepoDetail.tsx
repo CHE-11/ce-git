@@ -2,7 +2,7 @@ import { ArrowDownToLine, ArrowUpToLine, ChevronDown, GitGraph as GitGraphIcon, 
 import { useEffect, useRef, useState } from "react";
 import type { AiPrompts, PublishRequest, RepoDiff, RepoStatus, StashEntry, StashFile, StashFileView, StashKeepSource } from "../../../../types/git";
 import type { EditorId } from "../../lib/editors";
-import { stashFileSides, stashFiles as listStashFiles } from "../../lib/git-client";
+import { fileDiff, stashFileSides, stashFiles as listStashFiles } from "../../lib/git-client";
 import { patchForPath } from "../../lib/diff";
 import { baseName, messageOf } from "../../lib/tree";
 import { Badge } from "../Badge";
@@ -29,6 +29,13 @@ function CommitCountBadge({ id, count, tone }: { id: string; count: number; tone
     </span>
   );
 }
+
+type LoadedFilePatch = {
+  key: string;
+  diff: RepoDiff | null;
+  patch: string;
+  truncated: boolean;
+};
 
 function commitCountLabel(count: number) {
   return `${count} ${count === 1 ? "commit" : "commits"}`;
@@ -200,6 +207,35 @@ export function RepoDetail({
   }, [path, stashId, stashFilePath, selectedStash?.committedAt, selectedStash?.message]);
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
   const selectedPatch = patchForPath(diff?.patch ?? "", selectedFile?.path ?? null);
+  const sliceUsable = selectedPatch.text.length > 0 && !selectedPatch.truncated;
+  const fileKey = path && selectedFile ? `${path}\u0000${selectedFile.status}\u0000${selectedFile.path}` : null;
+  const needsFetch = fileKey !== null && !sliceUsable;
+  const [loadedFile, setLoadedFile] = useState<LoadedFilePatch | null>(null);
+  useEffect(() => {
+    if (!path || !selectedFile || !fileKey || !needsFetch) {
+      return;
+    }
+    let cancelled = false;
+    const requestedDiff = diff;
+    void fileDiff(path, selectedFile)
+      .then((next) => {
+        if (!cancelled) {
+          setLoadedFile({ key: fileKey, diff: requestedDiff, patch: next.patch, truncated: next.truncated });
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setLoadedFile({ key: fileKey, diff: requestedDiff, patch: "", truncated: false });
+          reportErrorRef.current(messageOf(caught));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, fileKey, needsFetch, diff]);
+  const fetched = needsFetch && loadedFile?.key === fileKey && loadedFile.diff === diff ? loadedFile : null;
+  const viewPatch = fetched ? { text: fetched.patch, truncated: fetched.truncated } : selectedPatch;
+  const viewLoading = needsFetch && !fetched;
 
   if (!path) {
     return (
@@ -400,9 +436,10 @@ export function RepoDetail({
                   />
                 ) : (
                   <DiffView
-                    patch={selectedPatch.text}
-                    truncated={selectedPatch.truncated}
+                    patch={viewLoading ? "" : viewPatch.text}
+                    truncated={viewPatch.truncated}
                     filePath={selectedFile?.path ?? null}
+                    placeholder={viewLoading ? "Loading diff…" : undefined}
                   />
                 )}
               </>

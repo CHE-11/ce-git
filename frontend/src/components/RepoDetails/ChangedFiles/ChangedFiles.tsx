@@ -33,11 +33,11 @@ export type ChangeFileHandlers = {
 
 const DEFAULT_WIDTH = 256;
 const MIN_WIDTH = 160;
-const MAX_WIDTH = 560;
+const MAX_WIDTH = 960;
 const WIDTH_KEY = "ce-git.changed-files-width";
 
 function panelLimit() {
-  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.45)));
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.floor(window.innerWidth * 0.55)));
 }
 
 function clampWidth(width: number) {
@@ -133,6 +133,10 @@ function stashPathList(files: FileChange[]) {
 
 function fileName(path: string) {
   return path.split(/[/\\]/).pop() ?? path;
+}
+
+function fileDir(path: string) {
+  return path.slice(0, path.length - fileName(path).length);
 }
 
 export function ChangedFiles({
@@ -479,7 +483,7 @@ export function ChangedFiles({
                   onClick={(event) => chooseFiles(file, event)}
                   onContextMenu={(event) => openMenu(file, event)}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-1 text-left text-sm hover:bg-zinc-800/80 focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-sky-400",
+                    "flex w-full items-center gap-2 px-3 py-1 text-left text-[11px] hover:bg-zinc-800/80 focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-sky-400",
                     selected && "row-selected",
                   )}
                 >
@@ -488,7 +492,7 @@ export function ChangedFiles({
                     title={mark.label}
                     aria-label={mark.label}
                     className={cn(
-                      "w-4 shrink-0 text-center text-xs font-semibold",
+                      "w-4 shrink-0 text-center text-[10px] font-semibold",
                       mark.className,
                     )}
                   >
@@ -496,10 +500,20 @@ export function ChangedFiles({
                   </span>
                   <span
                     id={domId("changed-file-path", key)}
-                    className={cn("truncate", selected ? "text-zinc-50" : "text-zinc-200")}
+                    className="flex min-w-0 flex-1"
                     title={file.path}
                   >
-                    {file.path}
+                    {fileDir(file.path) ? (
+                      <span id={domId("changed-file-dir", key)} className="truncate text-zinc-500">
+                        {fileDir(file.path)}
+                      </span>
+                    ) : null}
+                    <span
+                      id={domId("changed-file-name", key)}
+                      className={cn("shrink-0", selected ? "text-zinc-50" : "text-zinc-200")}
+                    >
+                      {fileName(file.path)}
+                    </span>
                   </span>
                 </button>
               </li>

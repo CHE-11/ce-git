@@ -69,7 +69,10 @@ pub fn clone_repo(url: &str, destination: &std::path::Path) -> Result<(), String
     Ok(())
 }
 pub use commit::commit_repo;
-pub use diff::{CommitDiff, RepoDiff, collect_ai_context, commit_diff, repo_diff};
+pub use diff::{
+    CommitDiff, FileChange, FilePatch, RepoDiff, collect_ai_context, commit_diff, file_diff,
+    repo_diff,
+};
 pub use discover::{TreeNode, discover};
 pub use github::{GithubGists, GithubRepos};
 pub(crate) use github::{

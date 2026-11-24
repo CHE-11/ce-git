@@ -2,9 +2,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { applyAppearance, readAppearance } from "./lib/appearance";
 import { installDevConsole } from "./lib/dev-feedback";
+import { installDisableInputSuggestions } from "./lib/disable-input-suggestions";
 import { applyZoom, readZoom } from "./lib/zoom";
 import { HomePage } from "./Home.page";
 import "./index.css";
+
+installDisableInputSuggestions();
 
 if (import.meta.env.DEV) {
   installDevConsole();

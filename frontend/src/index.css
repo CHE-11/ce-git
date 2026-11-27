@@ -442,6 +442,7 @@ body {
   font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   background: var(--app-zinc-950);
   color: var(--app-zinc-100);
+  overflow: hidden;
 }
 
 #root {
